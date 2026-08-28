@@ -1,0 +1,5 @@
+interface:
+  display_name: "Operate CoordHarness"
+  short_description: "Coordinate agents, context, and tracked jobs"
+  brand_color: "#2563EB"
+  default_prompt: "Use $operating-coordharness to coordinate this work through one local authority."

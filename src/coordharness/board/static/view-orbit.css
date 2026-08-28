@@ -1,0 +1,130 @@
+/* Styles for view-orbit.js. Served, not injected: the board sends style-src 'self'
+   with no unsafe-inline, so an injected <style> element gets a null sheet and every
+   rule in it is dropped without an error. Tokens only — no colour literal appears
+   here, including in a fallback: --c-card-a, --c-hairline and --c-hover are set by
+   accent.js rather than declared in app.css, so each falls back to a token app.css
+   always defines. Semantic amber and red mean waiting and failed and must not
+   follow the accent switch, so they are never mixed with --green. */
+
+.orbitcard .ob-picker { display: flex; flex-wrap: wrap; gap: .4rem; margin: .2rem 0 .8rem; }
+.orbitcard .ob-picker .chip { width: auto; }
+.orbitcard .ob-pick.current { outline: 1.5px solid var(--green); outline-offset: 1px; }
+
+.orbitcard .ob-empty { margin: .6rem 0; font-size: .82rem; color: var(--muted); }
+.orbitcard .ob-facts { list-style: none; margin: .6rem 0 .8rem; padding: 0;
+  display: grid; gap: .2rem; font-size: .78rem; color: var(--ink); }
+.orbitcard .ob-facts span { display: inline-block; min-width: 5.5rem; color: var(--muted); }
+
+/* --- the picture ---------------------------------------------------------- */
+.orbitcard .gwrap { max-width: 100%; padding: 0; overflow: visible; }
+.orbitcard .gwrap .ob-map {
+  display: block; width: 100%; max-width: 100%; height: auto; margin-inline: auto;
+}
+/* The ring is a quantisation cue, not a line to read, so it is dotted and faint —
+   and deliberately unlike the kin arc, which IS a line to read. */
+/* The ring must actually be seen: it is the cue that there are only ever two
+   distances here, so a sparse orbit reads as an empty ring rather than as a mostly
+   blank rectangle. */
+.ob-map .ob-ring { fill: none; stroke: var(--line); stroke-dasharray: 2 5; }
+.ob-map .ob-div { stroke: var(--line); stroke-width: 1; opacity: .45; }
+
+/* A shared parent is a recorded relationship, so it is drawn as a line rather
+   than implied by proximity. Dashed, hairline, and never coloured: it is kinship,
+   not direction and not state. */
+/* Whether a dependency stays in the family is the one thing this view exists to
+   show, so the arc has to be legible against the ring rather than lost in it. It
+   stays neutral: it is kinship, not direction and not state. */
+.ob-map .ob-kin { fill: none; stroke: color-mix(in srgb, var(--muted) 62%, transparent);
+  stroke-dasharray: 4 3; stroke-width: 1.4; }
+
+/* Direction is carried by the two dependency spokes only. Containment gets the
+   neutral line and no arrowhead, because containment is not an ordering. */
+.ob-map .ob-spoke { stroke-width: 1.2; }
+.ob-map .ob-spoke.down { stroke: var(--amber); }
+.ob-map .ob-head.down { fill: var(--amber); stroke: none; }
+.ob-map .ob-spoke.up { stroke: color-mix(in srgb, var(--green) 55%, transparent); }
+.ob-map .ob-head.up { fill: color-mix(in srgb, var(--green) 55%, transparent); stroke: none; }
+/* Containment: neutral and undirected, like the kin arc, because both say family
+   and neither says order. Solid against the arc's dashes, and radial against its
+   chord, so they are still told apart. */
+.ob-map .ob-spoke.kinline { stroke: color-mix(in srgb, var(--muted) 55%, transparent); }
+
+.ob-map .ob-node .ob-disc { fill: var(--c-card-a, var(--panel)); stroke: var(--c-hairline, var(--line)); }
+.ob-map .ob-node.ring2 .ob-disc { stroke-dasharray: 2 3; }
+.ob-map .ob-node.offboard .ob-disc { fill: none; stroke: var(--amber); stroke-dasharray: 3 2; }
+.ob-map .ob-node.root .ob-disc { stroke-width: 1.6; }
+.ob-map .ob-node:hover .ob-disc { fill: var(--c-hover, var(--panel)); stroke: var(--green); }
+
+/* Status pip. Amber is waiting, red is failed, and neither follows the accent. */
+.ob-map .ob-pip { stroke: none; fill: var(--muted); }
+.ob-map .ob-pip.running { fill: var(--green); }
+.ob-map .ob-pip.blocked, .ob-map .ob-pip.attention { fill: var(--amber); }
+.ob-map .ob-pip.failed { fill: var(--red); }
+.ob-map .ob-pip.done, .ob-map .ob-pip.planned, .ob-map .ob-pip.next { fill: var(--muted); }
+/* Last, so it wins over the bucket the house mapping folded it into: stateOf has
+   no bucket for "failed" and returns planned for it, which would paint a failed
+   row the same muted grey as a row nobody has started. */
+.ob-map .ob-pip.failed { fill: var(--red); }
+
+/* The third state: this row records no parent, so it is neither inside nor
+   outside a family. Hollow, so it cannot be read as a status. */
+.ob-map .ob-tick { fill: none; stroke: var(--muted); stroke-width: 1.2; }
+
+/* Quiet: an owner mark is identity, and it must not compete with the amber and red
+   next to it, which are the only marks on this picture that carry a state. */
+.ob-map .ob-mark { opacity: .6; }
+.ob-map .ob-id { font-size: 12px; fill: var(--muted); dominant-baseline: middle; }
+.ob-map .ob-id.r { text-anchor: start; }
+.ob-map .ob-id.l { text-anchor: end; }
+.ob-map .ob-rootid { font-size: 12px; fill: var(--ink); text-anchor: middle; }
+
+.ob-map .ob-node:focus-visible { outline: none; }
+.ob-map .ob-node:focus-visible .ob-disc { stroke: var(--green); stroke-width: 2; }
+.ob-map .ob-node.current .ob-disc { stroke: var(--green); stroke-width: 2; }
+
+/* --- the same facts, in text ---------------------------------------------- */
+.orbitcard .ob-roster { list-style: none; margin: 1rem 0 0; padding: 0; display: grid; gap: .8rem; }
+.orbitcard .ob-roster h4 { margin: 0 0 .35rem; font-size: .72rem; font-weight: 500;
+  letter-spacing: .09em; text-transform: uppercase; color: var(--muted); }
+.orbitcard .ob-roster ul { list-style: none; margin: 0; padding: 0; display: grid; gap: .3rem; }
+.orbitcard .ob-roster ul li { display: grid; grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: .5rem; align-items: center; }
+
+/* Recentring is a second affordance so it never competes with the drawer: a node
+   in the picture opens the drawer, this moves the orbit. It sits in the list
+   rather than as a glyph welded to a twelve-pixel node. */
+.orbitcard .ob-re { padding: .2rem .5rem; font-size: .7rem; color: var(--muted);
+  background: none; border: 1px solid var(--line); border-radius: 999px;
+  letter-spacing: .06em; text-transform: uppercase; cursor: pointer; }
+.orbitcard .ob-re:hover { color: var(--ink); border-color: var(--c-hairline, var(--line)); }
+.orbitcard .ob-re:focus-visible { outline: 2px solid var(--green); outline-offset: 1px; }
+.orbitcard .ob-kinnote, .orbitcard .ob-why { font-size: .72rem; color: var(--muted); text-align: right; }
+.orbitcard .ob-kinnote.outside { color: var(--ink); }
+.orbitcard .ob-key { margin: .1rem 0 .2rem; font-size: .74rem; color: var(--muted); }
+.orbitcard .ob-key b { color: var(--ink); font-weight: 500; letter-spacing: .06em;
+  text-transform: uppercase; font-size: .7rem; }
+.orbitcard .legend { margin-top: .8rem; font-size: .76rem; color: var(--muted); }
+
+@media (max-width: 720px) {
+  .orbitcard .ob-roster ul li { grid-template-columns: 1fr auto; }
+  .orbitcard .ob-kinnote, .orbitcard .ob-why { text-align: left; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ob-map *, .orbitcard .chip { transition: none; animation: none; }
+}
+
+/* The disclosure that carries the caveats. Declared here as well as in
+   view-density.css and view-flow.css because each view ships standalone; the
+   rules are identical, so whichever sheet loads last wins with the same values. */
+.readnote { margin: .5rem 0 .9rem; }
+.readnote > summary { cursor: pointer; color: var(--muted); font-size: .78rem;
+  list-style: none; display: inline-flex; align-items: center; gap: .4em;
+  padding: .25rem .6rem; border: 1px solid var(--line); border-radius: 999px; }
+.readnote > summary::-webkit-details-marker { display: none; }
+.readnote > summary::before { content: "?"; font-size: .7rem; opacity: .6;
+  border: 1px solid currentColor; border-radius: 50%; width: 1.1em; height: 1.1em;
+  display: grid; place-items: center; }
+.readnote[open] > summary { color: var(--ink); }
+.readnote > summary:focus-visible { outline: 2px solid var(--green); outline-offset: 1px; }
+.readnote .body { margin-top: .6rem; padding-left: .8rem; border-left: 2px solid var(--line); }
+.readnote .body p { margin: .45rem 0; font-size: .8rem; color: var(--muted); }

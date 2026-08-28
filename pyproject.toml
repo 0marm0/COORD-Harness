@@ -1,0 +1,75 @@
+[build-system]
+requires = ["setuptools>=83"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "coordharness"
+version = "0.1.0"
+description = "A coordination control plane for fleets of AI coding agents"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE"]
+keywords = ["agent-coordination", "control-plane", "mcp"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Software Development :: Build Tools",
+]
+dependencies = []
+
+[project.optional-dependencies]
+# The server imports `mcp.server.fastmcp`, which 2.0 relocated. Pin below it until
+# the server is ported to the new entry point.
+mcp = ["mcp>=1.20,<2.0"]
+mlx = ["mlx-lm>=0.21; sys_platform == 'darwin' and platform_machine == 'arm64'"]
+# Pin the reviewed lint rule set so local and hosted checks cannot drift when
+# Ruff enables new rules in a feature release. Update this intentionally with
+# the accompanying lint migration.
+dev = [
+  "build>=1.2,<2",
+  "jsonschema>=4.20",
+  "pytest>=8",
+  "pytest-timeout>=2.3",
+  "referencing>=0.28",
+  "ruff==0.15.4",
+]
+browser = ["playwright>=1.55,<2"]
+
+[project.scripts]
+coord = "coordharness.entry:main"
+coord-mcp = "coordharness.coord.mcp_coord_server:main"
+coord-board = "coordharness.board.server:main"
+coord-jobs = "coordharness.jobs.cli:main"
+coord-models = "coordharness.coord.model_cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+# Anything the package reads at runtime must be listed here or a wheel silently
+# omits it and the import fails only once installed -- which testing from a source
+# checkout with PYTHONPATH set will never catch.
+coordharness = [
+  "coord/schema.sql",
+  "coord/migrations/*.sql",
+  "coord/*.json",
+  "board/*.json",
+  "board/static/*.html",
+  "board/static/*.css",
+  "board/static/*.js",
+  "board/static/*.png",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["slow: builds a virtualenv or wheel; deselect with -m 'not slow'"]

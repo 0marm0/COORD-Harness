@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>COORD Swarm Mesh</title>
+  <link rel="icon" href="/static/mark-compute.png" type="image/png">
+  <link rel="stylesheet" href="/static/app.css">
+  <link rel="stylesheet" href="/static/shell.css">
+  <script src="/static/shell.js" defer></script>
+  <link rel="stylesheet" href="/static/swarm-mesh.css">
+</head>
+<body class="mesh-body mesh-loading">
+  <nav class="shellbar" aria-label="Product areas">
+    <a class="shell-brand" href="/#v=work&layout=board"><span class="shell-mark">COORD</span><span class="shell-sub">Intelligence</span></a>
+    <span class="shell-nav">
+      <a href="/#v=work&layout=board">Work</a>
+      <a href="/map" aria-current="page">Intelligence</a>
+      <a href="/#v=usage">Usage</a>
+    </span>
+    <span class="shell-right"></span>
+  </nav>
+  <nav class="shell-subnav" aria-label="Intelligence views">
+    <a href="/map">Map</a>
+    <a href="/mesh" aria-current="page">Mesh</a>
+    <a href="/ops">Atlas</a>
+  </nav>
+
+  <header class="mesh-rail" aria-label="Swarm Mesh status rail">
+    <dl class="rail-metrics">
+      <div><dt>GEN</dt><dd id="rail-generation">—</dd></div>
+      <div><dt>NODES</dt><dd id="rail-nodes">—</dd></div>
+      <div><dt>EDGES</dt><dd id="rail-edges">—</dd></div>
+      <div><dt>EVENTS</dt><dd id="rail-events">—</dd></div>
+      <div><dt>SESSIONS</dt><dd id="rail-sessions">—</dd></div>
+      <div><dt>RENDER</dt><dd><span id="rail-fps">—</span> FPS</dd></div>
+    </dl>
+    <div class="rail-state">
+      <span id="freshness-dot" class="state-dot" aria-hidden="true"></span>
+      <span><b id="freshness-state">CONNECTING</b><small id="freshness-time">waiting for one coherent bundle</small></span>
+    </div>
+  </header>
+
+  <div id="mesh-alert" class="mesh-alert" role="status" aria-live="polite" hidden></div>
+
+  <main class="mesh-shell">
+    <section class="mesh-command" aria-label="Mesh controls">
+      <div class="command-title">
+        <p class="eyebrow">SPATIAL INTELLIGENCE</p>
+        <h1>Coordination mesh</h1>
+        <p>Clusters encode recorded actor lane or module membership. Depth is deterministic layout—not time, importance, or certainty.</p>
+      </div>
+
+      <div class="segmented" id="layout-controls" aria-label="Spatial layout">
+        <button type="button" data-layout="swarm" aria-pressed="false">Swarm</button>
+        <button class="active" type="button" data-layout="context" aria-pressed="true">Context</button>
+        <button type="button" data-layout="critical" aria-pressed="false">Critical flow</button>
+      </div>
+
+      <label class="mesh-search">
+        <span>SEARCH</span>
+        <input id="mesh-search" type="search" autocomplete="off" placeholder="id, title, owner, module">
+        <kbd>/</kbd>
+      </label>
+
+      <div class="segmented motion-switch" id="motion-controls" aria-label="Traffic motion">
+        <button type="button" data-motion="live" aria-pressed="false">Live</button>
+        <button type="button" data-motion="replay" aria-pressed="false">Replay</button>
+        <button class="active" type="button" data-motion="direction" aria-pressed="true">Direction</button>
+        <button type="button" data-motion="traffic" aria-pressed="false">Traffic</button>
+      </div>
+
+      <div class="mesh-view-actions" aria-label="View actions">
+        <button id="mesh-freeze" type="button" aria-pressed="false">Freeze</button>
+        <button id="mesh-refresh" type="button">Refresh</button>
+      </div>
+    </section>
+
+    <section class="generation-strip" aria-label="Coordination graph coverage and status">
+      <div class="strip-title"><span class="state-dot" aria-hidden="true"></span><b>COHERENT READ</b></div>
+      <p id="coverage-summary" class="coverage-summary">Building a bounded graph view…</p>
+      <p id="generation-receipt">Awaiting source receipts.</p>
+      <details id="mesh-evidence" class="evidence-drawer">
+        <summary><span>Evidence &amp; health</span><output id="evidence-summary">waiting</output></summary>
+        <div class="evidence-body">
+          <ol id="generation-stages" aria-label="Coherent source documents">
+            <li data-document="snapshot"><span>01</span>Snapshot</li>
+            <li data-document="graph"><span>02</span>Graph</li>
+            <li data-document="context"><span>03</span>Context</li>
+            <li data-document="timeline"><span>04</span>Timeline</li>
+            <li data-document="operations"><span>05</span>Operations</li>
+            <li data-document="projection"><span>06</span>Project</li>
+          </ol>
+
+          <section class="telemetry-dock" aria-label="Mesh telemetry">
+            <section id="mesh-topology-receipt" class="topology-admission-receipt" aria-labelledby="mesh-topology-receipt-title" hidden>
+              <header>
+                <div>
+                  <p class="eyebrow">TOPOLOGY ADMISSION RECEIPT</p>
+                  <h2 id="mesh-topology-receipt-title">Authoritative relationships unavailable</h2>
+                  <p id="mesh-topology-reason" class="topology-reason"></p>
+                </div>
+                <p id="mesh-topology-prerequisite" class="topology-prerequisite"></p>
+              </header>
+              <dl id="mesh-topology-facts" class="topology-facts"></dl>
+              <section class="static-node-register" aria-labelledby="static-node-register-title">
+                <header>
+                  <h3 id="static-node-register-title">Searchable admitted node roster</h3>
+                  <output id="static-node-count">0 nodes</output>
+                </header>
+                <ol id="static-node-roster"></ol>
+              </section>
+            </section>
+
+            <section class="telemetry-panel event-panel">
+              <header><div><p class="eyebrow">RECORDED EVENT BUS</p><h2>Occurrence stream</h2></div><output id="event-window">—</output></header>
+              <ol id="event-ledger" class="event-ledger"></ol>
+            </section>
+
+            <section class="telemetry-panel edge-panel">
+              <header><div><p class="eyebrow">TYPED RELATIONSHIPS</p><h2>Edge ledger</h2></div><output id="edge-total">—</output></header>
+              <div id="edge-ledger" class="edge-ledger"></div>
+            </section>
+
+            <section class="telemetry-panel traversal-panel">
+              <header><div><p class="eyebrow">RECORDED OCCURRENCES</p><h2>Traversal grid</h2></div><output id="traversal-total">—</output></header>
+              <div id="traversal-grid" class="traversal-grid" role="img" aria-label="Recent recorded occurrences by actor and order"></div>
+              <p id="traversal-note">Each cell is one occurrence. Position is order, not duration.</p>
+            </section>
+
+            <section class="telemetry-panel integrity-panel">
+              <header><div><p class="eyebrow">PROOF &amp; HEALTH</p><h2>Intervention ledger</h2></div><output id="integrity-state">—</output></header>
+              <div id="integrity-ledger" class="integrity-ledger"></div>
+            </section>
+
+            <section class="telemetry-panel flow-panel">
+              <header><div><p class="eyebrow">DEPENDENCY SHAPE</p><h2>Critical flow</h2></div><output id="parallel-width">—</output></header>
+              <canvas id="flow-chart" aria-label="Recorded occurrence density over the visible time window"></canvas>
+              <dl id="flow-ledger"></dl>
+            </section>
+          </section>
+
+          <section class="mesh-truth">
+            <span class="state-dot" aria-hidden="true"></span>
+            <p><b>Projection only.</b> This surface cannot claim, assign, approve, or complete work. Live motion is limited to arrivals observed after the first coherent read; replay motion is historical and explicitly labeled; direction motion explains typed edge direction and is not activity.</p>
+          </section>
+        </div>
+      </details>
+    </section>
+
+    <section class="mesh-stage" aria-label="Interactive spatial coordination graph">
+      <aside class="mesh-side mesh-fleet" aria-labelledby="fleet-title">
+        <header>
+          <div><p class="eyebrow">CLUSTER ROSTER</p><h2 id="fleet-title">Recorded topology</h2></div>
+          <output id="cluster-count">—</output>
+        </header>
+        <div id="cluster-roster" class="cluster-roster"></div>
+        <section class="scope-card" aria-labelledby="scope-title">
+          <h3 id="scope-title">Visible scope</h3>
+          <dl id="scope-ledger"></dl>
+        </section>
+        <p class="side-note">A live session is a recorded session flag, not proof of a running process.</p>
+      </aside>
+
+      <section class="mesh-canvas-card" aria-labelledby="mesh-title">
+        <header class="canvas-head">
+          <div>
+            <p class="eyebrow">LIVE READ-ONLY PROJECTION</p>
+            <h2 id="mesh-title">Agents, work, dependencies, evidence</h2>
+          </div>
+          <div class="canvas-head-controls">
+            <div class="segmented population-switch" id="population-controls" aria-label="Graph population">
+              <button class="active" type="button" data-population="focus" aria-pressed="true">Focus</button>
+              <button type="button" data-population="admitted" aria-pressed="false">Expand to admitted</button>
+            </div>
+            <div class="canvas-badges">
+              <span id="projection-truth" class="truth-badge perspective">PERSPECTIVE · LAYOUT-ONLY Z</span>
+              <span id="motion-truth" class="truth-badge direction">SCHEMATIC DIRECTION</span>
+              <span id="hidden-receipt" class="truth-badge">0 HIDDEN</span>
+              <span id="label-receipt" class="truth-badge" data-state="complete">ALL LABELS SHOWN</span>
+            </div>
+          </div>
+        </header>
+
+        <section id="mesh-comms-summary" class="mesh-comms-summary" aria-labelledby="mesh-comms-title" aria-live="polite" data-state="unavailable">
+          <div>
+            <p class="eyebrow">PULSEV1 · COORDINATION TRAFFIC</p>
+            <h3 id="mesh-comms-title">Recorded lane routing</h3>
+          </div>
+          <p id="mesh-comms-counts">Waiting for a coherent communications document.</p>
+          <p id="mesh-comms-truth">Moving artifacts show recorded direction, not current activity.</p>
+          <a href="/map?lens=pulse">Open Map Pulse</a>
+        </section>
+
+        <div id="mesh-viewport" class="mesh-viewport" tabindex="0" role="application" aria-roledescription="interactive coordination graph" aria-label="Coordination graph. Arrow keys move node focus; Enter pins the focused node; Escape clears the pinned node. In perspective, Shift plus Arrow keys orbit." aria-describedby="mesh-caption" aria-keyshortcuts="ArrowLeft ArrowRight ArrowUp ArrowDown Enter Escape Shift+ArrowLeft Shift+ArrowRight Shift+ArrowUp Shift+ArrowDown">
+          <canvas id="mesh-canvas"></canvas>
+          <div id="cluster-labels" class="cluster-labels" aria-hidden="true"></div>
+          <div id="mesh-tooltip" class="mesh-tooltip" role="tooltip" hidden></div>
+          <div class="canvas-tools" aria-label="Projection and camera controls">
+            <button type="button" data-projection="flat" aria-pressed="false">2D</button>
+            <button class="active" type="button" data-projection="perspective" aria-pressed="true">Perspective</button>
+            <button id="camera-minus" type="button" aria-label="Zoom out">−</button>
+            <output id="camera-zoom">100%</output>
+            <button id="camera-plus" type="button" aria-label="Zoom in">+</button>
+            <button id="camera-fit" type="button">Fit</button>
+            <button id="camera-reset" type="button">Reset orbit</button>
+          </div>
+          <div class="axis-key" aria-label="Graph visual key">
+            <span><i class="shape agent"></i>agent</span>
+            <span><i class="shape work"></i>work</span>
+            <span><i class="shape evidence"></i>evidence</span>
+            <span><i class="edge dependency"></i>prerequisite → consumer</span>
+            <span><i class="edge ownership"></i>owner → held work</span>
+          </div>
+          <div id="mesh-a11y" class="visually-hidden" aria-label="Graph node navigator"></div>
+        </div>
+        <footer id="mesh-caption">
+          Perspective projects deterministic layout-only z separation; z is not measured time, priority, certainty, or activity. Drag to orbit · Shift-drag to pan · Wheel or +/− to zoom · 0 resets the camera · Click a node to pin · Arrow keys move node focus · Enter pins the focused node · Escape clears the pinned node · Shift+Arrow keys orbit.
+        </footer>
+
+        <div id="mesh-status-announcer" class="visually-hidden" role="status" aria-live="polite" aria-atomic="true"></div>
+      </section>
+
+      <aside class="mesh-side mesh-inspector" aria-labelledby="inspector-title">
+        <header>
+          <div><p class="eyebrow">GRAPH READER</p><h2 id="inspector-title">Ask the mesh</h2></div>
+          <button id="clear-selection" type="button" hidden>Clear</button>
+        </header>
+        <div id="question-buttons" class="question-buttons">
+          <button type="button" data-question="impact"><span>01</span>Greatest downstream reach</button>
+          <button type="button" data-question="attention"><span>02</span>Needs structural attention</button>
+          <button type="button" data-question="leases"><span>03</span>Lease risk</button>
+          <button type="button" data-question="recent"><span>04</span>Most recent occurrence</button>
+        </div>
+        <div id="selection-inspector" class="selection-inspector">
+          <p class="selection-empty">Choose a question or select a node. The answer will name its bounded source, direct relationships, and any omitted population.</p>
+        </div>
+        <section class="path-card" aria-labelledby="path-title">
+          <header><h3 id="path-title">Traversal receipt</h3><output id="path-hops">0 hops</output></header>
+          <ol id="path-ledger"></ol>
+        </section>
+      </aside>
+    </section>
+
+  </main>
+
+  <script src="/static/ops-atlas-model.js" defer></script>
+  <script src="/static/swarm-mesh-model.js" defer></script>
+  <script src="/static/accent.js" defer></script>
+  <script src="/static/swarm-mesh.js" defer></script>
+</body>
+</html>

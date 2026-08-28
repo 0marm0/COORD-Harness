@@ -1,0 +1,92 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://coordharness.dev/schema/action-registry-v1.json",
+  "title": "ActionRegistryV1",
+  "description": "Deterministic preview-only action declarations and check-by-check availability. This contract never grants execution authority.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "preview_only", "authorization", "source", "target", "counts", "actions"],
+  "properties": {
+    "schema_version": {"const": "ActionRegistryV1"},
+    "preview_only": {"const": true},
+    "authorization": {"const": "not_granted"},
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cache_generation", "generated_at", "read_only", "source_face"],
+      "properties": {
+        "cache_generation": {"type": "integer", "minimum": 0},
+        "generated_at": {"type": "string"},
+        "read_only": {"const": true},
+        "source_face": {"type": "string", "minLength": 1}
+      }
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "state"],
+      "properties": {
+        "id": {"type": "string"},
+        "kind": {"type": "string", "minLength": 1},
+        "state": {"type": "string", "minLength": 1}
+      }
+    },
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["declared", "mutations", "non_mutations", "available", "unavailable", "available_mutations", "reachable_mutations"],
+      "properties": {
+        "declared": {"type": "integer", "minimum": 0},
+        "mutations": {"type": "integer", "minimum": 0},
+        "non_mutations": {"type": "integer", "minimum": 0},
+        "available": {"type": "integer", "minimum": 0},
+        "unavailable": {"type": "integer", "minimum": 0},
+        "available_mutations": {"type": "integer", "minimum": 0},
+        "reachable_mutations": {"type": "integer", "minimum": 0}
+      }
+    },
+    "actions": {"type": "array", "items": {"$ref": "#/$defs/resolvedAction"}}
+  },
+  "$defs": {
+    "resolvedAction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "label", "target_kind", "executor", "required_actor", "required_policy", "preconditions", "mutation", "requires_confirmation", "placement", "available", "reachable", "reason", "checks", "preview_only", "authorized", "execution_authority"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "label": {"type": "string", "minLength": 1},
+        "target_kind": {"type": "string", "minLength": 1},
+        "executor": {"type": "string", "minLength": 1},
+        "required_actor": {"type": "string", "minLength": 1},
+        "required_policy": {"type": "string", "minLength": 1},
+        "preconditions": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+        "mutation": {"type": "boolean"},
+        "requires_confirmation": {"type": "boolean"},
+        "placement": {"type": "string", "minLength": 1},
+        "available": {"type": "boolean"},
+        "reachable": {"type": "boolean"},
+        "reason": {"type": ["string", "null"]},
+        "checks": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/check"}},
+        "preview_only": {"const": true},
+        "authorized": {"const": false},
+        "execution_authority": {"const": "not_granted"}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"available": {"const": false}}},
+          "then": {"properties": {"reason": {"type": "string", "minLength": 1}}}
+        }
+      ]
+    },
+    "check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "passed", "reason"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "passed": {"type": "boolean"},
+        "reason": {"type": "string", "minLength": 1}
+      }
+    }
+  }
+}

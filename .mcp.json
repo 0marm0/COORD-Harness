@@ -1,0 +1,19 @@
+{
+  "mcpServers": {
+    "coordharness": {
+      "args": [
+        "-m",
+        "coordharness.coord.mcp_coord_server"
+      ],
+      "command": "./.venv/bin/python",
+      "env": {
+        "COORD_ACTOR": "claude",
+        "COORD_DB": ".coordharness/coord.db",
+        "COORD_DEPLOYMENT_PROFILE": "generic",
+        "COORD_KNOWLEDGE_DB": ".coordharness/knowledge.db",
+        "COORD_PROJECT_ROOT": "."
+      },
+      "type": "stdio"
+    }
+  }
+}

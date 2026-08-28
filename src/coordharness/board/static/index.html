@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#000000">
+  <title>COORD Cockpit · COORD Board</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='12' fill='%235e9dff'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/static/app.css">
+  <link rel="stylesheet" href="/static/comms-board.css">
+  <link rel="stylesheet" href="/static/usage-dashboard.css">
+  <link rel="stylesheet" href="/static/shell.css">
+  <script src="/static/shell.js" defer></script>
+  <script src="/static/usage-dashboard.js" defer></script>
+  <script src="/static/app.js" defer></script>
+</head>
+<body class="appshell">
+  <nav class="shellbar" aria-label="Product areas">
+    <a class="shell-brand" href="/"><span class="shell-mark">COORD</span><span class="shell-sub">read-only runtime</span></a>
+    <span class="shell-nav">
+      <a href="/" aria-current="page">Board</a>
+      <a href="/mesh">Mesh</a>
+      <a href="/map">Map</a>
+      <a href="/ops">Operations Atlas</a>
+    </span>
+    <span class="shell-right"><span class="pulse"><span></span><strong id="health">Connecting</strong></span></span>
+  </nav>
+
+  <!-- Compatibility views remain command-palette and URL destinations.
+       The shared shell owns the visible Work navigation. -->
+  <div class="workspace">
+    <nav id="rail" class="rail" aria-label="Compatibility views" hidden></nav>
+
+    <div class="stage">
+      <div class="locbar">
+        <span class="crumbs" id="crumbs" aria-live="polite"></span>
+        <label class="findwrap">
+          <span class="visually-hidden">Find rows by id, title, owner or module</span>
+          <input id="find" type="search" placeholder="Find &nbsp;/" autocomplete="off" spellcheck="false">
+        </label>
+        <button id="filterbtn" type="button" aria-expanded="false" aria-controls="filterpanel">Filter</button>
+        <button id="displaybtn" type="button" aria-expanded="false" aria-controls="displaypanel">Display</button>
+        <div id="workmodes" class="workmodes" role="group" aria-label="Work layout" hidden>
+          <button type="button" data-work-layout="list" aria-pressed="false">List <kbd>1</kbd></button>
+          <button type="button" data-work-layout="board" aria-pressed="true">Cards <kbd>2</kbd></button>
+          <button type="button" data-work-layout="timeline" aria-pressed="false">Timeline <kbd>3</kbd></button>
+        </div>
+        <span class="popcount" id="popcount"></span>
+      </div>
+      <p id="boardreadalert" class="board-read-alert" role="status" aria-live="polite" hidden></p>
+      <section id="usage-strip" class="usage-board-strip" aria-label="Compact provider usage and live system statistics"></section>
+
+      <!-- The semantic filter is the shareable population; the box above is
+           free-text navigation over what is already drawn. Codex's contract is
+           explicit that the two must not be conflated. -->
+      <div class="filterpanel" id="filterpanel" hidden></div>
+      <div class="filterpanel" id="displaypanel" hidden></div>
+
+      <div class="split">
+        <main class="panes">
+          <section id="attention" class="panel"></section>
+          <section id="overview" class="panel active"></section>
+          <section id="usage" class="panel" aria-label="Provider Usage"></section>
+          <section id="work" class="panel"></section>
+          <section id="jobs" class="panel"></section>
+          <section id="graph" class="panel"></section>
+          <section id="comms" class="panel" aria-label="Agent communications"></section>
+          <section id="activity" class="panel" aria-hidden="true"></section>
+        </main>
+        <aside id="detail" class="detail" aria-label="Selected work detail" hidden></aside>
+      </div>
+    </div>
+  </div>
+
+  <!-- Command palette: one entry point for destinations, rows and typed
+       actions. It searches, it never mutates: actions resolve through the
+       registry, and the seven refused mutations surface their reasons here
+       exactly as they do in the detail plane. -->
+  <div id="cmdk" class="cmdk" role="dialog" aria-modal="true" aria-labelledby="cmdk-title" hidden>
+    <div class="cmdk-card">
+      <h2 id="cmdk-title" class="visually-hidden">Command palette</h2>
+      <div class="cmdk-head">
+        <input id="cmdk-input" type="text" role="combobox" aria-autocomplete="list"
+               aria-controls="cmdk-list" aria-expanded="false"
+               placeholder="Type a command, a view, or a row&hellip;"
+               autocomplete="off" spellcheck="false" aria-label="Palette query">
+        <button id="cmdk-close" type="button" aria-label="Close command palette">&times;</button>
+      </div>
+      <div id="cmdk-list" class="cmdk-list" role="listbox"></div>
+      <p class="cmdk-hint"><kbd>&uarr;</kbd><kbd>&darr;</kbd> move &nbsp; <kbd>&#9166;</kbd> run &nbsp; <kbd>esc</kbd> close</p>
+    </div>
+  </div>
+
+  <template id="empty"><div class="empty">No runtime data yet.</div></template>
+  <script src="/static/accent.js" defer></script>
+</body>
+</html>

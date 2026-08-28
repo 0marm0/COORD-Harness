@@ -1,0 +1,202 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://coordharness.dev/schema/semantic-query-v1.json",
+  "title": "SemanticQueryV1",
+  "description": "Strict recursive, prose-free semantic query AST over public Board documents.",
+  "type": "object",
+  "required": ["schema_version", "expr"],
+  "properties": {
+    "schema_version": {"const": "SemanticQueryV1"},
+    "expr": {"$ref": "#/$defs/expression"}
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "stringSet": {
+      "type": "array",
+      "maxItems": 128,
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1, "maxLength": 512}
+    },
+    "expression": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["all"],
+          "properties": {
+            "all": {"type": "array", "maxItems": 256, "items": {"$ref": "#/$defs/expression"}}
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["any"],
+          "properties": {
+            "any": {"type": "array", "maxItems": 256, "items": {"$ref": "#/$defs/expression"}}
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["not"],
+          "properties": {"not": {"$ref": "#/$defs/expression"}},
+          "additionalProperties": false
+        },
+        {"$ref": "#/$defs/setPredicateLifecycle"},
+        {"$ref": "#/$defs/setPredicateActor"},
+        {"$ref": "#/$defs/setPredicateModule"},
+        {"$ref": "#/$defs/setPredicateStatus"},
+        {"$ref": "#/$defs/evidencePredicate"},
+        {"$ref": "#/$defs/setPredicateFreshness"},
+        {"$ref": "#/$defs/graphRelationPredicate"},
+        {"$ref": "#/$defs/jobPredicate"},
+        {"$ref": "#/$defs/contextPredicate"}
+      ]
+    },
+    "inObject": {
+      "type": "object",
+      "required": ["in"],
+      "properties": {"in": {"$ref": "#/$defs/stringSet"}},
+      "additionalProperties": false
+    },
+    "setPredicateLifecycle": {
+      "type": "object",
+      "required": ["lifecycle"],
+      "properties": {
+        "lifecycle": {
+          "type": "object",
+          "required": ["in"],
+          "properties": {
+            "in": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {"enum": ["active", "attention", "open", "planned", "terminal"]}
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "setPredicateActor": {
+      "type": "object",
+      "required": ["actor"],
+      "properties": {"actor": {"$ref": "#/$defs/inObject"}},
+      "additionalProperties": false
+    },
+    "setPredicateModule": {
+      "type": "object",
+      "required": ["module"],
+      "properties": {"module": {"$ref": "#/$defs/inObject"}},
+      "additionalProperties": false
+    },
+    "setPredicateStatus": {
+      "type": "object",
+      "required": ["status"],
+      "properties": {"status": {"$ref": "#/$defs/inObject"}},
+      "additionalProperties": false
+    },
+    "evidencePredicate": {
+      "type": "object",
+      "required": ["evidence"],
+      "properties": {
+        "evidence": {
+          "type": "object",
+          "required": ["recorded"],
+          "properties": {"recorded": {"type": "boolean"}},
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "setPredicateFreshness": {
+      "type": "object",
+      "required": ["freshness"],
+      "properties": {
+        "freshness": {
+          "type": "object",
+          "required": ["in"],
+          "properties": {
+            "in": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {"enum": ["fresh", "stale", "lease_current", "lease_expired", "unclaimed"]}
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "graphRelationPredicate": {
+      "type": "object",
+      "required": ["graph_relation"],
+      "properties": {
+        "graph_relation": {
+          "type": "object",
+          "required": ["direction", "kind_in", "min_count", "related_ids", "relationship_state_in"],
+          "properties": {
+            "direction": {"enum": ["incoming", "outgoing", "either"]},
+            "kind_in": {"$ref": "#/$defs/stringSet"},
+            "min_count": {"type": "integer", "minimum": 0, "maximum": 1000000},
+            "related_ids": {"$ref": "#/$defs/stringSet"},
+            "relationship_state_in": {"$ref": "#/$defs/stringSet"}
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "jobPredicate": {
+      "type": "object",
+      "required": ["job"],
+      "properties": {
+        "job": {
+          "type": "object",
+          "required": ["eta", "is_job", "progress", "state_in"],
+          "properties": {
+            "eta": {"enum": ["known", "unknown", "either"]},
+            "is_job": {"type": "boolean"},
+            "progress": {"enum": ["known", "unknown", "either"]},
+            "state_in": {"$ref": "#/$defs/stringSet"}
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "contextPredicate": {
+      "type": "object",
+      "required": ["context"],
+      "properties": {
+        "context": {
+          "type": "object",
+          "required": ["field", "operator", "value"],
+          "properties": {
+            "field": {
+              "enum": [
+                "parent", "children", "depends_on", "dependents", "siblings",
+                "artifact_recorded", "blocked_reason_class", "claim_present", "lease_remaining_s"
+              ]
+            },
+            "operator": {"enum": ["eq", "ne", "in", "contains", "present", "gt", "gte", "lt", "lte"]},
+            "value": {
+              "oneOf": [
+                {"type": ["string", "number", "integer", "boolean", "null"]},
+                {
+                  "type": "array",
+                  "maxItems": 128,
+                  "uniqueItems": true,
+                  "items": {"type": ["string", "number", "integer", "boolean", "null"]}
+                }
+              ]
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

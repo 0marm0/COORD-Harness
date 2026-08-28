@@ -1,0 +1,125 @@
+<svg viewBox="0 0 1000 570" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="ct-title ct-desc">
+  <title id="ct-title">Bounded context tiers</title>
+  <desc id="ct-desc">Session context has three tiers: a small kernel loaded automatically at session start, linked detail reached by one bounded call such as a board lens or a named context-pack budget profile, and a recall-only depth reached only by explicit request. A boot capsule reads a fixed slice of the middle tier once per session, trimmed to fit under a byte ceiling.</desc>
+  <defs>
+    <marker id="c-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" style="fill:var(--line)"/>
+    </marker>
+  </defs>
+  <style>
+    :root{
+      --ink:#1b1f24; --ink-soft:#57606a; --line:#6e7781; --line-soft:#c9d1d9;
+      --panel:#f7f9fa; --panel-2:#eef2f4; --bg:transparent;
+      --accent:#0969da; --accent-soft:#dbe9fd;
+      --good:#1a7f37; --good-soft:#dafbe1;
+    }
+    @media (prefers-color-scheme: dark){
+      :root{
+        --ink:#e6edf3; --ink-soft:#9198a1; --line:#8b949e; --line-soft:#30363d;
+        --panel:#1a2027; --panel-2:#222a31; --bg:transparent;
+        --accent:#4493f8; --accent-soft:#132f4c;
+        --good:#3fb950; --good-soft:#0f2b18;
+      }
+    }
+    svg{ color:var(--ink); }
+    text{ fill:currentColor; font-family:ui-sans-serif, -apple-system, Segoe UI, Roboto, sans-serif; }
+    .ttl{ font-size:14px; font-weight:600; }
+    .reach{ font-size:12px; font-style:italic; fill:var(--ink-soft); }
+    .item{ font-size:12px; }
+    .cap{ font-size:12px; fill:var(--ink-soft); }
+    .lbl{ font-size:12px; }
+    .panel{ fill:var(--panel-2); stroke:var(--line); stroke-width:1.25; }
+    .panel-accent{ fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.5; }
+    .panel-good{ fill:var(--good-soft); stroke:var(--good); stroke-width:1.25; }
+    .pill{ fill:var(--panel); stroke:var(--accent); stroke-width:1; }
+    .edge{ fill:none; stroke:var(--line); stroke-width:1.25; }
+    .dot{ fill:var(--ink-soft); }
+  </style>
+
+  <!-- Kernel -->
+  <rect class="panel-accent" x="40" y="60" width="250" height="300" rx="10"/>
+  <text class="ttl" x="165" y="96" text-anchor="middle">Kernel</text>
+  <text class="reach" x="165" y="116" text-anchor="middle">loaded automatically</text>
+  <text class="reach" x="165" y="130" text-anchor="middle">at session start</text>
+
+  <circle class="dot" cx="66" cy="160" r="2"/>
+  <text class="item" x="76" y="164">harness identity</text>
+  <circle class="dot" cx="66" cy="188" r="2"/>
+  <text class="item" x="76" y="192">hard guards</text>
+  <circle class="dot" cx="66" cy="216" r="2"/>
+  <text class="item" x="76" y="220">where the board lives</text>
+
+  <text class="cap" x="165" y="330" text-anchor="middle">stable — never re-derived,</text>
+  <text class="cap" x="165" y="344" text-anchor="middle">never holds live status</text>
+
+  <!-- arrow 1 -->
+  <path class="edge" d="M292,210 L368,210" marker-end="url(#c-arrow)"/>
+  <text class="lbl" x="330" y="190" text-anchor="middle">one bounded</text>
+  <text class="lbl" x="330" y="203" text-anchor="middle">call</text>
+
+  <!-- Linked detail -->
+  <rect class="panel" x="370" y="60" width="280" height="300" rx="10"/>
+  <text class="ttl" x="510" y="96" text-anchor="middle">Linked detail</text>
+  <text class="reach" x="510" y="116" text-anchor="middle">one bounded call away —</text>
+  <text class="reach" x="510" y="130" text-anchor="middle">a lens, a profile, a pointer</text>
+
+  <circle class="dot" cx="396" cy="160" r="2"/>
+  <text class="item" x="406" y="164">board lens: digest / focus /</text>
+  <text class="item" x="406" y="178">search / skeleton</text>
+
+  <circle class="dot" cx="396" cy="200" r="2"/>
+  <text class="item" x="406" y="204">federated context pack</text>
+  <text class="item" x="406" y="218">(named budget profile)</text>
+
+  <circle class="dot" cx="396" cy="240" r="2"/>
+  <text class="item" x="406" y="244">decisions, facts — indexed</text>
+  <text class="item" x="406" y="258">lookup, not a file read</text>
+
+  <circle class="dot" cx="396" cy="280" r="2"/>
+  <text class="item" x="406" y="284">artifact / note pointers,</text>
+  <text class="item" x="406" y="298">expanded on request</text>
+
+  <!-- arrow 2 -->
+  <path class="edge" d="M652,210 L718,210" marker-end="url(#c-arrow)"/>
+  <text class="lbl" x="685" y="190" text-anchor="middle">explicit</text>
+  <text class="lbl" x="685" y="203" text-anchor="middle">request</text>
+
+  <!-- Recall-only depth -->
+  <rect class="panel" x="720" y="60" width="240" height="300" rx="10"/>
+  <text class="ttl" x="840" y="96" text-anchor="middle">Recall-only depth</text>
+  <text class="reach" x="840" y="116" text-anchor="middle">manual, deliberate,</text>
+  <text class="reach" x="840" y="130" text-anchor="middle">rarely the default</text>
+
+  <circle class="dot" cx="746" cy="160" r="2"/>
+  <text class="item" x="756" y="164">full history</text>
+  <circle class="dot" cx="746" cy="188" r="2"/>
+  <text class="item" x="756" y="192">superseded material</text>
+  <circle class="dot" cx="746" cy="216" r="2"/>
+  <text class="item" x="756" y="220">forensic sweeps</text>
+  <text class="cap" x="840" y="330" text-anchor="middle">"forensic" profile requires</text>
+  <text class="cap" x="840" y="344" text-anchor="middle">allow_manual=True to build</text>
+
+  <!-- capsule inset -->
+  <rect class="panel-good" x="180" y="392" width="640" height="150" rx="10"/>
+  <text class="ttl" x="500" y="420" text-anchor="middle">the boot capsule — one bounded read, once per session</text>
+  <text class="cap" x="500" y="437" text-anchor="middle">trimmed to fit under 6,144 bytes; each section reads independently, so one failure omits only itself</text>
+
+  <g>
+    <rect class="pill" x="205" y="452" width="118" height="26" rx="13"/>
+    <text class="lbl" x="264" y="469" text-anchor="middle">health_summary</text>
+
+    <rect class="pill" x="333" y="452" width="112" height="26" rx="13"/>
+    <text class="lbl" x="389" y="469" text-anchor="middle">running ≤ 10</text>
+
+    <rect class="pill" x="455" y="452" width="118" height="26" rx="13"/>
+    <text class="lbl" x="514" y="469" text-anchor="middle">resume_intents</text>
+
+    <rect class="pill" x="583" y="452" width="128" height="26" rx="13"/>
+    <text class="lbl" x="647" y="469" text-anchor="middle">recent_decisions</text>
+
+    <rect class="pill" x="721" y="452" width="80" height="26" rx="13"/>
+    <text class="lbl" x="761" y="469" text-anchor="middle">pointers →</text>
+  </g>
+
+  <text class="cap" x="500" y="505" text-anchor="middle">pointers names the next command for every tier this capsule didn't expand</text>
+</svg>

@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 500" role="img" aria-labelledby="title desc">
+  <title id="title">Claim lifecycle generated from coord_db.py</title>
+  <desc id="desc">The source-defined claim statuses are blocked, completed, paused, released, running, unclaimed. Claim moves available work to running; heartbeat renews running; release moves it to released, unclaimed, paused, or blocked; complete marks the claim completed and the work done only after the declared done signal passes the artifact proof gate.</desc>
+  <style>
+    :root{
+      --ink:#22292f; --muted:#5b666d; --line:#7d8a91;
+      --panel:#f2f5f6; --green:#1F6F63; --amber:#8A6212; --red:#A6392B;
+    }
+    @media (prefers-color-scheme: dark){
+      :root{
+        --ink:#dfe6ec; --muted:#9aa4ad; --line:#8b959c;
+        --panel:#161c22; --green:#4FC3AC; --amber:#E0B252; --red:#F0887A;
+      }
+    }
+    text { font-family: ui-sans-serif, system-ui, sans-serif; fill: var(--ink); }
+    .state rect { fill: var(--panel); stroke: var(--line); stroke-width: 2; }
+    .state text { font-size: 17px; font-weight: 650; }
+    .held rect { stroke: var(--green); }
+    .terminal rect { stroke: var(--green); stroke-width: 3; }
+    .flow { fill: none; stroke: var(--line); stroke-width: 2; marker-end: url(#arrow); }
+    .proof { fill: var(--panel); stroke: var(--amber); stroke-width: 2; }
+    .label { font-size: 13px; }
+    .caption { font-size: 12px; fill: var(--muted); }
+  </style>
+  <defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 Z" fill="var(--line)"/></marker></defs>
+  <text x="32" y="38" font-size="23" font-weight="700">Lifecycle verbs and proof gate</text>
+  <path class="flow" d="M260 239 H350"/><text class="label" x="304" y="227" text-anchor="middle">claim_work</text>
+  <path class="flow" d="M530 274 H620"/><text class="label" x="575" y="262" text-anchor="middle">release_claim</text>
+  <path class="flow" d="M445 250 C445 105 630 105 700 155"/><text class="label" x="500" y="112">pause</text>
+  <path class="flow" d="M445 290 C445 405 630 405 700 365"/><text class="label" x="490" y="416">complete_claim</text>
+  <path class="flow" d="M445 260 C520 220 520 300 445 278"/><text class="label" x="520" y="244">heartbeat renews lease</text>
+  <polygon class="proof" points="545,334 598,365 545,396 492,365"/>
+  <text class="label" x="545" y="360" text-anchor="middle">done_signal</text><text class="label" x="545" y="377" text-anchor="middle">proof passes?</text>
+  <g class="state held" transform="translate(630 260)">
+    <rect width="170" height="58" rx="12"/>
+    <text x="85" y="35" text-anchor="middle">blocked</text>
+  </g>
+  <g class="state terminal" transform="translate(630 355)">
+    <rect width="170" height="58" rx="12"/>
+    <text x="85" y="35" text-anchor="middle">completed</text>
+  </g>
+  <g class="state held" transform="translate(630 165)">
+    <rect width="170" height="58" rx="12"/>
+    <text x="85" y="35" text-anchor="middle">paused</text>
+  </g>
+  <g class="state free" transform="translate(90 310)">
+    <rect width="170" height="58" rx="12"/>
+    <text x="85" y="35" text-anchor="middle">released</text>
+  </g>
+  <g class="state held" transform="translate(360 260)">
+    <rect width="170" height="58" rx="12"/>
+    <text x="85" y="35" text-anchor="middle">running</text>
+  </g>
+  <g class="state free" transform="translate(90 210)">
+    <rect width="170" height="58" rx="12"/>
+    <text x="85" y="35" text-anchor="middle">unclaimed</text>
+  </g>
+  <text class="caption" x="32" y="466">Generated from src/coordharness/coord/coord_db.py. Arrows carry lifecycle meaning; box positions and distances do not.</text>
+  <text class="caption" x="32" y="484">Completion is refused until the controller-declared, Git-custodied artifact exists and satisfies the proof contract.</text>
+</svg>

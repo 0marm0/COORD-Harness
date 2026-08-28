@@ -1,0 +1,120 @@
+/* Styles for view-ceiling.js. Served, not injected: the board's CSP forbids
+   inline styles. Token-only, including the fallbacks: --c-hairline is set by
+   accent.js rather than declared in app.css, so it falls back to a token that
+   app.css always defines, never to a literal. No colour literal appears here. */
+
+.clcard { max-width: 760px; display: grid; gap: 1.1rem; }
+
+/* Instrument-label section headers. */
+.clcard .cl-h { margin: 0; font-size: 0.782rem; font-weight: 500; color: var(--muted);
+  letter-spacing: .14em; text-transform: uppercase; }
+
+/* Region A — verdict. Type, not a gauge: a circle would carry an area, and
+   area encodes nothing here. */
+.clcard .cl-verdicts { display: grid; gap: .3rem; }
+.clcard .cl-verdict { margin: 0; font-size: 1.05rem; color: var(--ink);
+  font-variant-numeric: tabular-nums; }
+.clcard .cl-verdict b { color: var(--ink); font-weight: 600; }
+.clcard .cl-sub { margin: 0; font-size: .78rem; color: var(--muted);
+  font-variant-numeric: tabular-nums; }
+
+/* Region B — the bound curve. */
+.clcard .cl-plotwrap { overflow-x: auto; }
+.clcard .cl-plot { width: 100%; max-width: 720px; height: auto; display: block; }
+.cl-plot .cl-lattice { stroke: var(--c-hairline, var(--line)); stroke-width: .5; }
+.cl-plot .cl-axis { stroke: var(--line); stroke-width: 1; }
+.cl-plot .cl-tick { font-size: 11.5px; fill: var(--muted); letter-spacing: .08em;
+  text-transform: uppercase; font-variant-numeric: tabular-nums; }
+.cl-plot .cl-axname { font-size: 11.5px; fill: var(--muted); letter-spacing: .12em;
+  text-transform: uppercase; }
+.cl-plot .cl-step { fill: none; stroke: var(--green); stroke-width: 2; }
+/* Depth for the scene, not data: the glow duplicates the step path exactly and
+   encodes nothing the line does not. */
+.cl-plot .cl-glowline { fill: none; stroke: var(--green); stroke-width: 3; opacity: .35; }
+.cl-plot .cl-pt { fill: var(--green); }
+/* Hover reveal on a dot: transform only, scale is an interaction cue and never
+   a data encoding — every dot rests at the same fixed radius. */
+.cl-plot .cl-pt { transform-box: fill-box; transform-origin: center; transition: transform .15s ease-out; }
+.cl-plot .cl-pt:hover { transform: scale(1.8); }
+.cl-plot .cl-asymptote { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 5 4; }
+.cl-plot .cl-asymlabel { font-size: 12.1px; fill: var(--muted); }
+.cl-plot .cl-knee { stroke: var(--ink); stroke-width: 1.5; }
+.cl-plot .cl-kneelabel { font-size: 11px; font-weight: 600; fill: var(--ink);
+  font-variant-numeric: tabular-nums; }
+
+/* Region C — width profile. Bar length counts rows; height is constant. The
+   fill is the plain accent token: no blended colour exists in this view. */
+.clcard .cl-widths { display: grid; gap: .4rem; }
+.clcard .cl-wrow { display: grid; grid-template-columns: 5.5rem 1fr 3.5rem; gap: .4rem;
+  align-items: center; min-height: 26px; }
+.clcard .cl-wlabel { font-size: .7rem; color: var(--muted); text-transform: uppercase;
+  letter-spacing: .09em; }
+.clcard .cl-bar { height: 10px; border-radius: 2px; background: var(--c-hairline, var(--line)); }
+.clcard .cl-bar > i { display: block; height: 100%; border-radius: 2px;
+  background: var(--green); opacity: .55; }
+.clcard .cl-wcount { font-size: .76rem; color: var(--ink); text-align: right;
+  font-variant-numeric: tabular-nums; }
+
+/* Region D — the chain. Reading left to right walks BACKWARDS down the
+   prerequisites: the leftmost chip is the deepest dependent and the rightmost
+   is the row nothing waits on. It is not a time axis in either direction. */
+.clcard .cl-chain { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem; }
+.clcard .cl-chain .chip { margin: 0; }
+.clcard .cl-mod { font-size: .7rem; opacity: .75; }
+.clcard .cl-sep { width: 26px; height: 12px; flex: none; }
+/* The separator path is drawn FROM the prerequisite TO the dependent, so the
+   shared .m-flow dash marches in the recorded direction. */
+.cl-sep .cl-flowpath { stroke: var(--muted); stroke-width: 1.5; fill: none; }
+.cl-sep .cl-flowhead { fill: var(--muted); stroke: none; }
+.clcard .cl-link:hover { transform: translateY(-1px); }
+
+/* Region E — ledger. Rendered always, including at zero: a silent zero is
+   indistinguishable from an unrun check. Amber marks a non-zero drop only. */
+.clcard .cl-ledger { margin: 0; display: grid; gap: .2rem; font-size: .76rem;
+  color: var(--muted); }
+.clcard .cl-lline { display: grid; grid-template-columns: 1fr auto; gap: .6rem; }
+.clcard .cl-lline dt { margin: 0; }
+.clcard .cl-lline dd { margin: 0; }
+.clcard .cl-ledger b { color: var(--ink); font-weight: 500; font-variant-numeric: tabular-nums; }
+.clcard .cl-lline.drop, .clcard .cl-lline.drop b { color: var(--amber); }
+.clcard .cl-note.drop { color: var(--amber); }
+
+.clcard .cl-note { margin: .1rem 0 0; font-size: .74rem; color: var(--muted); }
+.clcard .cl-empty { margin: 0; font-size: .85rem; color: var(--ink); max-width: 46ch; }
+
+/* One entrance per tab activation, on the PERSISTENT section — never on the
+   card, which is replaced every 5s repaint and would replay the animation as
+   a false claim of change. Transform/opacity only, under 400ms. */
+#ceiling.panel.active { animation: cl-enter .3s ease-out; }
+@keyframes cl-enter {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (max-width: 720px) {
+  .clcard .cl-wrow { grid-template-columns: 4rem 1fr 3.2rem; }
+}
+
+/* The view has no animation of its own beyond the entrance and two hover cues;
+   this block kills all three and neutralises .chip's inherited transition. */
+@media (prefers-reduced-motion: reduce) {
+  #ceiling.panel.active { animation: none; }
+  .cl-plot .cl-pt, .clcard .cl-link, .clcard .chip { transition: none; transform: none; }
+  .cl-plot .cl-pt:hover, .clcard .cl-link:hover { transform: none; }
+}
+
+/* Caveats belong with the picture, not in front of it. Ruleset shared with the
+   other view stylesheets. */
+.readnote { margin: .5rem 0 .9rem; }
+.readnote > summary { cursor: pointer; color: var(--muted); font-size: .78rem;
+  list-style: none; display: inline-flex; align-items: center; gap: .4em;
+  padding: .25rem .6rem; border: 1px solid var(--line); border-radius: 999px; }
+.readnote > summary::-webkit-details-marker { display: none; }
+.readnote > summary::before { content: "?"; font-size: .7rem; opacity: .6;
+  border: 1px solid currentColor; border-radius: 50%; width: 1.1em; height: 1.1em;
+  display: grid; place-items: center; }
+.readnote[open] > summary { color: var(--ink); }
+.readnote > summary:focus-visible { outline: 2px solid var(--green); outline-offset: 1px; }
+.readnote .body { margin-top: .6rem; padding-left: .8rem;
+  border-left: 2px solid var(--line); }
+.readnote .body p { margin: .45rem 0; font-size: .8rem; color: var(--muted); }

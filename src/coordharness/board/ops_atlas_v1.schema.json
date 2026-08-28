@@ -1,0 +1,495 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://coordharness.dev/schema/ops-atlas-v1.json",
+  "title": "OpsAtlasV1",
+  "description": "Bounded, prose-free operational analytics projection over public board documents.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "generated_at",
+    "source",
+    "stale",
+    "scope",
+    "metrics",
+    "health",
+    "documents",
+    "distribution",
+    "execution",
+    "topology_availability",
+    "graph_envelope",
+    "activity"
+  ],
+  "properties": {
+    "schema_version": {"const": "OpsAtlasV1"},
+    "generated_at": {"type": "string"},
+    "source": {"const": "derived:snapshot+graph+context+timeline"},
+    "stale": {"type": "boolean"},
+    "scope": {
+      "type": "object",
+      "required": [
+        "total_work",
+        "included_work",
+        "node_limit",
+        "dependency_analysis_cap",
+        "activity_limit",
+        "truncated"
+      ],
+      "properties": {
+        "total_work": {"$ref": "#/$defs/count"},
+        "included_work": {"$ref": "#/$defs/count"},
+        "node_limit": {"type": "integer", "minimum": 1},
+        "dependency_analysis_cap": {"type": "integer", "minimum": 1},
+        "activity_limit": {"type": "integer", "minimum": 1},
+        "truncated": {"type": "boolean"}
+      },
+      "additionalProperties": false
+    },
+    "metrics": {
+      "type": "object",
+      "required": [
+        "rows",
+        "work_items",
+        "job_projections",
+        "sessions",
+        "live_sessions",
+        "graph_nodes",
+        "graph_edges",
+        "graph_nodes_emitted",
+        "graph_edges_emitted",
+        "recorded_events",
+        "events_24h",
+        "dependency_clear_planned",
+        "critical_path_steps",
+        "max_parallel_width"
+      ],
+      "properties": {
+        "rows": {"$ref": "#/$defs/count"},
+        "work_items": {"$ref": "#/$defs/count"},
+        "job_projections": {"$ref": "#/$defs/count"},
+        "sessions": {"$ref": "#/$defs/count"},
+        "live_sessions": {"$ref": "#/$defs/count"},
+        "graph_nodes": {"$ref": "#/$defs/count"},
+        "graph_edges": {"$ref": "#/$defs/count"},
+        "graph_nodes_emitted": {"$ref": "#/$defs/count"},
+        "graph_edges_emitted": {"$ref": "#/$defs/count"},
+        "recorded_events": {"$ref": "#/$defs/count"},
+        "events_24h": {"$ref": "#/$defs/count"},
+        "dependency_clear_planned": {"$ref": "#/$defs/count"},
+        "critical_path_steps": {"$ref": "#/$defs/count"},
+        "max_parallel_width": {"$ref": "#/$defs/count"}
+      },
+      "additionalProperties": false
+    },
+    "health": {
+      "type": "object",
+      "required": [
+        "ok",
+        "document_skew_seconds",
+        "graph_integrity",
+        "missing_targets",
+        "cycles",
+        "expired_claims",
+        "expiring_claims",
+        "blocked_without_resume",
+        "done_without_artifact",
+        "future_events",
+        "stale_rows",
+        "signals"
+      ],
+      "properties": {
+        "ok": {"type": "boolean"},
+        "document_skew_seconds": {"type": "number", "minimum": 0},
+        "graph_integrity": {"$ref": "#/$defs/graphIntegrity"},
+        "missing_targets": {"$ref": "#/$defs/idRows"},
+        "cycles": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/idRows"}
+        },
+        "expired_claims": {"$ref": "#/$defs/idRows"},
+        "expiring_claims": {"$ref": "#/$defs/idRows"},
+        "blocked_without_resume": {"$ref": "#/$defs/idRows"},
+        "done_without_artifact": {"$ref": "#/$defs/idRows"},
+        "future_events": {"$ref": "#/$defs/idRows"},
+        "stale_rows": {"$ref": "#/$defs/idRows"},
+        "signals": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/signal"}
+        }
+      },
+      "additionalProperties": false
+    },
+    "documents": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/document"}
+    },
+    "distribution": {
+      "type": "object",
+      "required": ["statuses", "lanes", "modules", "node_kinds", "edge_kinds", "event_kinds"],
+      "properties": {
+        "statuses": {"$ref": "#/$defs/countRows"},
+        "lanes": {"$ref": "#/$defs/countRows"},
+        "modules": {"$ref": "#/$defs/countRows"},
+        "node_kinds": {"$ref": "#/$defs/countRows"},
+        "edge_kinds": {"$ref": "#/$defs/countRows"},
+        "event_kinds": {"$ref": "#/$defs/countRows"}
+      },
+      "additionalProperties": false
+    },
+    "execution": {
+      "type": "object",
+      "required": [
+        "topology_metrics_status",
+        "analysis_population_total",
+        "analysis_population_emitted",
+        "analysis_population_omitted",
+        "analysis_population_truncated",
+        "analysis_boundary_dependencies",
+        "analysis_boundary_dependencies_total",
+        "analysis_boundary_dependencies_emitted",
+        "analysis_boundary_dependencies_truncated",
+        "analysis_boundary_tainted",
+        "analysis_boundary_tainted_total",
+        "analysis_boundary_tainted_emitted",
+        "analysis_boundary_tainted_truncated",
+        "missing_dependencies_total",
+        "missing_dependencies_emitted",
+        "missing_dependencies_truncated",
+        "missing_dependency_tainted",
+        "missing_dependency_tainted_total",
+        "missing_dependency_tainted_emitted",
+        "missing_dependency_tainted_truncated",
+        "unresolved_tainted",
+        "unresolved_tainted_total",
+        "unresolved_tainted_emitted",
+        "unresolved_tainted_truncated",
+        "cycle_tainted",
+        "cycle_tainted_total",
+        "cycle_tainted_emitted",
+        "cycle_tainted_truncated",
+        "cycle_impact",
+        "cycle_components_total",
+        "cycle_components_emitted",
+        "cycle_impact_truncated",
+        "cycle_member_ids_total",
+        "cycle_member_ids_emitted",
+        "cycle_member_ids_truncated",
+        "critical_path",
+        "layers",
+        "impact",
+        "dependency_clear_planned",
+        "missing_dependencies"
+      ],
+      "properties": {
+        "topology_metrics_status": {
+          "enum": [
+            "available",
+            "partial_population",
+            "withheld_population",
+            "partial_unresolved",
+            "withheld_unresolved",
+            "partial_cycle",
+            "withheld_cycle"
+          ]
+        },
+        "analysis_population_total": {"$ref": "#/$defs/count"},
+        "analysis_population_emitted": {"$ref": "#/$defs/count"},
+        "analysis_population_omitted": {"$ref": "#/$defs/count"},
+        "analysis_population_truncated": {"type": "boolean"},
+        "analysis_boundary_dependencies": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/dependency"}
+        },
+        "analysis_boundary_dependencies_total": {"$ref": "#/$defs/count"},
+        "analysis_boundary_dependencies_emitted": {"$ref": "#/$defs/count"},
+        "analysis_boundary_dependencies_truncated": {"type": "boolean"},
+        "analysis_boundary_tainted": {"$ref": "#/$defs/idRows"},
+        "analysis_boundary_tainted_total": {"$ref": "#/$defs/count"},
+        "analysis_boundary_tainted_emitted": {"$ref": "#/$defs/count"},
+        "analysis_boundary_tainted_truncated": {"type": "boolean"},
+        "missing_dependencies_total": {"$ref": "#/$defs/count"},
+        "missing_dependencies_emitted": {"$ref": "#/$defs/count"},
+        "missing_dependencies_truncated": {"type": "boolean"},
+        "missing_dependency_tainted": {"$ref": "#/$defs/idRows"},
+        "missing_dependency_tainted_total": {"$ref": "#/$defs/count"},
+        "missing_dependency_tainted_emitted": {"$ref": "#/$defs/count"},
+        "missing_dependency_tainted_truncated": {"type": "boolean"},
+        "unresolved_tainted": {"$ref": "#/$defs/idRows"},
+        "unresolved_tainted_total": {"$ref": "#/$defs/count"},
+        "unresolved_tainted_emitted": {"$ref": "#/$defs/count"},
+        "unresolved_tainted_truncated": {"type": "boolean"},
+        "cycle_tainted": {"$ref": "#/$defs/idRows"},
+        "cycle_tainted_total": {"$ref": "#/$defs/count"},
+        "cycle_tainted_emitted": {"$ref": "#/$defs/count"},
+        "cycle_tainted_truncated": {"type": "boolean"},
+        "cycle_impact": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/cycleImpact"}
+        },
+        "cycle_components_total": {"$ref": "#/$defs/count"},
+        "cycle_components_emitted": {"$ref": "#/$defs/count"},
+        "cycle_impact_truncated": {"type": "boolean"},
+        "cycle_member_ids_total": {"$ref": "#/$defs/count"},
+        "cycle_member_ids_emitted": {"$ref": "#/$defs/count"},
+        "cycle_member_ids_truncated": {"type": "boolean"},
+        "critical_path": {"$ref": "#/$defs/idRows"},
+        "layers": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/layer"}
+        },
+        "impact": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/impact"}
+        },
+        "dependency_clear_planned": {"$ref": "#/$defs/idRows"},
+        "missing_dependencies": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/dependency"}
+        }
+      },
+      "additionalProperties": false
+    },
+    "topology_availability": {
+      "$ref": "#/$defs/topologyAvailability"
+    },
+    "graph_envelope": {"$ref": "graph_envelope_v1.schema.json"},
+    "activity": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/activity"}
+    }
+  },
+  "$defs": {
+    "count": {"type": "integer", "minimum": 0},
+    "topologyCounts": {
+      "type": "object",
+      "required": ["work_items", "nodes", "edges", "events"],
+      "properties": {
+        "work_items": {"$ref": "#/$defs/count"},
+        "nodes": {"$ref": "#/$defs/count"},
+        "edges": {"$ref": "#/$defs/count"},
+        "events": {"$ref": "#/$defs/count"}
+      },
+      "additionalProperties": false
+    },
+    "topologyAvailability": {
+      "type": "object",
+      "required": [
+        "schema_version",
+        "state",
+        "reason_code",
+        "reason",
+        "missing_prerequisite",
+        "population",
+        "admitted",
+        "omitted",
+        "source",
+        "freshness"
+      ],
+      "properties": {
+        "schema_version": {"const": "TopologyAvailabilityV1"},
+        "state": {"enum": ["available", "low_information"]},
+        "reason_code": {
+          "enum": [
+            "authoritative_relationships_admitted",
+            "authoritative_relationships_absent",
+            "authoritative_relationships_ineligible",
+            "authoritative_relationships_not_admitted",
+            "topology_admission_receipt_absent"
+          ]
+        },
+        "reason": {"type": "string", "minLength": 1, "maxLength": 240},
+        "missing_prerequisite": {
+          "enum": [
+            "",
+            "authoritative_graph_relationships",
+            "eligible_authoritative_graph_relationships",
+            "admitted_authoritative_graph_relationships",
+            "graph_topology_admission_receipt"
+          ]
+        },
+        "population": {"$ref": "#/$defs/topologyCounts"},
+        "admitted": {"$ref": "#/$defs/topologyCounts"},
+        "omitted": {
+          "type": "object",
+          "required": [
+            "work_items",
+            "nodes",
+            "edges",
+            "events",
+            "node_reasons",
+            "edge_reasons",
+            "event_reasons"
+          ],
+          "properties": {
+            "work_items": {"$ref": "#/$defs/count"},
+            "nodes": {"$ref": "#/$defs/count"},
+            "edges": {"$ref": "#/$defs/count"},
+            "events": {"$ref": "#/$defs/count"},
+            "node_reasons": {"$ref": "#/$defs/reasonRows"},
+            "edge_reasons": {"$ref": "#/$defs/reasonRows"},
+            "event_reasons": {"$ref": "#/$defs/reasonRows"}
+          },
+          "additionalProperties": false
+        },
+        "source": {
+          "type": "object",
+          "required": [
+            "operations",
+            "graph_declared",
+            "graph_schema_version",
+            "graph_generated_at",
+            "graph_content_sha256"
+          ],
+          "properties": {
+            "operations": {"const": "derived:snapshot+graph+context+timeline"},
+            "graph_declared": {"type": "string", "minLength": 1, "maxLength": 160},
+            "graph_schema_version": {"type": "string", "minLength": 1, "maxLength": 80},
+            "graph_generated_at": {"type": "string", "maxLength": 80},
+            "graph_content_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+          },
+          "additionalProperties": false
+        },
+        "freshness": {
+          "type": "object",
+          "required": ["state", "stale", "generated_at", "document_skew_seconds"],
+          "properties": {
+            "state": {"enum": ["current", "stale", "unknown"]},
+            "stale": {"type": "boolean"},
+            "generated_at": {"type": "string", "maxLength": 80},
+            "document_skew_seconds": {"type": "number", "minimum": 0}
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "id": {"type": "string", "minLength": 1},
+    "idRows": {"type": "array", "items": {"$ref": "#/$defs/id"}},
+    "countRows": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["key", "count"],
+        "properties": {
+          "key": {"type": "string", "minLength": 1},
+          "count": {"$ref": "#/$defs/count"}
+        },
+        "additionalProperties": false
+      }
+    },
+    "reasonRows": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["reason", "count"],
+        "properties": {
+          "reason": {"type": "string", "minLength": 1, "maxLength": 120},
+          "count": {"$ref": "#/$defs/count"}
+        },
+        "additionalProperties": false
+      }
+    },
+    "signal": {
+      "type": "object",
+      "required": ["key", "severity", "count", "label"],
+      "properties": {
+        "key": {"type": "string", "minLength": 1},
+        "severity": {"enum": ["error", "warning"]},
+        "count": {"$ref": "#/$defs/count"},
+        "label": {"type": "string", "minLength": 1}
+      },
+      "additionalProperties": false
+    },
+    "document": {
+      "type": "object",
+      "required": ["name", "generated_at", "schema_version", "present"],
+      "properties": {
+        "name": {"enum": ["snapshot", "graph", "context", "timeline"]},
+        "generated_at": {"type": "string"},
+        "schema_version": {"type": "string"},
+        "present": {"type": "boolean"}
+      },
+      "additionalProperties": false
+    },
+    "layer": {
+      "type": "object",
+      "required": ["depth", "count", "ids"],
+      "properties": {
+        "depth": {"$ref": "#/$defs/count"},
+        "count": {"$ref": "#/$defs/count"},
+        "ids": {"$ref": "#/$defs/idRows"}
+      },
+      "additionalProperties": false
+    },
+    "graphIntegrity": {
+      "type": "object",
+      "required": ["ok", "source_match", "reasons"],
+      "properties": {
+        "ok": {"type": "boolean"},
+        "source_match": {"type": "boolean"},
+        "reasons": {
+          "type": "array",
+          "maxItems": 12,
+          "items": {
+            "type": "object",
+            "required": ["reason", "count"],
+            "properties": {
+              "reason": {"type": "string", "minLength": 1},
+              "count": {"$ref": "#/$defs/count"}
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "impact": {
+      "type": "object",
+      "required": ["id", "downstream", "cyclic", "component_size", "cycle_tainted"],
+      "properties": {
+        "id": {"$ref": "#/$defs/id"},
+        "downstream": {"$ref": "#/$defs/count"},
+        "cyclic": {"type": "boolean"},
+        "component_size": {"type": "integer", "minimum": 1},
+        "cycle_tainted": {"type": "boolean"}
+      },
+      "additionalProperties": false
+    },
+    "cycleImpact": {
+      "type": "object",
+      "required": [
+        "members",
+        "members_total",
+        "members_truncated",
+        "downstream_after_component"
+      ],
+      "properties": {
+        "members": {"$ref": "#/$defs/idRows"},
+        "members_total": {"$ref": "#/$defs/count"},
+        "members_truncated": {"type": "boolean"},
+        "downstream_after_component": {"$ref": "#/$defs/count"}
+      },
+      "additionalProperties": false
+    },
+    "dependency": {
+      "type": "object",
+      "required": ["source", "target"],
+      "properties": {
+        "source": {"$ref": "#/$defs/id"},
+        "target": {"$ref": "#/$defs/id"}
+      },
+      "additionalProperties": false
+    },
+    "activity": {
+      "type": "object",
+      "required": ["id", "at", "kind", "actor"],
+      "properties": {
+        "id": {"$ref": "#/$defs/id"},
+        "at": {"type": "string", "minLength": 1},
+        "kind": {"type": "string", "minLength": 1},
+        "actor": {"type": "string", "minLength": 1}
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

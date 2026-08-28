@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Coordination Intelligence · COORD</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='12' fill='%23f5c452'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/static/app.css">
+  <link rel="stylesheet" href="/static/shell.css">
+  <script src="/static/shell.js" defer></script>
+  <link rel="stylesheet" href="/static/cockpit.css">
+  <link rel="stylesheet" href="/static/search.css">
+  <link rel="stylesheet" href="/static/timeline.css">
+  <link rel="stylesheet" href="/static/view-density.css">
+  <link rel="stylesheet" href="/static/view-flow.css">
+  <link rel="stylesheet" href="/static/view-chronicle.css">
+  <link rel="stylesheet" href="/static/view-subjects.css">
+  <link rel="stylesheet" href="/static/view-orbit.css">
+  <link rel="stylesheet" href="/static/view-pulse.css">
+  <link rel="stylesheet" href="/static/view-flowpath.css">
+  <link rel="stylesheet" href="/static/view-ceiling.css">
+  <link rel="stylesheet" href="/static/view-topology.css">
+  <link rel="stylesheet" href="/static/motion.css">
+</head>
+<body class="mapbody">
+  <nav class="shellbar" aria-label="Product areas">
+    <a class="shell-brand" href="/#v=work&layout=board"><span class="shell-mark">COORD</span><span class="shell-sub">Intelligence</span></a>
+    <span class="shell-nav">
+      <a href="/#v=work&layout=board">Work</a>
+      <a href="/map" aria-current="page">Intelligence</a>
+      <a href="/#v=usage">Usage</a>
+    </span>
+    <span class="shell-right"><span class="meta" id="mapmeta">Reading the board&hellip;</span></span>
+  </nav>
+  <nav class="shell-subnav" aria-label="Intelligence views">
+    <a href="/map" aria-current="page">Map</a>
+    <a href="/mesh">Mesh</a>
+    <a href="/ops">Atlas</a>
+  </nav>
+  <nav id="maptabs" aria-label="Map views">
+    <div class="maptabs-direct" role="tablist" aria-label="Map view shortcuts">
+      <button id="tab-fleet" type="button" role="tab" aria-selected="true" aria-controls="fleet" tabindex="0" class="active" data-tab="fleet">Fleet</button>
+      <button id="tab-pulse" type="button" role="tab" aria-selected="false" aria-controls="pulse" tabindex="-1" data-tab="pulse">Pulse</button>
+      <button id="tab-deps" type="button" role="tab" aria-selected="false" aria-controls="deps" tabindex="-1" data-tab="deps">Dependencies</button>
+      <div class="map-more" role="presentation">
+        <button id="map-more-trigger" type="button" role="tab" aria-selected="false" tabindex="-1"
+                aria-haspopup="menu" aria-expanded="false" aria-controls="map-more-menu">
+          <span class="map-more-label">More</span><span class="map-more-chevron" aria-hidden="true">⌄</span>
+        </button>
+        <div id="map-more-menu" class="map-more-menu" role="menu" aria-label="More Map views" hidden>
+          <button id="tab-flowpath" type="button" role="menuitemradio" aria-checked="false" aria-controls="flowpath" tabindex="-1" data-tab="flowpath">Stations</button>
+          <button id="tab-ceiling" type="button" role="menuitemradio" aria-checked="false" aria-controls="ceiling" tabindex="-1" data-tab="ceiling">Ceiling</button>
+          <button id="tab-topology" type="button" role="menuitemradio" aria-checked="false" aria-controls="topology" tabindex="-1" data-tab="topology">Lanes</button>
+          <button id="tab-shape" type="button" role="menuitemradio" aria-checked="false" aria-controls="shape" tabindex="-1" data-tab="shape">Shape</button>
+          <button id="tab-crossings" type="button" role="menuitemradio" aria-checked="false" aria-controls="crossings" tabindex="-1" data-tab="crossings">Crossings</button>
+          <button id="tab-chronicle" type="button" role="menuitemradio" aria-checked="false" aria-controls="chronicle" tabindex="-1" data-tab="chronicle">Order</button>
+          <button id="tab-subjects" type="button" role="menuitemradio" aria-checked="false" aria-controls="subjects" tabindex="-1" data-tab="subjects">Subjects</button>
+          <button id="tab-orbit" type="button" role="menuitemradio" aria-checked="false" aria-controls="orbit" tabindex="-1" data-tab="orbit">Orbit</button>
+          <button id="tab-context" type="button" role="menuitemradio" aria-checked="false" aria-controls="context" tabindex="-1" data-tab="context">Context</button>
+        </div>
+      </div>
+    </div>
+  </nav>
+  <section id="global-search" class="global-search" aria-label="Find any coordination row"></section>
+  <p id="mapreadalert" class="map-read-alert" role="status" aria-live="polite" hidden></p>
+  <main>
+    <section id="fleet" class="panel active" role="tabpanel" aria-labelledby="tab-fleet"></section>
+    <section id="pulse" class="panel" role="tabpanel" aria-labelledby="tab-pulse" hidden></section>
+    <section id="flowpath" class="panel" role="tabpanel" aria-labelledby="tab-flowpath" hidden></section>
+    <section id="ceiling" class="panel" role="tabpanel" aria-labelledby="tab-ceiling" hidden></section>
+    <section id="topology" class="panel" role="tabpanel" aria-labelledby="tab-topology" hidden></section>
+    <section id="deps" class="panel" role="tabpanel" aria-labelledby="tab-deps" hidden></section>
+    <section id="shape" class="panel" role="tabpanel" aria-labelledby="tab-shape" hidden></section>
+    <section id="crossings" class="panel" role="tabpanel" aria-labelledby="tab-crossings" hidden></section>
+    <section id="chronicle" class="panel" role="tabpanel" aria-labelledby="tab-chronicle" hidden></section>
+    <section id="subjects" class="panel" role="tabpanel" aria-labelledby="tab-subjects" hidden></section>
+    <section id="orbit" class="panel" role="tabpanel" aria-labelledby="tab-orbit" hidden></section>
+    <section id="context" class="panel" role="tabpanel" aria-labelledby="tab-context" hidden></section>
+  </main>
+  <aside id="drawer" class="drawer" role="dialog" aria-hidden="true" aria-label="Row detail" tabindex="-1"></aside>
+  <script src="/static/view-density.js" defer></script>
+  <script src="/static/view-flow.js" defer></script>
+  <script src="/static/view-chronicle.js" defer></script>
+  <script src="/static/view-subjects.js" defer></script>
+  <script src="/static/view-orbit.js" defer></script>
+  <script src="/static/view-pulse.js" defer></script>
+  <script src="/static/view-flowpath.js" defer></script>
+  <script src="/static/view-ceiling.js" defer></script>
+  <script src="/static/view-topology.js" defer></script>
+  <script src="/static/motion.js" defer></script>
+  <script src="/static/accent.js" defer></script>
+  <script src="/static/neighbourhood.js" defer></script>
+  <script src="/static/search.js" defer></script>
+  <script src="/static/timeline.js" defer></script>
+  <script src="/static/cockpit.js" defer></script>
+</body>
+</html>

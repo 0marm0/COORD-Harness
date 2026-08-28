@@ -1,0 +1,93 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 430" role="img" aria-labelledby="birdseye-title birdseye-desc">
+  <title id="birdseye-title">One authority, proof-gated work, many agent kinds</title>
+  <desc id="birdseye-desc">Many agent kinds use lifecycle clients—the CLI, MCP, or Python—to write through a single coordination database. Inside that authority, work moves from claim to heartbeat to a proof gate; done is accepted only when a committed artifact satisfies the proof. Web and native dashboards are read-only projections from the authority and cannot write back.</desc>
+  <style>
+    :root{
+      --ink:#22292f; --muted:#5b666d; --line:#7d8a91; --rule:#d7dee1;
+      --panel:#f2f5f6; --c-card-a:#e4edf5; --c-card-b:#dfe6ec;
+      --green:#1F6F63; --amber:#8A6212; --red:#A6392B;
+    }
+    @media (prefers-color-scheme: dark){
+      :root{
+        --ink:#dfe6ec; --muted:#9aa4ad; --line:#8b959c; --rule:#2b3238;
+        --panel:#161c22; --c-card-a:#152a3c; --c-card-b:#12181e;
+        --green:#4FC3AC; --amber:#E0B252; --red:#F0887A;
+      }
+    }
+    text{font-family:ui-sans-serif,system-ui,sans-serif;fill:var(--ink)}
+    .frame{fill:var(--panel);stroke:var(--line);stroke-width:2}
+    .client{fill:var(--c-card-b);stroke:var(--line);stroke-width:2}
+    .authority{fill:var(--c-card-a);stroke:var(--green);stroke-width:3}
+    .proof,.artifact{fill:var(--panel);stroke:var(--amber);stroke-width:2}
+    .agent-mark{fill:var(--c-card-b);stroke:var(--line);stroke-width:2}
+    .flow{fill:none;stroke:var(--line);stroke-width:2;marker-end:url(#arrow)}
+    .readonly{stroke-dasharray:7 5}
+    .label{font-size:17px;font-weight:700}
+    .panel-label{font-size:15px;font-weight:700}
+    .sub{font-size:12px;fill:var(--muted)}
+    .step{font-size:14px;font-weight:650}
+    .caption{font-size:12px;fill:var(--muted)}
+  </style>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L10 5 L0 10 Z" fill="var(--line)"/>
+    </marker>
+  </defs>
+
+  <text class="label" x="28" y="34">A shared control plane in one picture</text>
+
+  <rect class="frame" x="28" y="120" width="128" height="142" rx="16"/>
+  <text class="panel-label" x="92" y="146" text-anchor="middle">Many agent</text>
+  <text class="panel-label" x="92" y="165" text-anchor="middle">kinds</text>
+  <circle class="agent-mark" cx="60" cy="188" r="12"/>
+  <rect class="agent-mark" x="80" y="176" width="24" height="24" rx="6"/>
+  <polygon class="agent-mark" points="126,175 139,182 139,194 126,201 113,194 113,182"/>
+  <text class="sub" x="92" y="224" text-anchor="middle">cloud · local · jobs</text>
+  <text class="sub" x="92" y="243" text-anchor="middle">distinct identities</text>
+
+  <path class="flow" d="M156 191 H178"/>
+
+  <rect class="client" x="180" y="120" width="142" height="142" rx="16"/>
+  <text class="panel-label" x="251" y="150" text-anchor="middle">Lifecycle clients</text>
+  <text class="step" x="251" y="188" text-anchor="middle">CLI · MCP · Python</text>
+  <text class="sub" x="251" y="221" text-anchor="middle">writes go only through</text>
+  <text class="sub" x="251" y="240" text-anchor="middle">the one authority</text>
+
+  <path class="flow" d="M322 191 H342"/>
+
+  <rect class="authority" x="344" y="72" width="374" height="290" rx="20"/>
+  <text class="label" x="531" y="103" text-anchor="middle">coord.db — one authority</text>
+  <text class="sub" x="531" y="123" text-anchor="middle">all lifecycle writes commit here</text>
+
+  <rect class="frame" x="366" y="158" width="64" height="50" rx="10"/>
+  <text class="step" x="398" y="188" text-anchor="middle">claim</text>
+  <path class="flow" d="M430 183 H442"/>
+
+  <rect class="frame" x="444" y="158" width="92" height="50" rx="10"/>
+  <text class="step" x="490" y="188" text-anchor="middle">heartbeat</text>
+  <path class="flow" d="M536 183 H546"/>
+
+  <polygon class="proof" points="587,146 628,183 587,220 546,183"/>
+  <text class="step" x="587" y="179" text-anchor="middle">proof gate</text>
+  <text class="sub" x="587" y="197" text-anchor="middle">artifact?</text>
+  <path class="flow" d="M628 183 H638"/>
+
+  <rect class="frame" x="640" y="158" width="56" height="50" rx="10"/>
+  <text class="step" x="668" y="188" text-anchor="middle">done</text>
+
+  <rect class="artifact" x="476" y="278" width="222" height="55" rx="10"/>
+  <text class="step" x="587" y="301" text-anchor="middle">committed artifact</text>
+  <text class="sub" x="587" y="319" text-anchor="middle">required proof input</text>
+  <path class="flow" d="M587 278 V224"/>
+
+  <path class="flow readonly" d="M718 191 H742"/>
+  <rect class="frame readonly" x="744" y="120" width="128" height="142" rx="16"/>
+  <text class="panel-label" x="808" y="149" text-anchor="middle">Read-only</text>
+  <text class="panel-label" x="808" y="168" text-anchor="middle">projections</text>
+  <text class="sub" x="808" y="202" text-anchor="middle">web · macOS · iOS</text>
+  <text class="sub" x="808" y="221" text-anchor="middle">dashboards</text>
+  <text class="step" x="808" y="245" text-anchor="middle">cannot write</text>
+
+  <text class="caption" x="28" y="390">Write path: agent kinds → CLI / MCP / Python → coord.db. Every lifecycle mutation lands in one authority.</text>
+  <text class="caption" x="28" y="409">Inside: claim → heartbeat → proof-gated done; a committed artifact is required. Dashboards read outward only.</text>
+</svg>

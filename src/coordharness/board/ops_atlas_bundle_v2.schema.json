@@ -1,0 +1,172 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://coordharness.dev/schema/ops-atlas-bundle-v2.json",
+  "title": "OpsAtlasBundleV2",
+  "description": "One coherent public Board generation with prose-free directed communication traffic.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "generated_at",
+    "cache_generation",
+    "snapshot",
+    "graph",
+    "context",
+    "timeline",
+    "pulse",
+    "operations",
+    "read_status",
+    "bundle_projection"
+  ],
+  "properties": {
+    "schema_version": {"const": "OpsAtlasBundleV2"},
+    "generated_at": {"type": "string", "minLength": 1},
+    "cache_generation": {"type": "integer", "minimum": 1},
+    "snapshot": {
+      "type": "object",
+      "required": ["schema_version", "generated_at", "rows"],
+      "additionalProperties": true
+    },
+    "graph": {
+      "type": "object",
+      "required": ["schema_version", "generated_at", "nodes", "edges"],
+      "additionalProperties": true
+    },
+    "context": {
+      "type": "object",
+      "required": ["schema_version", "generated_at", "items"],
+      "additionalProperties": true
+    },
+    "timeline": {
+      "type": "object",
+      "required": ["schema_version", "generated_at", "items"],
+      "additionalProperties": true
+    },
+    "pulse": {"$ref": "#/$defs/pulse"},
+    "operations": {"$ref": "https://coordharness.dev/schema/ops-atlas-v1.json"},
+    "read_status": {"$ref": "https://coordharness.dev/schema/read-status-v1.json"},
+    "bundle_projection": {"type": "object"}
+  },
+  "$defs": {
+    "nonnegative": {"type": "integer", "minimum": 0},
+    "kindCount": {
+      "type": "object",
+      "required": ["kind", "count"],
+      "properties": {
+        "kind": {"type": "string"},
+        "count": {"$ref": "#/$defs/nonnegative"}
+      },
+      "additionalProperties": false
+    },
+    "pulse": {
+      "type": "object",
+      "required": [
+        "schema_version", "generated_at", "source", "counts", "kinds", "lanes",
+        "days", "traffic", "traffic_undirected", "recent"
+      ],
+      "properties": {
+        "schema_version": {"const": "PulseV1"},
+        "generated_at": {"type": "string", "minLength": 1},
+        "source": {"const": "coord.db"},
+        "counts": {
+          "type": "object",
+          "required": [
+            "events", "events_without_row", "events_unrepresentable_time",
+            "events_unattributed", "rows", "rows_with_events", "distinct_instants",
+            "days", "lanes", "sessions", "sessions_live", "sessions_unattributed",
+            "sessions_live_unattributed"
+          ],
+          "properties": {
+            "events": {"$ref": "#/$defs/nonnegative"},
+            "events_without_row": {"$ref": "#/$defs/nonnegative"},
+            "events_unrepresentable_time": {"$ref": "#/$defs/nonnegative"},
+            "events_unattributed": {"$ref": "#/$defs/nonnegative"},
+            "rows": {"$ref": "#/$defs/nonnegative"},
+            "rows_with_events": {"$ref": "#/$defs/nonnegative"},
+            "distinct_instants": {"$ref": "#/$defs/nonnegative"},
+            "days": {"$ref": "#/$defs/nonnegative"},
+            "lanes": {"$ref": "#/$defs/nonnegative"},
+            "sessions": {"$ref": "#/$defs/nonnegative"},
+            "sessions_live": {"$ref": "#/$defs/nonnegative"},
+            "sessions_unattributed": {"$ref": "#/$defs/nonnegative"},
+            "sessions_live_unattributed": {"$ref": "#/$defs/nonnegative"}
+          },
+          "additionalProperties": false
+        },
+        "kinds": {"type": "array", "items": {"$ref": "#/$defs/kindCount"}},
+        "lanes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["lane", "events", "kinds", "sessions", "sessions_live"],
+            "properties": {
+              "lane": {"type": "string", "minLength": 1},
+              "events": {"$ref": "#/$defs/nonnegative"},
+              "kinds": {"type": "array", "items": {"$ref": "#/$defs/kindCount"}},
+              "sessions": {"$ref": "#/$defs/nonnegative"},
+              "sessions_live": {"$ref": "#/$defs/nonnegative"}
+            },
+            "additionalProperties": false
+          }
+        },
+        "days": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["date", "events", "first_at", "last_at"],
+            "properties": {
+              "date": {"type": "string", "minLength": 1},
+              "events": {"$ref": "#/$defs/nonnegative"},
+              "first_at": {"type": "string", "minLength": 1},
+              "last_at": {"type": "string", "minLength": 1}
+            },
+            "additionalProperties": false
+          }
+        },
+        "traffic": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["kind", "from", "to", "count"],
+            "properties": {
+              "kind": {"type": "string"},
+              "from": {"type": "string", "minLength": 1},
+              "to": {"type": "string", "minLength": 1},
+              "count": {"$ref": "#/$defs/nonnegative"}
+            },
+            "additionalProperties": false
+          }
+        },
+        "traffic_undirected": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["kind", "from", "count"],
+            "properties": {
+              "kind": {"type": "string"},
+              "from": {"type": "string", "minLength": 1},
+              "count": {"$ref": "#/$defs/nonnegative"}
+            },
+            "additionalProperties": false
+          }
+        },
+        "recent": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["at", "kind", "actor", "to", "row"],
+            "properties": {
+              "at": {"type": "string", "minLength": 1},
+              "kind": {"type": "string"},
+              "actor": {"type": "string"},
+              "to": {"type": ["string", "null"]},
+              "row": {"type": "string", "minLength": 1}
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

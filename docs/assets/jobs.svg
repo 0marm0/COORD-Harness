@@ -1,0 +1,217 @@
+<svg viewBox="0 0 1200 1030" xmlns="http://www.w3.org/2000/svg" role="img"
+     aria-labelledby="jobs-title jobs-desc">
+  <title id="jobs-title">Long-running jobs: launch, sidecar, and reconciliation</title>
+  <desc id="jobs-desc">A launching agent session passes a policy gate and reserves a runs row in
+  coord.db before a wrapper forks a child into its own process group; the wrapper then writes two
+  separate channels — a fast local progress sidecar and an authoritative activation of the runs
+  row with the real pid and pgid. The board never trusts a stored state string: it re-derives
+  liveness by matching the recorded pid against the live process and its start time, so a claim
+  that says running renders attention instead once the lease and the process disagree. When a
+  process actually dies while holding a claim, two independent paths reconcile it: an expired
+  session lease releases the claim and orphans the run, while a stale sidecar is only rewritten to
+  failed after every recorded process identity is proven absent by signalling it, never assumed.</desc>
+
+  <defs>
+    <marker id="jobs-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8"
+            orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="var(--line)"/>
+    </marker>
+    <marker id="jobs-open" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8"
+            orient="auto-start-reverse">
+      <path d="M1,1 L9,5 L1,9" fill="none" stroke="var(--line)" stroke-width="1.6"/>
+    </marker>
+    <marker id="jobs-stop" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="8" markerHeight="8"
+            orient="auto">
+      <path d="M5,1 V9" stroke="var(--refused)" stroke-width="2"/>
+    </marker>
+  </defs>
+
+  <style>
+    :root{
+      --ink:#22292f; --muted:#5b666d; --line:#7d8a91; --rule:#d7dee1;
+      --surface:#f2f5f6; --bg:transparent;
+      --agent:#2C5F8D;     --agent-fill:#e4edf5;
+      --authority:#1F6F63; --authority-fill:#dcece8;
+      --derived:#6A5A9E;   --derived-fill:#ebe7f4;
+      --refused:#A6392B;   --refused-fill:#f6e5e2;
+      --proof:#3E7A2E;     --proof-fill:#e4f0df;
+    }
+    @media (prefers-color-scheme: dark){
+      :root{
+        --ink:#dfe6ec; --muted:#9aa4ad; --line:#8b959c; --rule:#2b3238;
+        --surface:#161c22; --bg:transparent;
+        --agent:#79AEE6;     --agent-fill:#152a3c;
+        --authority:#4FC3AC; --authority-fill:#0f2c27;
+        --derived:#B0A2E8;   --derived-fill:#221f38;
+        --refused:#F0887A;   --refused-fill:#33191a;
+        --proof:#74BF62;     --proof-fill:#182b14;
+      }
+    }
+    text{ font-family:ui-sans-serif, -apple-system, Segoe UI, Roboto, sans-serif; }
+    .t-title{ font-size:14px; font-weight:600; fill:var(--ink); }
+    .t-group{ font-size:12px; font-weight:600; fill:var(--muted); letter-spacing:.06em; }
+    .t-node { font-size:13px; font-weight:500; fill:var(--ink); }
+    .t-sub  { font-size:12px; fill:var(--muted); }
+    .t-edge { font-size:12px; fill:var(--muted); }
+    .t-note { font-size:12px; fill:var(--ink); }
+    .t-cap  { font-size:12px; fill:var(--muted); }
+    .n         { stroke-width:1.5; }
+    .n-plain   { fill:var(--surface);        stroke:var(--line); }
+    .n-agent   { fill:var(--agent-fill);     stroke:var(--agent); }
+    .n-auth    { fill:var(--authority-fill); stroke:var(--authority); }
+    .n-derived { fill:var(--derived-fill);   stroke:var(--derived); }
+    .n-refused { fill:var(--refused-fill);   stroke:var(--refused); }
+    .n-proof   { fill:var(--proof-fill);     stroke:var(--proof); }
+    .rim       { fill:none; }
+    .grp       { fill:none; stroke:var(--rule); stroke-width:1; stroke-dasharray:4 4; }
+    .e         { fill:none; stroke:var(--line); stroke-width:1.5; marker-end:url(#jobs-arrow); }
+    .e-derived { fill:none; stroke:var(--line); stroke-width:1.25; stroke-dasharray:5 3;
+                 marker-end:url(#jobs-open); }
+    .e-refused { fill:none; stroke:var(--refused); stroke-width:1.5; marker-end:url(#jobs-stop); }
+    .bound     { fill:none; stroke:var(--line); stroke-width:1.25; }
+    .chip      { fill:var(--surface); stroke:var(--line); stroke-width:1.25; }
+  </style>
+
+  <text class="t-title" x="32" y="38">Long-running jobs: launch, sidecar, and reconciliation</text>
+
+  <!-- ================= BAND 1: LAUNCH ================= -->
+  <rect class="grp" x="20" y="58" width="480" height="212" rx="8"/>
+  <text class="t-group" x="36" y="76">LAUNCH</text>
+
+  <rect class="n n-agent" x="40" y="94" width="200" height="68" rx="6"/>
+  <text class="t-node" x="140" y="124" text-anchor="middle">Agent session</text>
+  <text class="t-sub"  x="140" y="144" text-anchor="middle">runner_type: claude_chat</text>
+
+  <path class="e" d="M240,128 H302"/>
+  <text class="t-edge" x="271" y="118" text-anchor="middle">launch.py --job-id</text>
+
+  <polygon class="n n-plain" points="356,86 410,128 356,170 302,128"/>
+  <text class="t-node" x="356" y="124" text-anchor="middle">Policy</text>
+  <text class="t-sub"  x="356" y="142" text-anchor="middle">job_launch check</text>
+
+  <path class="e-refused" d="M356,170 V202"/>
+  <text class="t-edge" x="372" y="190">refuse</text>
+  <rect class="n n-refused" x="276" y="202" width="160" height="44"/>
+  <text class="t-node" x="356" y="222" text-anchor="middle">Blocked</text>
+  <text class="t-sub"  x="356" y="238" text-anchor="middle">no run row created</text>
+
+  <!-- authority: coord.db (the one durable store) -->
+  <path class="n n-auth" d="M780,98 A110,12 0 0 1 1000,98 V218 A110,12 0 0 1 780,218 Z"/>
+  <path class="n n-auth rim" d="M780,98 A110,12 0 0 0 1000,98"/>
+  <text class="t-node" x="890" y="148" text-anchor="middle">coord.db</text>
+  <text class="t-sub"  x="890" y="168" text-anchor="middle">runs row · pid, pgid, state</text>
+  <text class="t-sub"  x="890" y="188" text-anchor="middle">runner_kind: local_job</text>
+
+  <path class="e" d="M410,128 H730 V140 H780"/>
+  <text class="t-edge" x="560" y="118" text-anchor="middle">reserve: state=reserved</text>
+
+  <circle class="chip" cx="1005" cy="98" r="10"/>
+  <text class="t-note" x="1005" y="102" text-anchor="middle">1</text>
+
+  <!-- ================= BAND 2: FORK + TELEMETRY ================= -->
+  <text class="t-group" x="36" y="318">FORK + TELEMETRY</text>
+
+  <rect class="n n-plain" x="40" y="336" width="200" height="68" rx="6"/>
+  <text class="t-node" x="140" y="366" text-anchor="middle">launch.py wrapper</text>
+  <text class="t-sub"  x="140" y="386" text-anchor="middle">polls child RSS every 1s</text>
+
+  <rect class="grp" x="300" y="336" width="300" height="120" rx="8"/>
+  <text class="t-group" x="316" y="354">PROCESS GROUP</text>
+  <rect class="n n-plain" x="320" y="372" width="240" height="64" rx="6"/>
+  <text class="t-node" x="440" y="398" text-anchor="middle">Child process</text>
+  <text class="t-sub"  x="440" y="414" text-anchor="middle">start_new_session=True</text>
+  <text class="t-sub"  x="440" y="430" text-anchor="middle">pgid = child pid</text>
+
+  <path class="e" d="M240,370 H280 V400 H320"/>
+  <text class="t-edge" x="255" y="360" text-anchor="middle">fork</text>
+
+  <rect class="n n-plain" x="40" y="440" width="260" height="64"/>
+  <text class="t-node" x="170" y="466" text-anchor="middle">Progress sidecar</text>
+  <text class="t-sub"  x="170" y="486" text-anchor="middle">job_progress/&lt;job_id&gt;.json</text>
+
+  <path class="e" d="M140,404 V422 H170 V440"/>
+  <text class="t-edge" x="150" y="416">write: pct, step, rss, pid</text>
+
+  <path class="e" d="M140,336 V300 H890 V218"/>
+  <text class="t-edge" x="500" y="290" text-anchor="middle">activate: pid, pgid, state=live</text>
+
+  <!-- ================= BAND 3: LIVENESS ================= -->
+  <text class="t-group" x="36" y="534">LIVENESS — DERIVED FROM THE PROCESS, NOT THE CLAIM</text>
+
+  <rect class="n n-derived" x="40" y="550" width="240" height="64"/>
+  <text class="t-node" x="160" y="576" text-anchor="middle">Board render</text>
+  <text class="t-sub"  x="160" y="596" text-anchor="middle">runs WHERE state='live'</text>
+
+  <path class="e-derived" d="M780,180 H660 V582 H280"/>
+  <text class="t-edge" x="460" y="572" text-anchor="middle">read: state, pid, pid_started_at</text>
+
+  <polygon class="n n-plain" points="420,540 474,582 420,624 366,582"/>
+  <text class="t-node" x="420" y="578" text-anchor="middle">Process check</text>
+  <text class="t-sub"  x="420" y="596" text-anchor="middle">kill(pid,0) + start-time match</text>
+
+  <path class="e" d="M280,582 H366"/>
+  <text class="t-edge" x="323" y="572" text-anchor="middle">pid_matches()</text>
+  <circle class="chip" cx="420" cy="530" r="10"/>
+  <text class="t-note" x="420" y="534" text-anchor="middle">2</text>
+
+  <path class="e" d="M474,582 H560"/>
+  <text class="t-edge" x="517" y="572" text-anchor="middle">match</text>
+  <rect class="n n-plain" x="560" y="562" width="110" height="40" rx="20"/>
+  <text class="t-node" x="615" y="586" text-anchor="middle">Live</text>
+  <text class="t-sub"  x="615" y="622" text-anchor="middle">counts toward live_pid_count</text>
+
+  <path class="e" d="M420,624 V650"/>
+  <text class="t-edge" x="430" y="642">absent</text>
+  <rect class="n n-plain" x="276" y="650" width="180" height="44"/>
+  <text class="t-node" x="366" y="668" text-anchor="middle">Attention, not running</text>
+  <text class="t-sub"  x="366" y="684" text-anchor="middle">lease and process disagree</text>
+
+  <!-- ================= BAND 4: RECONCILE ================= -->
+  <text class="t-group" x="36" y="732">RECONCILE — PROOF BEFORE REWRITE, NEVER A GUESS</text>
+
+  <!-- Track A: the agent's own claim dies -->
+  <rect class="n n-plain" x="40" y="752" width="220" height="64"/>
+  <text class="t-node" x="150" y="778" text-anchor="middle">Session lease expires</text>
+  <text class="t-sub"  x="150" y="796" text-anchor="middle">no heartbeat renewal</text>
+
+  <path class="e" d="M260,784 H292"/>
+  <text class="t-edge" x="276" y="774" text-anchor="middle">grace elapsed</text>
+  <rect class="n n-plain" x="292" y="752" width="240" height="64" rx="6"/>
+  <text class="t-node" x="412" y="778" text-anchor="middle">reap_zombie_sessions</text>
+  <text class="t-sub"  x="412" y="796" text-anchor="middle">releases claim, orphans run</text>
+
+  <path class="e" d="M532,784 H564"/>
+  <text class="t-edge" x="548" y="774" text-anchor="middle">reap</text>
+  <rect class="n n-plain" x="564" y="752" width="280" height="64"/>
+  <text class="t-node" x="704" y="778" text-anchor="middle">Claim → unclaimed</text>
+  <text class="t-sub"  x="704" y="796" text-anchor="middle">run → orphaned, session → reaped</text>
+
+  <!-- Track B: the job's own process dies -->
+  <rect class="n n-plain" x="40" y="844" width="240" height="64"/>
+  <text class="t-node" x="160" y="870" text-anchor="middle">Sidecar stale</text>
+  <text class="t-sub"  x="160" y="888" text-anchor="middle">state=running, age &gt; threshold</text>
+
+  <path class="e" d="M280,876 H312"/>
+  <text class="t-edge" x="296" y="866" text-anchor="middle">threshold exceeded</text>
+  <rect class="n n-plain" x="312" y="844" width="260" height="64" rx="6"/>
+  <text class="t-node" x="442" y="870" text-anchor="middle">reconcile_dead()</text>
+  <text class="t-sub"  x="442" y="888" text-anchor="middle">proves every identity absent</text>
+
+  <path class="e" d="M572,876 H604"/>
+  <text class="t-edge" x="588" y="866" text-anchor="middle">kill(0) proof</text>
+  <rect class="n n-plain" x="604" y="844" width="280" height="64"/>
+  <text class="t-node" x="744" y="870" text-anchor="middle">state=failed</text>
+  <text class="t-sub"  x="744" y="888" text-anchor="middle">diagnostic_only=true + reason</text>
+
+  <circle class="chip" cx="600" cy="838" r="10"/>
+  <text class="t-note" x="600" y="842" text-anchor="middle">3</text>
+
+  <!-- notice rail -->
+  <text class="t-note" x="20" y="948">1</text>
+  <text class="t-note" x="36" y="948">Activation is custody-checked: the reserved→live write matches run_id, session, and sidecar path, or it raises instead of stealing another job's row.</text>
+  <text class="t-note" x="20" y="966">2</text>
+  <text class="t-note" x="36" y="966">state='live' is a claim; live_pid_count is proof — pid and start-time both have to match, so a reused pid cannot fake liveness.</text>
+  <text class="t-note" x="20" y="984">3</text>
+  <text class="t-note" x="36" y="984">Reconciliation proves absence first: every recorded identity must fail kill(0), and one uncertain check blocks the rewrite.</text>
+  <text class="t-cap" x="20" y="1010">A job's aliveness is decided by the operating system, never by the last string a process wrote about itself.</text>
+</svg>

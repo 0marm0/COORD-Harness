@@ -1,0 +1,174 @@
+<svg viewBox="0 0 1200 740" xmlns="http://www.w3.org/2000/svg" role="img"
+     aria-labelledby="context-title context-desc">
+  <title id="context-title">Bounded context</title>
+  <desc id="context-desc">Two ways a session gets its working context. On the left, a long
+  conversation is re-read in full on every call, with no ceiling and no index. On the right, a
+  fresh agent session runs a preflight orientation into a small trimmed capsule, then expands on
+  demand through bounded board lenses and a full-text fact and knowledge lookup, both derived from
+  stores rather than carried in the transcript. Writes face the same discipline: an output_budget
+  check is one of seven ordered policy checks every lifecycle write must pass.</desc>
+
+  <defs>
+    <marker id="context-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8"
+            orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="var(--line)"/>
+    </marker>
+    <marker id="context-open" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8"
+            orient="auto-start-reverse">
+      <path d="M1,1 L9,5 L1,9" fill="none" stroke="var(--line)" stroke-width="1.6"/>
+    </marker>
+    <marker id="context-stop" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="8" markerHeight="8"
+            orient="auto">
+      <path d="M5,1 V9" stroke="var(--refused)" stroke-width="2"/>
+    </marker>
+  </defs>
+
+  <style>
+    :root{
+      --ink:#22292f; --muted:#5b666d; --line:#7d8a91; --rule:#d7dee1;
+      --surface:#f2f5f6; --bg:transparent;
+      --agent:#2C5F8D;     --agent-fill:#e4edf5;
+      --authority:#1F6F63; --authority-fill:#dcece8;
+      --derived:#6A5A9E;   --derived-fill:#ebe7f4;
+      --refused:#A6392B;   --refused-fill:#f6e5e2;
+      --proof:#3E7A2E;     --proof-fill:#e4f0df;
+    }
+    @media (prefers-color-scheme: dark){
+      :root{
+        --ink:#dfe6ec; --muted:#9aa4ad; --line:#8b959c; --rule:#2b3238;
+        --surface:#161c22; --bg:transparent;
+        --agent:#79AEE6;     --agent-fill:#152a3c;
+        --authority:#4FC3AC; --authority-fill:#0f2c27;
+        --derived:#B0A2E8;   --derived-fill:#221f38;
+        --refused:#F0887A;   --refused-fill:#33191a;
+        --proof:#74BF62;     --proof-fill:#182b14;
+      }
+    }
+    text{ font-family:ui-sans-serif, -apple-system, Segoe UI, Roboto, sans-serif; }
+    .t-title{ font-size:14px; font-weight:600; fill:var(--ink); }
+    .t-group{ font-size:12px; font-weight:600; fill:var(--muted); letter-spacing:.06em; }
+    .t-node { font-size:13px; font-weight:500; fill:var(--ink); }
+    .t-sub  { font-size:12px; fill:var(--muted); }
+    .t-edge { font-size:12px; fill:var(--muted); }
+    .t-note { font-size:12px; fill:var(--ink); }
+    .t-cap  { font-size:12px; fill:var(--muted); }
+    .n         { stroke-width:1.5; }
+    .n-plain   { fill:var(--surface);        stroke:var(--line); }
+    .n-agent   { fill:var(--agent-fill);     stroke:var(--agent); }
+    .n-auth    { fill:var(--authority-fill); stroke:var(--authority); }
+    .n-derived { fill:var(--derived-fill);   stroke:var(--derived); }
+    .n-refused { fill:var(--refused-fill);   stroke:var(--refused); }
+    .n-proof   { fill:var(--proof-fill);     stroke:var(--proof); }
+    .rim       { fill:none; }  /* cylinder rim: declared after .n-* so it wins on fill */
+    .grp       { fill:none; stroke:var(--rule); stroke-width:1; stroke-dasharray:4 4; }
+    .e         { fill:none; stroke:var(--line); stroke-width:1.5; marker-end:url(#context-arrow); }
+    .e-derived { fill:none; stroke:var(--line); stroke-width:1.25; stroke-dasharray:5 3;
+                 marker-end:url(#context-open); }
+    .e-refused { fill:none; stroke:var(--refused); stroke-width:1.5; marker-end:url(#context-stop); }
+    .bound     { fill:none; stroke:var(--line); stroke-width:1.25; }
+    .chip      { fill:var(--surface); stroke:var(--line); stroke-width:1.25; }
+    .tick      { stroke:var(--rule); stroke-width:1; }
+  </style>
+
+  <text class="t-title" x="32" y="38">Bounded context</text>
+
+  <!-- LEFT BAND: replay the whole conversation -->
+  <rect class="grp" x="32" y="58" width="552" height="520" rx="8"/>
+  <text class="t-group" x="48" y="76">EVERY CALL RE-READS EVERYTHING</text>
+
+  <rect class="n n-agent" x="208" y="100" width="200" height="68" rx="6"/>
+  <text class="t-node" x="308" y="130" text-anchor="middle">Agent session</text>
+  <text class="t-sub"  x="308" y="150" text-anchor="middle">runner_type: claude_chat</text>
+
+  <path class="e" d="M228,168 V186 H150 V210" marker-end="url(#context-arrow)"/>
+  <text class="t-edge" x="182" y="180" text-anchor="middle">append</text>
+
+  <rect class="n n-plain" x="104" y="210" width="408" height="200"/>
+  <text class="t-node" x="308" y="236" text-anchor="middle">Conversation transcript</text>
+  <text class="t-sub"  x="308" y="254" text-anchor="middle">every prior turn kept verbatim</text>
+  <line class="tick" x1="124" y1="270" x2="492" y2="270"/>
+  <line class="tick" x1="124" y1="294" x2="492" y2="294"/>
+  <line class="tick" x1="124" y1="318" x2="492" y2="318"/>
+  <line class="tick" x1="124" y1="342" x2="492" y2="342"/>
+  <line class="tick" x1="124" y1="366" x2="492" y2="366"/>
+  <text class="t-sub" x="308" y="392" text-anchor="middle">kept whole, never trimmed</text>
+
+  <path class="e" d="M512,260 C566,260 566,134 408,134" marker-end="url(#context-arrow)"/>
+  <text class="t-edge" x="582" y="170" text-anchor="middle"
+        transform="rotate(-90 582 170)">re-read, full — every call</text>
+  <circle class="chip" cx="560" cy="150" r="10"/>
+  <text class="t-note" x="560" y="154" text-anchor="middle">1</text>
+
+  <text class="t-sub" x="308" y="445" text-anchor="middle">no fixed ceiling — cost grows every call</text>
+  <line x1="130" y1="550" x2="400" y2="550" stroke="var(--rule)" stroke-width="1"/>
+  <rect class="n n-plain" x="140" y="530" width="40" height="20"/>
+  <rect class="n n-plain" x="210" y="515" width="40" height="35"/>
+  <rect class="n n-plain" x="280" y="495" width="40" height="55"/>
+  <rect class="n n-plain" x="350" y="470" width="40" height="80"/>
+
+  <!-- RIGHT BAND: a fresh session boots bounded -->
+  <rect class="grp" x="616" y="58" width="552" height="520" rx="8"/>
+  <text class="t-group" x="632" y="76">A FRESH SESSION BOOTS BOUNDED</text>
+
+  <rect class="n n-agent" x="792" y="100" width="200" height="68" rx="6"/>
+  <text class="t-node" x="892" y="130" text-anchor="middle">Agent session</text>
+  <text class="t-sub"  x="892" y="150" text-anchor="middle">runner_type: subagent</text>
+
+  <path class="e" d="M892,168 V196"/>
+  <text class="t-edge" x="912" y="186" text-anchor="start">preflight</text>
+
+  <rect class="n n-plain" x="792" y="196" width="200" height="56" rx="6"/>
+  <text class="t-node" x="892" y="220" text-anchor="middle">Preflight</text>
+  <text class="t-sub"  x="892" y="238" text-anchor="middle">orientation, once per session</text>
+
+  <path class="e" d="M892,252 V280"/>
+  <text class="t-edge" x="912" y="270" text-anchor="start">build</text>
+
+  <rect class="n n-derived" x="762" y="280" width="260" height="88"/>
+  <text class="t-node" x="892" y="308" text-anchor="middle">Capsule</text>
+  <text class="t-sub"  x="892" y="326" text-anchor="middle">≤6,144 bytes, trimmed</text>
+  <text class="t-sub"  x="892" y="342" text-anchor="middle">10 running · 10 resume · 10 decisions</text>
+  <circle class="chip" cx="1012" cy="288" r="10"/>
+  <text class="t-note" x="1012" y="292" text-anchor="middle">2</text>
+
+  <path class="e" d="M812,368 L768,396"/>
+  <text class="t-edge" x="772" y="384" text-anchor="middle">lens</text>
+  <path class="e" d="M972,368 L1016,396"/>
+  <text class="t-edge" x="1012" y="384" text-anchor="middle">query</text>
+
+  <rect class="n n-plain" x="660" y="396" width="216" height="56" rx="6"/>
+  <text class="t-node" x="768" y="420" text-anchor="middle">Board lenses</text>
+  <text class="t-sub"  x="768" y="438" text-anchor="middle">digest · focus · search · skeleton</text>
+  <circle class="chip" cx="660" cy="396" r="10"/>
+  <text class="t-note" x="660" y="400" text-anchor="middle">3</text>
+
+  <rect class="n n-plain" x="908" y="396" width="216" height="56" rx="6"/>
+  <text class="t-node" x="1016" y="420" text-anchor="middle">Full-text lookup</text>
+  <text class="t-sub"  x="1016" y="438" text-anchor="middle">facts_lookup · knowledge_search</text>
+
+  <path class="e-derived" d="M768,496 V452"/>
+  <text class="t-edge" x="790" y="468" text-anchor="start">project rows,</text>
+  <text class="t-edge" x="790" y="480" text-anchor="start">bounded</text>
+
+  <path class="n n-auth" d="M660,496 A108,10 0 0 1 876,496 V538 A108,10 0 0 1 660,538 Z"/>
+  <path class="n n-auth rim" d="M660,496 A108,10 0 0 0 876,496"/>
+  <text class="t-node" x="768" y="518" text-anchor="middle">coord.db</text>
+  <text class="t-sub"  x="768" y="533" text-anchor="middle">11 tables · 4 views → 27 after migrations</text>
+
+  <path class="e-derived" d="M1016,496 V452"/>
+  <text class="t-edge" x="1038" y="468" text-anchor="start">match,</text>
+  <text class="t-edge" x="1038" y="480" text-anchor="start">full-text</text>
+
+  <rect class="n n-plain" x="908" y="496" width="216" height="44"/>
+  <text class="t-node" x="1016" y="516" text-anchor="middle">Knowledge index</text>
+  <text class="t-sub"  x="1016" y="532" text-anchor="middle">docs + facts, full-text</text>
+
+  <!-- notice rail and caption -->
+  <text class="t-note" x="32" y="610">1</text>
+  <text class="t-note" x="48" y="610">The naive path re-sends every prior turn on every call — no ceiling, no index, cost is O(turns).</text>
+  <text class="t-note" x="32" y="628">2</text>
+  <text class="t-note" x="48" y="628">A fresh session reads a capsule trimmed to a fixed byte ceiling instead of the whole board.</text>
+  <text class="t-note" x="32" y="646">3</text>
+  <text class="t-note" x="48" y="646">Lenses and lookup query a bounded index on demand; writes face the same discipline — output_budget is 1 of 7 ordered checks.</text>
+  <text class="t-cap"  x="32" y="674">A session boots from a bounded capsule and two indexed lookups against one authority — the alternative re-reads a growing transcript on every call.</text>
+</svg>

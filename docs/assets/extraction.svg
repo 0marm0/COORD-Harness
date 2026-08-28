@@ -1,0 +1,204 @@
+<svg viewBox="0 0 1200 926" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="ex-title ex-desc">
+  <title id="ex-title">The extraction pipeline</title>
+  <desc id="ex-desc">Each file named in the manifest passes through five deterministic steps — declared symbol drops, prose stripping, declared literal edits, and rename-table substitution — that carry mechanism forward while every word of prose is stripped and regenerated fresh. A file that trips a declared miss, a mismatched edit count, or a forbidden pattern is refused before it is written, and a path absent from the manifest is never read at all. The whole tracked tree is then re-checked by four gate checks — coverage, fidelity, patterns, and shape — run against the exact staged Git blobs, and only a tree where all four report zero findings becomes a gate-clean candidate; any other outcome stops the tree with every failing line printed, grouped by check.</desc>
+
+  <defs>
+    <marker id="ex-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="var(--line)"/>
+    </marker>
+    <marker id="ex-open" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M1,1 L9,5 L1,9" fill="none" stroke="var(--line)" stroke-width="1.6"/>
+    </marker>
+    <marker id="ex-stop" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M5,1 V9" stroke="var(--refused)" stroke-width="2"/>
+    </marker>
+  </defs>
+
+  <style>
+    :root{
+      --ink:#22292f; --muted:#5b666d; --line:#7d8a91; --rule:#d7dee1;
+      --surface:#f2f5f6; --bg:transparent;
+      --agent:#2C5F8D;     --agent-fill:#e4edf5;
+      --authority:#1F6F63; --authority-fill:#dcece8;
+      --derived:#6A5A9E;   --derived-fill:#ebe7f4;
+      --refused:#A6392B;   --refused-fill:#f6e5e2;
+      --proof:#3E7A2E;     --proof-fill:#e4f0df;
+    }
+    @media (prefers-color-scheme: dark){
+      :root{
+        --ink:#dfe6ec; --muted:#9aa4ad; --line:#8b959c; --rule:#2b3238;
+        --surface:#161c22; --bg:transparent;
+        --agent:#79AEE6;     --agent-fill:#152a3c;
+        --authority:#4FC3AC; --authority-fill:#0f2c27;
+        --derived:#B0A2E8;   --derived-fill:#221f38;
+        --refused:#F0887A;   --refused-fill:#33191a;
+        --proof:#74BF62;     --proof-fill:#182b14;
+      }
+    }
+    text{ font-family:ui-sans-serif, -apple-system, Segoe UI, Roboto, sans-serif; }
+    .t-title{ font-size:14px; font-weight:600; fill:var(--ink); }
+    .t-group{ font-size:12px; font-weight:600; fill:var(--muted); letter-spacing:.06em; }
+    .t-node { font-size:13px; font-weight:500; fill:var(--ink); }
+    .t-sub  { font-size:12px; fill:var(--muted); }
+    .t-edge { font-size:12px; fill:var(--muted); }
+    .t-note { font-size:12px; fill:var(--ink); }
+    .t-cap  { font-size:12px; fill:var(--muted); }
+    .n         { stroke-width:1.5; }
+    .n-plain   { fill:var(--surface);        stroke:var(--line); }
+    .n-agent   { fill:var(--agent-fill);     stroke:var(--agent); }
+    .n-auth    { fill:var(--authority-fill); stroke:var(--authority); }
+    .n-derived { fill:var(--derived-fill);   stroke:var(--derived); }
+    .n-refused { fill:var(--refused-fill);   stroke:var(--refused); }
+    .n-proof   { fill:var(--proof-fill);     stroke:var(--proof); }
+    .rim       { fill:none; }
+    .grp       { fill:none; stroke:var(--rule); stroke-width:1; stroke-dasharray:4 4; }
+    .e         { fill:none; stroke:var(--line); stroke-width:1.5; marker-end:url(#ex-arrow); }
+    .e-derived { fill:none; stroke:var(--line); stroke-width:1.25; stroke-dasharray:5 3; marker-end:url(#ex-open); }
+    .e-refused { fill:none; stroke:var(--refused); stroke-width:1.5; marker-end:url(#ex-stop); }
+    .bound     { fill:none; stroke:var(--line); stroke-width:1.25; }
+    .chip      { fill:var(--surface); stroke:var(--line); stroke-width:1.25; }
+  </style>
+
+  <text class="t-title" x="32" y="38">The extraction pipeline</text>
+
+  <!-- ================= GROUP 1: PORT, PER FILE ================= -->
+  <rect class="grp" x="32" y="60" width="1136" height="300" rx="8"/>
+  <text class="t-group" x="48" y="80">PORT — PER FILE, DETERMINISTIC</text>
+
+  <!-- box1 manifest allowlist -->
+  <rect class="n n-plain" x="48" y="106" width="195" height="68" rx="6"/>
+  <text class="t-node" x="145" y="134" text-anchor="middle">manifest allowlist</text>
+  <text class="t-sub"  x="145" y="152" text-anchor="middle">no glob, no directory copy</text>
+  <circle class="chip" cx="237" cy="112" r="10"/>
+  <text class="t-note" x="237" y="116" text-anchor="middle">2</text>
+
+  <path class="e" d="M243,140 L275,140"/>
+  <text class="t-edge" x="259" y="130" text-anchor="middle">then</text>
+
+  <!-- box2 declared symbol drops -->
+  <rect class="n n-plain" x="275" y="106" width="195" height="68" rx="6"/>
+  <text class="t-node" x="372" y="134" text-anchor="middle">declared symbol drops</text>
+  <text class="t-sub"  x="372" y="152" text-anchor="middle">python, top-level only</text>
+
+  <path class="e" d="M470,140 L502,140"/>
+
+  <!-- box3 prose stripping -->
+  <rect class="n n-plain" x="502" y="106" width="195" height="68" rx="6"/>
+  <text class="t-node" x="599" y="134" text-anchor="middle">prose stripping</text>
+  <text class="t-sub"  x="599" y="152" text-anchor="middle">docstrings (py) + comments</text>
+
+  <path class="e" d="M697,140 L729,140"/>
+
+  <!-- box4 declared literal edits -->
+  <rect class="n n-plain" x="729" y="106" width="195" height="68" rx="6"/>
+  <text class="t-node" x="826" y="134" text-anchor="middle">declared literal edits</text>
+  <text class="t-sub"  x="826" y="152" text-anchor="middle">find → replace, count-checked</text>
+  <circle class="chip" cx="918" cy="112" r="10"/>
+  <text class="t-note" x="918" y="116" text-anchor="middle">1</text>
+
+  <path class="e" d="M924,140 L956,140"/>
+
+  <!-- box5 rename vocabulary -->
+  <rect class="n n-plain" x="956" y="106" width="195" height="68" rx="6"/>
+  <text class="t-node" x="1053" y="134" text-anchor="middle">rename vocabulary</text>
+  <text class="t-sub"  x="1053" y="152" text-anchor="middle">ordered pattern → replacement</text>
+
+  <path class="e" d="M1053,174 L1053,202"/>
+  <text class="t-edge" x="1063" y="192">check</text>
+
+  <!-- D1: per-file violations gate -->
+  <polygon class="n n-plain" points="1053,202 1105,242 1053,282 1001,242"/>
+  <text class="t-node" x="1053" y="238" text-anchor="middle">any</text>
+  <text class="t-node" x="1053" y="252" text-anchor="middle">violations?</text>
+
+  <path class="e-refused" d="M1053,282 L953,300"/>
+  <text class="t-edge" x="985" y="288" text-anchor="middle" style="fill:var(--refused)">yes</text>
+
+  <rect class="n n-refused" x="878" y="300" width="150" height="44"/>
+  <text class="t-node" x="953" y="318" text-anchor="middle">refuse</text>
+  <text class="t-sub"  x="953" y="334" text-anchor="middle">not written</text>
+
+  <path class="e" d="M1105,242 L1106,446" style="marker-end:none"/>
+  <text class="t-edge" x="1114" y="420" text-anchor="start">candidate</text>
+
+  <!-- ================= boundary ================= -->
+  <path class="bound" d="M32,380 H1168"/>
+  <path class="bound" d="M32,384 H1168"/>
+  <text class="t-edge" x="600" y="372" text-anchor="middle">gate reads the staged Git index, not the working tree</text>
+
+  <!-- ================= GROUP 2: GATE, WHOLE TREE ================= -->
+  <rect class="grp" x="32" y="400" width="1136" height="374" rx="8"/>
+  <text class="t-group" x="48" y="420">GATE — WHOLE TRACKED TREE</text>
+
+  <!-- fan-out bus from the per-file candidate into all four checks -->
+  <path class="e" d="M1106,446 L177,446" style="marker-end:none"/>
+  <path class="e" d="M177,446 L177,476"/>
+  <path class="e" d="M459,446 L459,476"/>
+  <path class="e" d="M741,446 L741,476"/>
+  <path class="e" d="M1023,446 L1023,476"/>
+
+  <!-- coverage -->
+  <rect class="n n-plain" x="52" y="476" width="250" height="88" rx="6"/>
+  <text class="t-node" x="177" y="504" text-anchor="middle">coverage</text>
+  <text class="t-sub"  x="177" y="522" text-anchor="middle">manifest · authored · derived</text>
+  <text class="t-sub"  x="177" y="538" text-anchor="middle">· fixed infra, else flagged</text>
+  <circle class="chip" cx="296" cy="482" r="10"/>
+  <text class="t-note" x="296" y="486" text-anchor="middle">3</text>
+
+  <!-- fidelity -->
+  <rect class="n n-plain" x="334" y="476" width="250" height="88" rx="6"/>
+  <text class="t-node" x="459" y="504" text-anchor="middle">fidelity</text>
+  <text class="t-sub"  x="459" y="522" text-anchor="middle">re-derives from pinned commit</text>
+  <text class="t-sub"  x="459" y="538" text-anchor="middle">byte-identical · needs --source-root</text>
+
+  <!-- patterns -->
+  <rect class="n n-plain" x="616" y="476" width="250" height="88" rx="6"/>
+  <text class="t-node" x="741" y="504" text-anchor="middle">patterns</text>
+  <text class="t-sub"  x="741" y="522" text-anchor="middle">forbidden patterns, staged blobs</text>
+  <text class="t-sub"  x="741" y="538" text-anchor="middle">excludes its own rule files</text>
+
+  <!-- shape -->
+  <rect class="n n-plain" x="898" y="476" width="250" height="88" rx="6"/>
+  <text class="t-node" x="1023" y="504" text-anchor="middle">shape</text>
+  <text class="t-sub"  x="1023" y="522" text-anchor="middle">UTF-8 text ≤512KB, or checked PNG</text>
+  <text class="t-sub"  x="1023" y="538" text-anchor="middle">binary / symlink / submodule flagged</text>
+
+  <!-- converge to D2 -->
+  <path class="e" d="M177,564 L560,602"/>
+  <path class="e" d="M459,564 L580,602"/>
+  <path class="e" d="M741,564 L620,602"/>
+  <text class="t-edge" x="680" y="586" text-anchor="middle">report</text>
+  <path class="e" d="M1023,564 L640,602"/>
+
+  <!-- D2: whole-tree gate -->
+  <polygon class="n n-plain" points="600,592 652,632 600,672 548,632"/>
+  <text class="t-node" x="600" y="628" text-anchor="middle">all four</text>
+  <text class="t-node" x="600" y="642" text-anchor="middle">report 0?</text>
+
+  <path class="e-refused" d="M548,632 L500,702"/>
+  <text class="t-edge" x="510" y="670" text-anchor="middle" style="fill:var(--refused)">no</text>
+
+  <path class="e" d="M652,632 L720,702"/>
+  <text class="t-edge" x="700" y="670" text-anchor="middle">yes</text>
+
+  <!-- outcomes -->
+  <rect class="n n-refused" x="396" y="702" width="234" height="56"/>
+  <text class="t-node" x="513" y="726" text-anchor="middle">stop</text>
+  <text class="t-sub"  x="513" y="744" text-anchor="middle">every failing line printed, by check</text>
+
+  <rect class="n n-proof" x="650" y="702" width="264" height="56"/>
+  <text class="t-node" x="782" y="726" text-anchor="middle">gate-clean candidate</text>
+  <text class="t-sub"  x="782" y="744" text-anchor="middle">exit 0 · human release review remains</text>
+
+  <!-- ================= notices + caption ================= -->
+  <text class="t-note" x="32" y="794">1</text>
+  <text class="t-note" x="48" y="794">Declared literal edits run twice per file — once against the original text, once after stripping — so a find phrased</text>
+  <text class="t-note" x="48" y="812">against commented or already-bare code both match; only a pair matching neither pass is reported.</text>
+  <text class="t-note" x="32" y="830">2</text>
+  <text class="t-note" x="48" y="830">The manifest is the only way in: an unlisted path is never read, globbed, or walked — exclusion holds by construction, not by a later scan.</text>
+  <text class="t-note" x="32" y="848">3</text>
+  <text class="t-note" x="48" y="848">coverage classifies every tracked path as manifest-ported, hand-authored, derived, or fixed infrastructure; anything left over fails the gate for the whole tree, not just this file.</text>
+
+  <text class="t-cap" x="32" y="880">Mechanism is carried forward byte-for-byte through a declared transform; prose is stripped and rewritten fresh,</text>
+  <text class="t-cap" x="32" y="898">because a denylist scoped to known vocabulary cannot fail on vocabulary it has never seen.</text>
+</svg>

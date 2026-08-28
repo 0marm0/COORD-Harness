@@ -1,0 +1,94 @@
+name: Python
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - name: Install package and test dependencies
+        run: |
+          python -m pip install --upgrade pip 'setuptools>=83'
+          python -m pip install -e '.[mcp,dev]'
+      - name: Lint
+        run: ruff check src tests tools .github/scripts
+      - name: Test non-browser suite
+        run: pytest -q -m 'not slow' --ignore-glob='tests/*browser*.py'
+
+  browser:
+    name: All browser suites
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+          cache: pip
+      - name: Install browser dependencies
+        run: |
+          python -m pip install --upgrade pip 'setuptools>=83'
+          python -m pip install -e '.[dev,browser]'
+          python -m playwright install --with-deps chromium
+      - name: Run every browser test module
+        run: |
+          mapfile -t browser_tests < <(python - <<'PY'
+          from pathlib import Path
+          for path in sorted(Path("tests").rglob("*.py")):
+              if "playwright" in path.read_text(encoding="utf-8"):
+                  print(path)
+          PY
+          )
+          test "${#browser_tests[@]}" -gt 0
+          pytest -q "${browser_tests[@]}"
+
+  packaging:
+    name: Wheel and sdist clean installs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Build both distribution formats
+        run: |
+          python -m pip install --upgrade pip build 'setuptools>=83' pytest
+          python -m build --wheel --sdist
+      - name: Install and probe wheel outside checkout
+        run: |
+          python -m venv "$RUNNER_TEMP/wheel-venv"
+          "$RUNNER_TEMP/wheel-venv/bin/python" -m pip install dist/*.whl
+          cd "$RUNNER_TEMP"
+          "$RUNNER_TEMP/wheel-venv/bin/coord" --help
+          "$RUNNER_TEMP/wheel-venv/bin/coord-board" --help
+      - name: Install and probe sdist outside checkout
+        run: |
+          python -m venv "$RUNNER_TEMP/sdist-venv"
+          "$RUNNER_TEMP/sdist-venv/bin/python" -m pip install dist/*.tar.gz
+          cd "$RUNNER_TEMP"
+          "$RUNNER_TEMP/sdist-venv/bin/coord" --help
+          "$RUNNER_TEMP/sdist-venv/bin/coord-jobs" --help
+      - name: Run installed-wheel regression suite
+        run: pytest -q tests/test_packaging.py

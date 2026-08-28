@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 700" role="img" aria-labelledby="title desc">
+  <title id="title">Context, memory, and evidence retrieval planes</title>
+  <desc id="desc">Exact coordination records form the authority plane. Bounded lenses and source-bound dependency or evidence edges form the compatibility plane. Full-text facts and accepted memory form derived recall planes. Queries move downward only when needed, while all conclusions retain pointers back to sources.</desc>
+  <style>
+    :root{
+      --ink:#22292f; --muted:#5b666d; --line:#7d8a91; --rule:#d7dee1;
+      --surface:#f2f5f6; --bg:transparent;
+      --agent:#2C5F8D;     --agent-fill:#e4edf5;
+      --authority:#1F6F63; --authority-fill:#dcece8;
+      --derived:#6A5A9E;   --derived-fill:#ebe7f4;
+      --refused:#A6392B;   --refused-fill:#f6e5e2;
+      --proof:#3E7A2E;     --proof-fill:#e4f0df;
+    }
+    @media (prefers-color-scheme: dark){
+      :root{
+        --ink:#dfe6ec; --muted:#9aa4ad; --line:#8b959c; --rule:#2b3238;
+        --surface:#161c22; --bg:transparent;
+        --agent:#79AEE6;     --agent-fill:#152a3c;
+        --authority:#4FC3AC; --authority-fill:#0f2c27;
+        --derived:#B0A2E8;   --derived-fill:#221f38;
+        --refused:#F0887A;   --refused-fill:#33191a;
+        --proof:#74BF62;     --proof-fill:#182b14;
+      }
+    }
+    text{ font-family:ui-sans-serif, -apple-system, Segoe UI, Roboto, sans-serif; }
+    .label{ font-size:14px; font-weight:600; fill:var(--ink); text-anchor:middle; }
+    .small{ font-size:12px; fill:var(--muted); text-anchor:middle; }
+    .auth{ fill:var(--authority-fill); stroke:var(--authority); stroke-width:1.75; }
+    .compat{ fill:var(--agent-fill); stroke:var(--agent); stroke-width:1.5; }
+    .derived{ fill:var(--derived-fill); stroke:var(--derived); stroke-width:1.5; }
+    .recall{ fill:var(--surface); stroke:var(--line); stroke-width:1.5; }
+    .plane{ font-size:12px; font-weight:600; fill:var(--muted); letter-spacing:.06em; }
+    .arrow{ fill:none; stroke:var(--line); stroke-width:1.5; marker-end:url(#a); }
+    .source{ fill:none; stroke:var(--proof); stroke-width:1.5; stroke-dasharray:6 5; marker-end:url(#g); }
+  </style>
+  <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 10 5 0 10z" fill="var(--line)"/></marker><marker id="g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 10 5 0 10z" fill="var(--proof)"/></marker></defs>
+  <text class="plane" x="55" y="50">AUTHORITY PLANE · SHIPPED</text>
+  <rect class="auth" x="55" y="70" width="1090" height="105" rx="18"/><text class="label" x="600" y="108">coord.db exact records</text><text class="small" x="600" y="136">work items · claims · runs · events · decisions · proof receipts</text><text class="small" x="600" y="158">only typed lifecycle writers may change this plane</text>
+  <text class="plane" x="55" y="225">BOUNDED CONTEXT PLANE · SHIPPED</text>
+  <rect class="compat" x="55" y="245" width="335" height="120" rx="18"/><text class="label" x="222" y="282">preflight capsule</text><text class="small" x="222" y="311">assigned work + capability handshake</text><text class="small" x="222" y="334">small default; targeted expansion</text>
+  <rect class="compat" x="432" y="245" width="335" height="120" rx="18"/><text class="label" x="600" y="282">board lenses</text><text class="small" x="600" y="311">next work · work context · events</text><text class="small" x="600" y="334">bounded rows and bytes</text>
+  <rect class="compat" x="810" y="245" width="335" height="120" rx="18"/><text class="label" x="978" y="282">source-bound graph</text><text class="small" x="978" y="311">dependency + evidence edges</text><text class="small" x="978" y="334">Preview · not a whiteboard</text>
+  <path class="arrow" d="M222 175V243"/><path class="arrow" d="M600 175V243"/><path class="arrow" d="M978 175V243"/>
+  <text class="plane" x="55" y="420">DERIVED RETRIEVAL PLANE · SHIPPED</text>
+  <rect class="derived" x="120" y="440" width="430" height="110" rx="18"/><text class="label" x="335" y="478">facts + full-text knowledge</text><text class="small" x="335" y="507">query first; expand evidence by pointer</text><text class="small" x="335" y="530">never overrides a newer authority record</text>
+  <rect class="derived" x="650" y="440" width="430" height="110" rx="18"/><text class="label" x="865" y="478">federated context pack</text><text class="small" x="865" y="507">named source and output budgets</text><text class="small" x="865" y="530">partial failure stays explicit</text>
+  <path class="arrow" d="M390 365V410H335V438"/><path class="arrow" d="M767 365V410H865V438"/>
+  <text class="plane" x="55" y="605">RECALL PLANE · DERIVED</text>
+  <rect class="recall" x="300" y="620" width="600" height="58" rx="29"/><text class="label" x="600" y="646">accepted memory · hash-verified recall aid</text><text class="small" x="600" y="667">manual depth; may be stale; cite and verify against authority</text>
+  <path class="arrow" d="M600 550V618"/>
+  <path class="source" d="M900 649H1130V122H1145"/><text class="small" x="1050" y="630">every derived answer keeps source pointers</text>
+</svg>

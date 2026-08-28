@@ -1,0 +1,77 @@
+/* Styles for timeline.js. Served, not injected: the board sends
+   `style-src 'self'` with no unsafe-inline, so an injected <style> element gets
+   a null sheet and every rule below would be dropped in silence.
+
+   Tokens only, no literal ever. The four tones are the whole colour system
+   here: --green for a kind that finished (it is the accent, and "live/done" is
+   what the accent is allowed to mean), --amber for a kind that is waiting,
+   --red for a kind that failed, and --muted for everything else. --amber and
+   --red are declared in app.css and are never written by accent.js (which sets
+   only --green, --accent-glow and the --c-* palette), so waiting stays amber
+   and failed stays red whichever accent is chosen -- a semantic hue that
+   followed the accent would change what the page says. */
+
+.tlblock { margin-top: 1.1rem; }
+
+/* The rail is the list's own left border, so it is exactly as tall as the
+   events and stops at the last one rather than running on into empty space.
+   Gaps are fixed: uniform spacing is the point, since the payload carries no
+   duration to scale them by. */
+.tlblock .tl { list-style: none; margin: .55rem 0 0; padding: 0 0 0 1.35rem;
+  display: grid; gap: .7rem; border-left: 1px solid var(--line); }
+
+.tlblock .tlrow { position: relative; display: grid;
+  grid-template-columns: 1fr auto; column-gap: .6rem; align-items: baseline;
+  color: var(--muted); }
+
+/* Centred on the rail: 1.35rem of list padding, half the 1.15rem marker, and
+   half the rail's own 1px border.
+   The panel-coloured disc behind it stops the rail showing through the open
+   shapes, and falls back to a token app.css always defines rather than a hex. */
+.tlblock .tlmark { position: absolute; left: calc(-1.925rem - 0.5px); top: .08rem;
+  width: 1.15rem; height: 1.15rem; color: var(--muted);
+  background: var(--c-panel, var(--panel)); border-radius: 50%; }
+.tlblock .tlrow.t-done .tlmark { color: var(--green); }
+.tlblock .tlrow.t-wait .tlmark { color: var(--amber); }
+.tlblock .tlrow.t-bad .tlmark { color: var(--red); }
+
+.tlblock .tlkind { grid-column: 1; grid-row: 1; color: var(--ink);
+  font-size: .82rem; letter-spacing: .01em; overflow-wrap: anywhere; }
+.tlblock .tlrow.t-done .tlkind { color: var(--green); }
+.tlblock .tlrow.t-wait .tlkind { color: var(--amber); }
+.tlblock .tlrow.t-bad .tlkind { color: var(--red); }
+
+.tlblock .tltime { grid-column: 2; grid-row: 1; justify-self: end;
+  font-family: ui-monospace, monospace; font-size: .7rem; color: var(--muted);
+  font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+.tlblock .tlactor { grid-column: 1 / -1; grid-row: 2; font-size: .72rem;
+  color: var(--muted); letter-spacing: .06em; text-transform: uppercase;
+  overflow-wrap: anywhere; }
+
+/* The caveat sits under the sequence, not in a tooltip: it is the reason the
+   drawing looks the way it does, so it reads with the drawing. */
+.tlblock .tlnote, .tlblock .tlfoot { margin: .75rem 0 0; font-size: .74rem;
+  line-height: 1.5; color: var(--muted); }
+.tlblock .tlfoot { margin-top: .35rem; }
+.tlblock .tlfoot .tltime { font-size: .7rem; }
+
+/* A stated gap is a sentence, not an empty panel. Held off the edge by a rule
+   so it reads as "the board says nothing here", not as a failed render. */
+.tlblock .tlgap { margin: .55rem 0 0; font-size: .78rem; line-height: 1.5;
+  color: var(--muted); border-left: 1px solid var(--line); padding-left: .8rem; }
+
+/* Nothing in this block is interactive today, but the drawer around it is
+   keyboard-driven; anything focusable that lands here gets the same ring the
+   rest of the board uses rather than the browser default. */
+.tlblock :focus-visible { outline: 2px solid var(--green); outline-offset: 1px;
+  border-radius: 3px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .tlblock, .tlblock * { transition: none; animation: none; }
+}
+
+@media (max-width: 460px) {
+  .tlblock .tltime { grid-column: 1; grid-row: 2; justify-self: start; }
+  .tlblock .tlactor { grid-row: 3; }
+}

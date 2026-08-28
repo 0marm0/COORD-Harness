@@ -1,0 +1,171 @@
+<svg viewBox="0 0 900 1090" xmlns="http://www.w3.org/2000/svg" role="img"
+     aria-labelledby="ho-title ho-desc">
+  <title id="ho-title">Cross-agent handoff under optimistic concurrency</title>
+  <desc id="ho-desc">A Claude session holds a private claim on a work_items row in coord.db. A Codex
+  session's direct claim_work call is refused outright, because the row's assignee is private and does
+  not match the caller's actor — no read, no write, no race. To move ownership, the Claude session issues
+  a typed handoff naming the version, assignee, and event heads it expects the row to still have. coord.db
+  compares that fenced state against the live row as one unit: a match commits the reassignment, releases
+  the caller's own held claims, and advances the version and event head inside the same transaction; a
+  mismatch is rejected outright so the caller re-reads and retries instead of silently overwriting. Only
+  after the handoff commits does the Codex session's own claim_work call succeed.</desc>
+
+  <defs>
+    <marker id="ho-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8"
+            orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="var(--line)"/>
+    </marker>
+    <marker id="ho-open" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8"
+            orient="auto-start-reverse">
+      <path d="M1,1 L9,5 L1,9" fill="none" stroke="var(--line)" stroke-width="1.6"/>
+    </marker>
+    <marker id="ho-stop" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="8" markerHeight="8"
+            orient="auto">
+      <path d="M5,1 V9" stroke="var(--refused)" stroke-width="2"/>
+    </marker>
+  </defs>
+
+  <style>
+    :root{
+      --ink:#22292f; --muted:#5b666d; --line:#7d8a91; --rule:#d7dee1;
+      --surface:#f2f5f6; --bg:transparent;
+      --agent:#2C5F8D;     --agent-fill:#e4edf5;
+      --authority:#1F6F63; --authority-fill:#dcece8;
+      --derived:#6A5A9E;   --derived-fill:#ebe7f4;
+      --refused:#A6392B;   --refused-fill:#f6e5e2;
+      --proof:#3E7A2E;     --proof-fill:#e4f0df;
+    }
+    @media (prefers-color-scheme: dark){
+      :root{
+        --ink:#dfe6ec; --muted:#9aa4ad; --line:#8b959c; --rule:#2b3238;
+        --surface:#161c22; --bg:transparent;
+        --agent:#79AEE6;     --agent-fill:#152a3c;
+        --authority:#4FC3AC; --authority-fill:#0f2c27;
+        --derived:#B0A2E8;   --derived-fill:#221f38;
+        --refused:#F0887A;   --refused-fill:#33191a;
+        --proof:#74BF62;     --proof-fill:#182b14;
+      }
+    }
+    text{ font-family:ui-sans-serif, -apple-system, Segoe UI, Roboto, sans-serif; }
+    .t-title{ font-size:14px; font-weight:600; fill:var(--ink); }
+    .t-group{ font-size:12px; font-weight:600; fill:var(--muted); letter-spacing:.06em; }
+    .t-node { font-size:13px; font-weight:500; fill:var(--ink); }
+    .t-sub  { font-size:12px; fill:var(--muted); }
+    .t-edge { font-size:12px; fill:var(--muted); }
+    .t-note { font-size:12px; fill:var(--ink); }
+    .t-cap  { font-size:12px; fill:var(--muted); }
+    .n         { stroke-width:1.5; }
+    .n-plain   { fill:var(--surface);        stroke:var(--line); }
+    .n-agent   { fill:var(--agent-fill);     stroke:var(--agent); }
+    .n-auth    { fill:var(--authority-fill); stroke:var(--authority); }
+    .n-derived { fill:var(--derived-fill);   stroke:var(--derived); }
+    .n-refused { fill:var(--refused-fill);   stroke:var(--refused); }
+    .n-proof   { fill:var(--proof-fill);     stroke:var(--proof); }
+    .rim       { fill:none; }
+    .grp       { fill:none; stroke:var(--rule); stroke-width:1; stroke-dasharray:4 4; }
+    .e         { fill:none; stroke:var(--line); stroke-width:1.5; marker-end:url(#ho-arrow); }
+    .e-derived { fill:none; stroke:var(--line); stroke-width:1.25; stroke-dasharray:5 3;
+                 marker-end:url(#ho-open); }
+    .e-refused { fill:none; stroke:var(--refused); stroke-width:1.5; marker-end:url(#ho-stop); }
+    .bound     { fill:none; stroke:var(--line); stroke-width:1.25; }
+    .chip      { fill:var(--surface); stroke:var(--line); stroke-width:1.25; }
+    .lane      { fill:none; stroke:var(--rule); stroke-width:1; stroke-dasharray:3 5; }
+  </style>
+
+  <text class="t-title" x="32" y="38">Cross-agent handoff under optimistic concurrency</text>
+
+  <!-- lifelines (drawn first so every node paints over them) -->
+  <line class="lane" x1="166" y1="150" x2="166" y2="972"/>
+  <line class="lane" x1="450" y1="150" x2="450" y2="972"/>
+  <line class="lane" x1="734" y1="150" x2="734" y2="972"/>
+
+  <!-- headers -->
+  <rect class="n n-agent" x="40" y="58" width="252" height="88" rx="6"/>
+  <text class="t-node" x="166" y="90" text-anchor="middle">Claude session</text>
+  <text class="t-sub"  x="166" y="108" text-anchor="middle">runner_type: claude_chat</text>
+  <text class="t-sub"  x="166" y="124" text-anchor="middle">assignee of the row</text>
+
+  <rect class="n n-agent" x="608" y="58" width="252" height="88" rx="6"/>
+  <text class="t-node" x="734" y="90" text-anchor="middle">Codex session</text>
+  <text class="t-sub"  x="734" y="108" text-anchor="middle">runner_type: codex</text>
+  <text class="t-sub"  x="734" y="124" text-anchor="middle">wants the same row</text>
+
+  <path class="n n-auth" d="M330,70 A120,12 0 0 1 570,70 V134 A120,12 0 0 1 330,134 Z"/>
+  <path class="n n-auth rim" d="M330,70 A120,12 0 0 0 570,70"/>
+  <text class="t-node" x="450" y="100" text-anchor="middle">coord.db</text>
+  <text class="t-sub"  x="450" y="118" text-anchor="middle">the authority · one row of work_items</text>
+
+  <!-- shared starting state -->
+  <rect class="n n-plain" x="324" y="174" width="252" height="88"/>
+  <text class="t-node" x="450" y="198" text-anchor="middle">row: api-migration-214</text>
+  <text class="t-sub"  x="450" y="216" text-anchor="middle">version 3 · assignee: claude</text>
+  <text class="t-sub"  x="450" y="232" text-anchor="middle">head events: [e41, e42]</text>
+
+  <!-- SCENARIO 1 -->
+  <rect class="grp" x="20" y="290" width="860" height="186" rx="8"/>
+  <text class="t-group" x="36" y="310">SCENARIO 1 · DIRECT CLAIM FROM THE WRONG ACTOR</text>
+
+  <text class="t-edge" x="592" y="332" text-anchor="middle">claim_work(work_id)</text>
+  <path class="e-refused" d="M734,344 L578,344"/>
+
+  <circle class="chip" cx="312" cy="358" r="10"/>
+  <text class="t-note" x="312" y="362" text-anchor="middle">1</text>
+  <rect class="n n-refused" x="324" y="360" width="252" height="88" rx="6"/>
+  <text class="t-node" x="450" y="384" text-anchor="middle">refused</text>
+  <text class="t-sub"  x="450" y="402" text-anchor="middle">assignee=claude (private) ≠ caller=codex</text>
+  <text class="t-sub"  x="450" y="418" text-anchor="middle">raises: use a typed handoff instead</text>
+
+  <!-- SCENARIO 2 -->
+  <rect class="grp" x="20" y="504" width="860" height="468" rx="8"/>
+  <text class="t-group" x="36" y="524">SCENARIO 2 · TYPED HANDOFF UNDER OPTIMISTIC CONCURRENCY</text>
+
+  <text class="t-edge" x="308" y="546" text-anchor="middle">handoff(to=codex,</text>
+  <text class="t-edge" x="308" y="560" text-anchor="middle">expected_version=3, expected_assignee=claude,</text>
+  <text class="t-edge" x="308" y="574" text-anchor="middle">expected_head_event_ids=[e41,e42])</text>
+  <path class="e" d="M166,588 L450,588 L450,604"/>
+
+  <circle class="chip" cx="464" cy="598" r="10"/>
+  <text class="t-note" x="464" y="602" text-anchor="middle">2</text>
+  <polygon class="n n-plain" points="450,606 504,648 450,690 396,648"/>
+  <text class="t-node" x="450" y="644" text-anchor="middle">expected ==</text>
+  <text class="t-sub"  x="450" y="660" text-anchor="middle">actual?</text>
+
+  <path class="e" d="M450,690 L450,718"/>
+  <text class="t-edge" x="474" y="708">match</text>
+
+  <path class="e-refused" d="M396,648 L176,648"/>
+  <text class="t-edge" x="286" y="638" text-anchor="middle">drift: reject</text>
+
+  <rect class="n n-refused" x="40" y="666" width="252" height="88" rx="6"/>
+  <text class="t-node" x="166" y="690" text-anchor="middle">typed handoff refused</text>
+  <text class="t-sub"  x="166" y="708" text-anchor="middle">version / assignee / head CAS mismatch</text>
+  <text class="t-sub"  x="166" y="724" text-anchor="middle">reject — re-read the row, retry</text>
+
+  <circle class="chip" cx="312" cy="718" r="10"/>
+  <text class="t-note" x="312" y="722" text-anchor="middle">3</text>
+  <rect class="n n-plain" x="324" y="720" width="252" height="88"/>
+  <text class="t-node" x="450" y="744" text-anchor="middle">row updated</text>
+  <text class="t-sub"  x="450" y="762" text-anchor="middle">version 3→4 · assignee claude→codex</text>
+  <text class="t-sub"  x="450" y="778" text-anchor="middle">event appended: e57 (head advances)</text>
+
+  <path class="e-derived" d="M576,750 L724,750"/>
+  <text class="t-edge" x="655" y="738" text-anchor="middle">derived: inbox read (assignment event)</text>
+
+  <path class="e" d="M450,808 L606,846"/>
+  <text class="t-edge" x="556" y="850" text-anchor="middle">claim_work (now permitted)</text>
+
+  <rect class="n n-plain" x="608" y="856" width="252" height="88" rx="6"/>
+  <text class="t-node" x="734" y="880" text-anchor="middle">claim_work succeeds</text>
+  <text class="t-sub"  x="734" y="898" text-anchor="middle">caller=codex now matches assignee</text>
+  <text class="t-sub"  x="734" y="914" text-anchor="middle">row: intent_state → running</text>
+
+  <!-- notices -->
+  <text class="t-note" x="32" y="998">1</text>
+  <text class="t-note" x="48" y="998">A private assignment is refused before any read or write — an unrelated actor cannot race the owner.</text>
+  <text class="t-note" x="32" y="1016">2</text>
+  <text class="t-note" x="48" y="1016">The fence checks version, assignee, and event heads as one unit; drift in any one of the three rejects the whole call.</text>
+  <text class="t-note" x="32" y="1034">3</text>
+  <text class="t-note" x="48" y="1034">Commit and the caller's own claim release happen in the same transaction — ownership moves atomically, not by convention.</text>
+
+  <text class="t-cap" x="32" y="1062">Ownership of a row moves through exactly one fenced write; a stale caller is rejected, never merged into the winner's assignment.</text>
+</svg>

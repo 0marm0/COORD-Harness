@@ -1,0 +1,1114 @@
+{
+  "schema_version": 1,
+  "statement": "Each listed SVG is an authored diagram with declared source truth and is validated for parseability and accessibility; SVG entries are not claimed to carry per-file hashes or dimensions here. Each listed PNG is either a declared fixed-clock capture of the shipped UI using only the repository's fictional demo board, or artwork supplied by the maintainer; its recorded hash and dimensions verify the checked-in bytes. No customer data, person images, or private product state is embedded. The owner marks depict the agent runtimes and hardware a row is running on; the maintainer states these are their own work, and publication rights below cover them.",
+  "intended_license": "MIT",
+  "publication_rights": "maintainer-authorized for public release under the MIT License; no independent external rights verification is claimed",
+  "assets": [
+    {
+      "path": "apps/brand/Assets.xcassets/AppIcon.appiconset/icon_128x128.png",
+      "purpose": "application icon",
+      "provenance_class": "maintainer-artwork",
+      "sha256": "68bde6a58b3db9f1150981ef9b10890a3943ffec30197c7776b59d1cd679b1c9",
+      "width": 128,
+      "height": 128,
+      "synthetic": true,
+      "capture_method": "maintainer's own artwork; resized from the supplied master and stripped of EXIF/XMP",
+      "viewport_or_device": "not a capture",
+      "deterministic_fixture": "apps/brand/Assets/README.md",
+      "source_truth": [
+        "apps/project.yml"
+      ],
+      "third_party_assets": [
+
+      ]
+    },
+    {
+      "path": "apps/brand/Assets.xcassets/AppIcon.appiconset/icon_128x128@2x.png",
+      "purpose": "application icon",
+      "provenance_class": "maintainer-artwork",
+      "sha256": "11553db754668fbadddd2c765ad822f94511026bb185b89f818a32e75345567b",
+      "width": 256,
+      "height": 256,
+      "synthetic": true,
+      "capture_method": "maintainer's own artwork; resized from the supplied master and stripped of EXIF/XMP",
+      "viewport_or_device": "not a capture",
+      "deterministic_fixture": "apps/brand/Assets/README.md",
+      "source_truth": [
+        "apps/project.yml"
+      ],
+      "third_party_assets": [
+
+      ]
+    },
+    {
+      "path": "apps/brand/Assets.xcassets/AppIcon.appiconset/icon_16x16.png",
+      "purpose": "application icon",
+      "provenance_class": "maintainer-artwork",
+      "sha256": "a478ed3ad0f2dbcd1b02884505235573ee2f7a1374eb0557a8252bffdb2adb7a",
+      "width": 16,
+      "height": 16,
+      "synthetic": true,
+      "capture_method": "maintainer's own artwork; resized from the supplied master and stripped of EXIF/XMP",
+      "viewport_or_device": "not a capture",
+      "deterministic_fixture": "apps/brand/Assets/README.md",
+      "source_truth": [
+        "apps/project.yml"
+      ],
+      "third_party_assets": [
+
+      ]
+    },
+    {
+      "path": "apps/brand/Assets.xcassets/AppIcon.appiconset/icon_16x16@2x.png",
+      "purpose": "application icon",
+      "provenance_class": "maintainer-artwork",
+      "sha256": "6af5c88b792413b5d96a5f10dc4e0eb4ba5090ef3193cc79bc2d38e47edbd444",
+      "width": 32,
+      "height": 32,
+      "synthetic": true,
+      "capture_method": "maintainer's own artwork; resized from the supplied master and stripped of EXIF/XMP",
+      "viewport_or_device": "not a capture",
+      "deterministic_fixture": "apps/brand/Assets/README.md",
+      "source_truth": [
+        "apps/project.yml"
+      ],
+      "third_party_assets": [
+
+      ]
+    },
+    {
+      "path": "apps/brand/Assets.xcassets/AppIcon.appiconset/icon_256x256.png",
+      "purpose": "application icon",
+      "provenance_class": "maintainer-artwork",
+      "sha256": "11553db754668fbadddd2c765ad822f94511026bb185b89f818a32e75345567b",
+      "width": 256,
+      "height": 256,
+      "synthetic": true,
+      "capture_method": "maintainer's own artwork; resized from the supplied master and stripped of EXIF/XMP",
+      "viewport_or_device": "not a capture",
+      "deterministic_fixture": "apps/brand/Assets/README.md",
+      "source_truth": [
+        "apps/project.yml"
+      ],
+      "third_party_assets": [
+
+      ]
+    },
+    {
+      "path": "apps/brand/Assets.xcassets/AppIcon.appiconset/icon_256x256@2x.png",
+      "purpose": "application icon",
+      "provenance_class": "maintainer-artwork",
+      "sha256": "17698a16fbc6f17f1f59d817078ef82adfeb6c7ed42fd485bd159e71f268c6dd",
+      "width": 512,
+      "height": 512,
+      "synthetic": true,
+      "capture_method": "maintainer's own artwork; resized from the supplied master and stripped of EXIF/XMP",
+      "viewport_or_device": "not a capture",
+      "deterministic_fixture": "apps/brand/Assets/README.md",
+      "source_truth": [
+        "apps/project.yml"
+      ],
+      "third_party_assets": [
+
+      ]
+    },
+    {
+      "path": "apps/brand/Assets.xcassets/AppIcon.appiconset/icon_32x32.png",
+      "purpose": "application icon",
+      "provenance_class": "maintainer-artwork",
+      "sha256": "6af5c88b792413b5d96a5f10dc4e0eb4ba5090ef3193cc79bc2d38e47edbd444",
+      "width": 32,
+      "height": 32,
+      "synthetic": true,
+      "capture_method": "maintainer's own artwork; resized from the supplied master and stripped of EXIF/XMP",
+      "viewport_or_device": "not a capture",
+      "deterministic_fixture": "apps/brand/Assets/README.md",
+      "source_truth": [
+        "apps/project.yml"
+      ],
+      "third_party_assets": [
+
+      ]
+    },
+    {
+      "path": "apps/brand/Assets.xcassets/AppIcon.appiconset/icon_32x32@2x.png",
+      "purpose": "application icon",
+      "provenance_class": "maintainer-artwork",
+      "sha256": "f759cfb65e9ef07dcff69136ff11092edab1ed71e79c405ba16a74dee92e225e",
+      "width": 64,
+      "height": 64,
+      "synthetic": true,
+      "capture_method": "maintainer's own artwork; resized from the supplied master and stripped of EXIF/XMP",
+      "viewport_or_device": "not a capture",
+      "deterministic_fixture": "apps/brand/Assets/README.md",
+      "source_truth": [
+        "apps/project.yml"
+      ],
+      "third_party_assets": [
+
+      ]
+    },
+    {
+      "path": "apps/brand/Assets.xcassets/AppIcon.appiconset/icon_512x512.png",
+      "purpose": "application icon",
+      "provenance_class": "maintainer-artwork",
+      "sha256": "17698a16fbc6f17f1f59d817078ef82adfeb6c7ed42fd485bd159e71f268c6dd",
+      "width": 512,
+      "height": 512,
+      "synthetic": true,
+      "capture_method": "maintainer's own artwork; resized from the supplied master and stripped of EXIF/XMP",
+      "viewport_or_device": "not a capture",
+      "deterministic_fixture": "apps/brand/Assets/README.md",
+      "source_truth": [
+        "apps/project.yml"
+      ],
+      "third_party_assets": [
+
+      ]
+    },
+    {
+      "path": "apps/brand/Assets.xcassets/AppIcon.appiconset/icon_512x512@2x.png",
+      "purpose": "application icon",
+      "provenance_class": "maintainer-artwork",
+      "sha256": "b881e92556f1f8ea966d666c9cf7257a1c033fd9e8e3ef9f3ccbd1c008ac15a5",
+      "width": 1024,
+      "height": 1024,
+      "synthetic": true,
+      "capture_method": "maintainer's own artwork; resized from the supplied master and stripped of EXIF/XMP",
+      "viewport_or_device": "not a capture",
+      "deterministic_fixture": "apps/brand/Assets/README.md",
+      "source_truth": [
+        "apps/project.yml"
+      ],
+      "third_party_assets": [
+
+      ]
+    },
+    {
+      "path": "apps/brand/Assets/accelerator.png",
+      "purpose": "owner mark for local work holding the GPU (native apps)",
+      "provenance_class": "maintainer-artwork",
+      "sha256": "066d6cc27bd10b988f45f39a69ac801e1f6bb6a96a7a8f4834a1bf4832f3bcbc",
+      "width": 210,
+      "height": 256,
+      "synthetic": true,
+      "capture_method": "authored by the maintainer; resized to 256px and stripped of EXIF/XMP on import",
+      "viewport_or_device": "not a capture; drawn at 9-18pt by the owner column",
+      "deterministic_fixture": "apps/brand/Assets/README.md",
+      "source_truth": [
+        "apps/menubar/Sources/App/AgentMarks.swift"
+      ],
+      "third_party_assets": [
+
+      ]
+    },
+    {
+      "path": "apps/brand/Assets/claude-menu.png",
+      "purpose": "compact chat-agent provider identifier in native usage surfaces",
+      "provenance_class": "maintainer-artwork",
+      "width": 64,
+      "height": 64,
+      "synthetic": true,
+      "capture_method": "project-drawn compact variant of apps/brand/Assets/claude.png; losslessly recompressed with all ancillary metadata removed",
+      "viewport_or_device": "not a capture; drawn in compact usage rows",
+      "deterministic_fixture": "apps/brand/Assets/README.md",
+      "source_truth": [
+        "apps/Shared/Sources/UsageDashboardContent.swift",
+        "apps/project.yml"
+      ],
+      "third_party_assets": [
+
+      ],
+      "sha256": "2913c4eddf925b9b913a23843be3f28665abaeb08594d738be749ee313d2d247"
+    },
+    {
+      "path": "apps/brand/Assets/claude.png",
+      "purpose": "chat-agent owner mark (native apps)",
+      "provenance_class": "maintainer-artwork",
+      "sha256": "ed141659e5bedb300683956ccd313887661cc2da62d8c1d8900078fdd04b8230",
+      "width": 256,
+      "height": 227,
+      "synthetic": true,
+      "capture_method": "authored by the maintainer; resized to 256px and stripped of EXIF/XMP on import",
+      "viewport_or_device": "not a capture; drawn at 9-18pt by the owner column",
+      "deterministic_fixture": "apps/brand/Assets/README.md",
+      "source_truth": [
+        "apps/menubar/Sources/App/AgentMarks.swift"
+      ],
+      "third_party_assets": [
+
+      ]
+    },
+    {
+      "path": "apps/brand/Assets/codex-menu.png",
+      "purpose": "compact code-agent provider identifier in native usage surfaces",
+      "provenance_class": "maintainer-artwork",
+      "width": 64,
+      "height": 64,
+      "synthetic": true,
+      "capture_method": "project-drawn compact variant of apps/brand/Assets/codex.png; losslessly recompressed with all ancillary metadata removed",
+      "viewport_or_device": "not a capture; drawn in compact usage rows",
+      "deterministic_fixture": "apps/brand/Assets/README.md",
+      "source_truth": [
+        "apps/Shared/Sources/UsageDashboardContent.swift",
+        "apps/project.yml"
+      ],
+      "third_party_assets": [
+
+      ],
+      "sha256": "d07207606a945e432f3646a2a1c01ed64257205eb2549c08c60873b389f75cb5"
+    },
+    {
+      "path": "apps/brand/Assets/codex.png",
+      "purpose": "code-agent owner mark (native apps)",
+      "provenance_class": "maintainer-artwork",
+      "sha256": "0602a08b8cc30390953029defe29bd53bdaa475e27e3917bb7677e94eeabf53e",
+      "width": 256,
+      "height": 256,
+      "synthetic": true,
+      "capture_method": "authored by the maintainer; resized to 256px and stripped of EXIF/XMP on import",
+      "viewport_or_device": "not a capture; drawn at 9-18pt by the owner column",
+      "deterministic_fixture": "apps/brand/Assets/README.md",
+      "source_truth": [
+        "apps/menubar/Sources/App/AgentMarks.swift"
+      ],
+      "third_party_assets": [
+
+      ]
+    },
+    {
+      "path": "apps/brand/Assets/compute.png",
+      "purpose": "owner mark for local work on CPU (native apps)",
+      "provenance_class": "maintainer-artwork",
+      "sha256": "917055fe56948a455e361c53bb045ca111b103cfb857f41a055a69f42af11788",
+      "width": 218,
+      "height": 256,
+      "synthetic": true,
+      "capture_method": "authored by the maintainer; resized to 256px and stripped of EXIF/XMP on import",
+      "viewport_or_device": "not a capture; drawn at 9-18pt by the owner column",
+      "deterministic_fixture": "apps/brand/Assets/README.md",
+      "source_truth": [
+        "apps/menubar/Sources/App/AgentMarks.swift"
+      ],
+      "third_party_assets": [
+
+      ]
+    },
+    {
+      "path": "apps/brand/Assets/wordmark.png",
+      "purpose": "COORD wordmark in the native menu-bar panel",
+      "provenance_class": "maintainer-artwork",
+      "width": 4096,
+      "height": 927,
+      "synthetic": true,
+      "capture_method": "maintainer-supplied COORD artwork; pixels preserved while all ancillary PNG metadata was removed",
+      "viewport_or_device": "not a capture",
+      "deterministic_fixture": "apps/brand/Assets/README.md",
+      "source_truth": [
+        "apps/menubar/Sources/UI/Rows.swift",
+        "apps/project.yml"
+      ],
+      "third_party_assets": [
+
+      ],
+      "sha256": "2c27deaf00c5cf0c1d2af13ad6bbb5f4c07f67cc94b46270ff4861cbf527f1d6"
+    },
+    {
+      "path": "docs/assets/architecture.svg",
+      "purpose": "Detailed policy, derived-view, and snapshot implementation split",
+      "source_truth": [
+        "src/coordharness/coord/policy/pipeline.py",
+        "src/coordharness/coord/coord_db.py",
+        "src/coordharness/board"
+      ],
+      "third_party_assets": [
+
+      ]
+    },
+    {
+      "path": "docs/assets/birdseye.svg",
+      "purpose": "First-read authority, claim, heartbeat, proof-gate, and projection overview",
+      "source_truth": [
+        "src/coordharness/coord/coord_db.py",
+        "src/coordharness/board/server.py",
+        "src/coordharness/board/snapshot.py"
+      ],
+      "third_party_assets": [
+
+      ]
+    },
+    {
+      "path": "docs/assets/context-retrieval.svg",
+      "purpose": "Authority, bounded context, derived retrieval, and recall planes",
+      "source_truth": [
+        "src/coordharness/coord/board_context.py",
+        "src/coordharness/coord/exact_query_core.py",
+        "src/coordharness/knowledge"
+      ],
+      "third_party_assets": [
+
+      ]
+    },
+    {
+      "path": "docs/assets/context-tiers.svg",
+      "purpose": "Bounded context expansion tiers and capsule",
+      "source_truth": [
+        "src/coordharness/coord/board_context.py",
+        "src/coordharness/knowledge/context_federator.py"
+      ],
+      "third_party_assets": [
+
+      ]
+    },
+    {
+      "path": "docs/assets/context.svg",
+      "purpose": "Diagram of a shipped mechanism",
+      "source_truth": [
+        "src/coordharness"
+      ],
+      "third_party_assets": [
+
+      ]
+    },
+    {
+      "path": "docs/assets/extraction.svg",
+      "purpose": "Clean-room extraction and publication safety pipeline",
+      "source_truth": [
+        "tools/extract/port.py",
+        "tools/extract/gate.py",
+        "docs/releasing.md"
+      ],
+      "third_party_assets": [
+
+      ]
+    },
+    {
+      "path": "docs/assets/handoff-sequence.svg",
+      "purpose": "Five-step refused claim, fenced handoff, atomic ownership transfer, and receiver claim",
+      "source_truth": [
+        "src/coordharness/coord/coord_db.py",
+        "src/coordharness/coord/cli.py",
+        "tests/test_lifecycle_smoke.py"
+      ],
+      "third_party_assets": [
+
+      ]
+    },
+    {
+      "path": "docs/assets/handoff.svg",
+      "purpose": "Typed cross-agent handoff under optimistic concurrency",
+      "source_truth": [
+        "src/coordharness/coord/mcp_coord_server.py",
+        "src/coordharness/coord/coord_db.py"
+      ],
+      "third_party_assets": [
+
+      ]
+    },
+    {
+      "path": "docs/assets/jobs.svg",
+      "purpose": "Long-running job launch, sidecar telemetry, run record, and dead-process reconciliation",
+      "source_truth": [
+        "src/coordharness/jobs/launch.py",
+        "src/coordharness/jobs/sidecar_writer.py",
+        "src/coordharness/coord/coord_db.py",
+        "src/coordharness/coord/process_liveness.py"
+      ],
+      "third_party_assets": [
+
+      ]
+    },
+    {
+      "path": "docs/assets/lifecycle-proof.svg",
+      "purpose": "Focused lease and completion-proof path",
+      "source_truth": [
+        "src/coordharness/coord/coord_db.py",
+        "src/coordharness/jobs/status.py"
+      ],
+      "third_party_assets": [
+
+      ]
+    },
+    {
+      "path": "docs/assets/lifecycle.svg",
+      "purpose": "Claim statuses and guarded lifecycle verbs generated from source",
+      "source_truth": [
+        "src/coordharness/coord/coord_db.py",
+        "tools/generate_lifecycle_diagram.py"
+      ],
+      "third_party_assets": [
+
+      ]
+    },
+    {
+      "path": "docs/assets/multi-agent-jobs.svg",
+      "purpose": "Orchestrator, bounded subagents, local jobs, telemetry, and artifacts",
+      "source_truth": [
+        "src/coordharness/coord/schema.sql",
+        "src/coordharness/jobs"
+      ],
+      "third_party_assets": [
+
+      ]
+    },
+    {
+      "path": "docs/assets/projection-topology.svg",
+      "purpose": "Loopback snapshot service and read-only web and native consumers",
+      "source_truth": [
+        "src/coordharness/board",
+        "apps"
+      ],
+      "third_party_assets": [
+
+      ]
+    },
+    {
+      "path": "docs/assets/screens/board-activity.png",
+      "purpose": "Privacy-preserving web activity view over the deterministic fictional board",
+      "sha256": "d2085c8ec431df1b6854c3f89db6706fc350aee9c424307cc7d1f1f8ff37ac0d",
+      "provenance_class": "synthetic-web-capture",
+      "capture_method": "Playwright Chromium local capture",
+      "viewport_or_device": "1600x1000 CSS pixels at 1x",
+      "source_truth": [
+        "src/coordharness/demo.py",
+        "src/coordharness/board/static/app.js",
+        "docs/assets/screens/board-activity.png"
+      ],
+      "synthetic": true,
+      "width": 1600,
+      "height": 1000,
+      "source_date_epoch": 1772442000
+    },
+    {
+      "path": "docs/assets/screens/board-graph.png",
+      "purpose": "Source-bound web dependency graph over the deterministic fictional board",
+      "sha256": "5898c0822e5eb533867bfca79249bab46108094ba017f47ee7eafe28f7b7954f",
+      "provenance_class": "synthetic-web-capture",
+      "capture_method": "tools/capture_board_screens.py with Playwright Chromium",
+      "viewport_or_device": "1600x1000 CSS pixels at 1x",
+      "source_truth": [
+        "src/coordharness/demo.py",
+        "src/coordharness/board/snapshot.py",
+        "src/coordharness/board/static/app.js",
+        "tools/capture_board_screens.py"
+      ],
+      "synthetic": true,
+      "width": 1600,
+      "height": 1000,
+      "source_date_epoch": 1772442000
+    },
+    {
+      "path": "docs/assets/screens/board-jobs.png",
+      "purpose": "Read-only web jobs view over the deterministic fictional board",
+      "sha256": "b734db68b89fd5159f39cddfcc5de3b63a9d3ff62be12fb9973b3046e864759c",
+      "provenance_class": "synthetic-web-capture",
+      "capture_method": "Playwright Chromium local capture",
+      "viewport_or_device": "1600x1000 CSS pixels at 1x",
+      "source_truth": [
+        "src/coordharness/demo.py",
+        "src/coordharness/board",
+        "docs/assets/screens/board-jobs.png"
+      ],
+      "synthetic": true,
+      "width": 1600,
+      "height": 1000,
+      "source_date_epoch": 1772442000
+    },
+    {
+      "path": "docs/assets/screens/board-overview.png",
+      "purpose": "Read-only web overview over the deterministic fictional board",
+      "sha256": "88d41215c974a98670ac952e0b79d68e148bb39b1081a0662620a306de897d99",
+      "provenance_class": "synthetic-web-capture",
+      "capture_method": "tools/capture_board_screens.py against the synthetic demo board; coherent bundle required; empty view and browser-console failures refused",
+      "viewport_or_device": "1600x1000 CSS pixels at 1x",
+      "source_truth": [
+        "src/coordharness/demo.py",
+        "src/coordharness/board",
+        "docs/assets/screens/board-overview.png"
+      ],
+      "synthetic": true,
+      "width": 1600,
+      "height": 1000,
+      "source_date_epoch": 1772442000
+    },
+    {
+      "path": "docs/assets/screens/board-work.png",
+      "purpose": "Read-only web work view over the deterministic fictional board",
+      "sha256": "e714962908401e8ff580f8bbc646f5a2bfb1e8f654507d3451bc221314be5512",
+      "provenance_class": "synthetic-web-capture",
+      "capture_method": "Playwright Chromium local capture",
+      "viewport_or_device": "1600x1000 CSS pixels at 1x",
+      "source_truth": [
+        "src/coordharness/demo.py",
+        "src/coordharness/board",
+        "docs/assets/screens/board-work.png"
+      ],
+      "synthetic": true,
+      "width": 1600,
+      "height": 1000,
+      "source_date_epoch": 1772442000
+    },
+    {
+      "path": "docs/assets/screens/ios-home.png",
+      "purpose": "Clean-room iOS Board view on the shared Coord design system, consuming the deterministic fictional board",
+      "sha256": "6daf554dc02fbd110eb87eb8aadf83c3c25fdd2eec3d9478f79c09196cc4367b",
+      "provenance_class": "clean-room-native-capture",
+      "capture_method": "xcrun simctl io screenshot after unsigned simulator build",
+      "postprocess": "ImageMagick metadata strip; sanitized checked-in bytes are validated by the publication gate",
+      "viewport_or_device": "iPhone 17 Pro simulator, iOS 26.5, 1206x2622 pixels",
+      "source_truth": [
+        "src/coordharness/demo.py",
+        "src/coordharness/board",
+        "apps/iOS",
+        "apps/Shared"
+      ],
+      "synthetic": true,
+      "width": 1206,
+      "height": 2622,
+      "source_date_epoch": 1772442000
+    },
+    {
+      "path": "docs/assets/screens/macos-cockpit.png",
+      "purpose": "COORD Cockpit window: the whole board as a table, grouped by derived state, with module, progress, ETA, note, priority and resource",
+      "provenance_class": "clean-room-native-capture",
+      "sha256": "b3945d654abd5826a0c36d0b7ed5fa66e0c5c877c54dcdf3db0cc6f9dcb1fcac",
+      "width": 1800,
+      "height": 1361,
+      "synthetic": true,
+      "capture_method": "macOS window capture of an unsigned local build running against the synthetic demo board; host menu bar cropped and EXIF/XMP stripped on import",
+      "viewport_or_device": "macOS 14, Retina, dark",
+      "deterministic_fixture": "src/coordharness/demo.py",
+      "source_truth": [
+        "apps/menubar/Sources"
+      ],
+      "third_party_assets": [
+
+      ]
+    },
+    {
+      "path": "docs/assets/screens/macos-panel.png",
+      "purpose": "COORD menu-bar panel with its status-bar ring showing elapsed time and percentage, two local jobs with live progress and rate, claimed work by lane, and one row expanded to its note, proof path and lane actions",
+      "provenance_class": "clean-room-native-capture",
+      "sha256": "3c74aeb84a6f73537b35b13ed7a80926ac15fd235acc47d90444f233995b28ab",
+      "width": 752,
+      "height": 1612,
+      "synthetic": true,
+      "capture_method": "macOS window capture of an unsigned local build running against the synthetic demo board; the menu-bar strip is kept because it carries the app's own status item; EXIF/XMP stripped on import",
+      "viewport_or_device": "macOS 14, Retina, dark",
+      "deterministic_fixture": "src/coordharness/demo.py",
+      "source_truth": [
+        "apps/menubar/Sources"
+      ],
+      "third_party_assets": [
+
+      ]
+    },
+    {
+      "path": "docs/assets/screens/map-ceiling.png",
+      "purpose": "Coordination map Ceiling view: an equal-unit scheduling simulation over recorded prerequisites and worker count, with a prerequisite-depth profile and no duration claim",
+      "provenance_class": "synthetic-web-capture",
+      "sha256": "12e2d9e476319100f370d8a4ed3b87046f5bd3530adbe9e5513b78577ce28c4a",
+      "width": 1600,
+      "height": 1000,
+      "synthetic": true,
+      "capture_method": "tools/capture_board_screens.py against the synthetic demo board",
+      "viewport_or_device": "1600x1000, dark, reduced motion, UTC",
+      "deterministic_fixture": "src/coordharness/demo.py",
+      "source_truth": [
+        "src/coordharness/board/static/cockpit.js"
+      ],
+      "third_party_assets": [
+
+      ]
+    },
+    {
+      "path": "docs/assets/screens/map-chronicle.png",
+      "purpose": "Coordination map Order view: every recorded moment across rows, and for each dependency how far its prerequisite has got",
+      "provenance_class": "synthetic-web-capture",
+      "sha256": "95de9f3b6c0c7ac4c331bc96398ff5944bf3e80f6d085a3bbde89929f2bd9453",
+      "width": 1600,
+      "height": 1000,
+      "synthetic": true,
+      "capture_method": "tools/capture_board_screens.py against the synthetic demo board",
+      "viewport_or_device": "1600x1000, dark, reduced motion, UTC",
+      "deterministic_fixture": "src/coordharness/demo.py",
+      "source_truth": [
+        "src/coordharness/board/static/cockpit.js"
+      ],
+      "third_party_assets": [
+
+      ]
+    },
+    {
+      "path": "docs/assets/screens/map-context.png",
+      "purpose": "Coordination map: the working context the board carries",
+      "provenance_class": "synthetic-web-capture",
+      "sha256": "5ba1791525aeda80a3219cca27d968635e64df4022f92752ec1c938d89eaf74e",
+      "width": 1600,
+      "height": 1000,
+      "synthetic": true,
+      "capture_method": "tools/capture_board_screens.py against the synthetic demo board",
+      "viewport_or_device": "1600x1000, dark, reduced motion, UTC",
+      "deterministic_fixture": "src/coordharness/demo.py",
+      "source_truth": [
+        "src/coordharness/board/static/cockpit.js"
+      ],
+      "third_party_assets": [
+
+      ]
+    },
+    {
+      "path": "docs/assets/screens/map-crossings.png",
+      "purpose": "Coordination map: dependencies aggregated to the vertical level",
+      "provenance_class": "synthetic-web-capture",
+      "sha256": "f8834c3547792e0fe2775e8a0a410f726d0c18c0c016849cc8a8b2c7cdaa42f3",
+      "width": 1600,
+      "height": 1000,
+      "synthetic": true,
+      "capture_method": "tools/capture_board_screens.py against the synthetic demo board",
+      "viewport_or_device": "1600x1000, dark, reduced motion, UTC",
+      "deterministic_fixture": "src/coordharness/demo.py",
+      "source_truth": [
+        "src/coordharness/board/static/view-flow.js"
+      ],
+      "third_party_assets": [
+
+      ]
+    },
+    {
+      "path": "docs/assets/screens/map-deps.png",
+      "purpose": "Coordination map: recorded dependencies between rows",
+      "provenance_class": "synthetic-web-capture",
+      "sha256": "8d8a3a08c473fad03440c0566834b6b730c550b5124ef327096619b8ac7bd587",
+      "width": 1600,
+      "height": 1000,
+      "synthetic": true,
+      "capture_method": "tools/capture_board_screens.py against the synthetic demo board",
+      "viewport_or_device": "1600x1000, dark, reduced motion, UTC",
+      "deterministic_fixture": "src/coordharness/demo.py",
+      "source_truth": [
+        "src/coordharness/board/static/cockpit.js"
+      ],
+      "third_party_assets": [
+
+      ]
+    },
+    {
+      "path": "docs/assets/screens/map-drawer.png",
+      "purpose": "Coordination map: search and the row detail panel together, the panel showing state, owner, proof, relations and the row's recorded timeline",
+      "provenance_class": "synthetic-web-capture",
+      "sha256": "31b924d2eb06d4c3428b2599091f3b4b4744a80399be1be32cd10f6326daf5b1",
+      "width": 1600,
+      "height": 1000,
+      "synthetic": true,
+      "capture_method": "playwright against the synthetic demo board, driving the interaction state a tab click cannot reach",
+      "viewport_or_device": "1600x1000, dark, reduced motion, UTC",
+      "deterministic_fixture": "src/coordharness/demo.py",
+      "source_truth": [
+        "src/coordharness/board/static/search.js"
+      ],
+      "third_party_assets": [
+
+      ]
+    },
+    {
+      "path": "docs/assets/screens/map-fleet.png",
+      "purpose": "Coordination map: which agents hold work in which vertical",
+      "provenance_class": "synthetic-web-capture",
+      "sha256": "0bdf024e68be2d6464bc76c6347efbf337bc7addd2426e2e477e3a91670a9ac5",
+      "width": 1600,
+      "height": 1000,
+      "synthetic": true,
+      "capture_method": "tools/capture_board_screens.py against the synthetic demo board; populated marks required; browser-console failures refused",
+      "viewport_or_device": "1600x1000, dark, reduced motion, UTC",
+      "deterministic_fixture": "src/coordharness/demo.py",
+      "source_truth": [
+        "src/coordharness/board/static/cockpit.js"
+      ],
+      "third_party_assets": [
+
+      ]
+    },
+    {
+      "path": "docs/assets/screens/map-flowpath.png",
+      "purpose": "Coordination map Stations view: custody pipeline with per-station counts, the stopped tray, proof gate and lease horizon buckets",
+      "provenance_class": "synthetic-web-capture",
+      "sha256": "4e3b36a6dc65c6ee2f181d41799e802445bcffd8c989f4bfbe4d4f96bf1efd8a",
+      "width": 1600,
+      "height": 1000,
+      "synthetic": true,
+      "capture_method": "tools/capture_board_screens.py against the synthetic demo board",
+      "viewport_or_device": "1600x1000, dark, reduced motion, UTC",
+      "deterministic_fixture": "src/coordharness/demo.py",
+      "source_truth": [
+        "src/coordharness/board/static/cockpit.js"
+      ],
+      "third_party_assets": [
+
+      ]
+    },
+    {
+      "path": "docs/assets/screens/map-orbit.png",
+      "purpose": "Coordination map Orbit view: one row at the centre with every recorded relationship drawn as an orbit",
+      "provenance_class": "synthetic-web-capture",
+      "sha256": "0bdf1852a9dffde38415f35740a360550860ecedab5a5cb75e215d5d235ed7fd",
+      "width": 1600,
+      "height": 1000,
+      "synthetic": true,
+      "capture_method": "tools/capture_board_screens.py against the synthetic demo board",
+      "viewport_or_device": "1600x1000, dark, reduced motion, UTC",
+      "deterministic_fixture": "src/coordharness/demo.py",
+      "source_truth": [
+        "src/coordharness/board/static/cockpit.js"
+      ],
+      "third_party_assets": [
+
+      ]
+    },
+    {
+      "path": "docs/assets/screens/map-pulse.png",
+      "purpose": "Coordination map Pulse view: the recorded event bus newest-first, lane roster, recorded routing between lanes, kind spectrum and day ledger",
+      "provenance_class": "synthetic-web-capture",
+      "sha256": "4471b69454773378433f90999808b4fef8cd9e5ffedf9a5f7c7fe35aa00ba024",
+      "width": 1600,
+      "height": 1000,
+      "synthetic": true,
+      "capture_method": "tools/capture_board_screens.py against the synthetic demo board",
+      "viewport_or_device": "1600x1000, dark, reduced motion, UTC",
+      "deterministic_fixture": "src/coordharness/demo.py",
+      "source_truth": [
+        "src/coordharness/board/static/cockpit.js"
+      ],
+      "third_party_assets": [
+
+      ]
+    },
+    {
+      "path": "docs/assets/screens/map-search.png",
+      "purpose": "Coordination map: the global row search open, ranking matches with the field that matched",
+      "provenance_class": "synthetic-web-capture",
+      "sha256": "b495f533b1be2d5b32c974af3b1da5bb6dbb5366f309e9db0d0e6264c934637a",
+      "width": 1600,
+      "height": 1000,
+      "synthetic": true,
+      "capture_method": "playwright against the synthetic demo board, driving the interaction state a tab click cannot reach",
+      "viewport_or_device": "1600x1000, dark, reduced motion, UTC",
+      "deterministic_fixture": "src/coordharness/demo.py",
+      "source_truth": [
+        "src/coordharness/board/static/search.js"
+      ],
+      "third_party_assets": [
+
+      ]
+    },
+    {
+      "path": "docs/assets/screens/map-shape.png",
+      "purpose": "Coordination map: work and state distribution across verticals",
+      "provenance_class": "synthetic-web-capture",
+      "sha256": "60b551623dbf54ae51d7dfe0035204b5ca5aa62c71b67c1941ead7b157e52528",
+      "width": 1600,
+      "height": 1000,
+      "synthetic": true,
+      "capture_method": "tools/capture_board_screens.py against the synthetic demo board",
+      "viewport_or_device": "1600x1000, dark, reduced motion, UTC",
+      "deterministic_fixture": "src/coordharness/demo.py",
+      "source_truth": [
+        "src/coordharness/board/static/view-density.js"
+      ],
+      "third_party_assets": [
+
+      ]
+    },
+    {
+      "path": "docs/assets/screens/map-subjects.png",
+      "purpose": "Coordination map Subjects view: directed subject-area adjacency over recorded parent and dependency edges, counted apart",
+      "provenance_class": "synthetic-web-capture",
+      "sha256": "7e4949c2acfe155b31cd2572304a04c8ddba0a666861f51fcbd65651f86fd0b3",
+      "width": 1600,
+      "height": 1000,
+      "synthetic": true,
+      "capture_method": "tools/capture_board_screens.py against the synthetic demo board",
+      "viewport_or_device": "1600x1000, dark, reduced motion, UTC",
+      "deterministic_fixture": "src/coordharness/demo.py",
+      "source_truth": [
+        "src/coordharness/board/static/cockpit.js"
+      ],
+      "third_party_assets": [
+
+      ]
+    },
+    {
+      "path": "docs/assets/screens/map-topology.png",
+      "purpose": "Coordination map Lanes view: every held row under its actor lane with the lane's session roster and recorded cross-lane acts",
+      "provenance_class": "synthetic-web-capture",
+      "sha256": "c3ab61ec7b4fc4755bb5890e6551075c64a7de5087d5d4c59a82a2e8459b27fb",
+      "width": 1600,
+      "height": 1000,
+      "synthetic": true,
+      "capture_method": "tools/capture_board_screens.py against the synthetic demo board",
+      "viewport_or_device": "1600x1000, dark, reduced motion, UTC",
+      "deterministic_fixture": "src/coordharness/demo.py",
+      "source_truth": [
+        "src/coordharness/board/static/cockpit.js"
+      ],
+      "third_party_assets": [
+
+      ]
+    },
+    {
+      "path": "docs/assets/screens/operations-atlas-overview.png",
+      "purpose": "Operations Atlas overview: one-generation read rail, operational metrics, structured questions, and the entry to the live topology",
+      "provenance_class": "synthetic-web-capture",
+      "sha256": "c3c300a655786020d65b425834ce682a63396a9f1edc88d82ee1953bb4871da9",
+      "width": 1600,
+      "height": 1000,
+      "synthetic": true,
+      "capture_method": "tools/capture_board_screens.py against the synthetic demo board; populated admitted topology required; browser-console failures refused",
+      "viewport_or_device": "1600x1000, dark, reduced motion, UTC",
+      "deterministic_fixture": "src/coordharness/demo.py",
+      "source_truth": [
+        "src/coordharness/board/operations.py",
+        "src/coordharness/board/server.py",
+        "src/coordharness/board/static/ops-atlas.js"
+      ],
+      "third_party_assets": [
+
+      ]
+    },
+    {
+      "path": "docs/assets/screens/operations-atlas-topology.png",
+      "purpose": "Operations Atlas topology: bounded owner-to-work-to-evidence graph with envelope accounting and selected-node inspection",
+      "provenance_class": "synthetic-web-capture",
+      "sha256": "c4b0c96777c92817c2d17b590b3347bf6c183420cbd5073044dfc1dd9ac397e8",
+      "width": 1600,
+      "height": 1000,
+      "synthetic": true,
+      "capture_method": "tools/capture_board_screens.py against the synthetic demo board",
+      "viewport_or_device": "1600x1000, dark, reduced motion, UTC",
+      "deterministic_fixture": "src/coordharness/demo.py",
+      "source_truth": [
+        "src/coordharness/board/graph_envelope.py",
+        "src/coordharness/board/operations.py",
+        "src/coordharness/board/static/ops-atlas-model.js",
+        "src/coordharness/board/static/ops-atlas.js"
+      ],
+      "third_party_assets": [
+
+      ]
+    },
+    {
+      "path": "docs/assets/screens/swarm-mesh-context.png",
+      "purpose": "Swarm Mesh Perspective Context lens: deterministic module clusters, typed relationships, layout-only depth projection, motion-truth receipt, graph questions, and surrounding telemetry",
+      "provenance_class": "synthetic-web-capture",
+      "sha256": "a21e0794c7316516439e239827c78dcd2eaf7da3a6d1769a1beb49dd30a32a62",
+      "width": 1600,
+      "height": 1000,
+      "synthetic": true,
+      "capture_method": "tools/capture_board_screens.py against the synthetic demo board through the shipped /mesh route; populated topology and perspective receipt required",
+      "viewport_or_device": "1600x1000 CSS pixels at 1x, dark palette, reduced motion, UTC",
+      "deterministic_fixture": "src/coordharness/demo.py",
+      "source_truth": [
+        "src/coordharness/board/server.py",
+        "src/coordharness/board/static/swarm-mesh-model.js",
+        "src/coordharness/board/static/swarm-mesh.js"
+      ],
+      "third_party_assets": [
+
+      ]
+    },
+    {
+      "path": "docs/assets/screens/swarm-mesh-critical.png",
+      "purpose": "Swarm Mesh Critical Flow lens: measured prerequisite depth, evidence, and owner groups with topology receipts",
+      "provenance_class": "synthetic-web-capture",
+      "sha256": "03dacef96f2e620c461b23d490d87e5e5ba51daf2caa653ad070c95b60c062db",
+      "width": 1600,
+      "height": 1000,
+      "synthetic": true,
+      "capture_method": "tools/capture_board_screens.py against the synthetic demo board through the shipped /mesh route after selecting Critical flow",
+      "viewport_or_device": "1600x1000 CSS pixels at 1x, dark palette, reduced motion, UTC",
+      "deterministic_fixture": "src/coordharness/demo.py",
+      "source_truth": [
+        "src/coordharness/board/operations.py",
+        "src/coordharness/board/static/swarm-mesh-model.js",
+        "src/coordharness/board/static/swarm-mesh.js"
+      ],
+      "third_party_assets": [
+
+      ]
+    },
+    {
+      "path": "docs/assets/screens/swarm-mesh-mobile.png",
+      "purpose": "Swarm Mesh phone viewport: the same bounded graph, truth receipt, controls, and semantic inspector in the responsive stack",
+      "provenance_class": "synthetic-web-capture",
+      "sha256": "92d00f1649f6fd795336f1b18236e7b68a57fcd7eb6e616b61bcc6c61c1fae34",
+      "width": 390,
+      "height": 844,
+      "synthetic": true,
+      "capture_method": "tools/capture_board_screens.py against the synthetic demo board through the shipped /mesh route; populated topology and perspective receipt required",
+      "viewport_or_device": "390x844 CSS pixels at 1x, dark palette, reduced motion, UTC",
+      "deterministic_fixture": "src/coordharness/demo.py",
+      "source_truth": [
+        "src/coordharness/board/static/swarm-mesh.css",
+        "src/coordharness/board/static/swarm-mesh-model.js",
+        "src/coordharness/board/static/swarm-mesh.js"
+      ],
+      "third_party_assets": [
+
+      ]
+    },
+    {
+      "path": "docs/assets/screens/swarm-mesh-owners.png",
+      "purpose": "Swarm Mesh actor-lane lens: lane clusters derived from published owner identities over the same bounded topology",
+      "provenance_class": "synthetic-web-capture",
+      "sha256": "e874b45e6c886143a0053f3f3f895c88bc3e4c5ce783f29c09df8bde73ae7a17",
+      "width": 1600,
+      "height": 1000,
+      "synthetic": true,
+      "capture_method": "tools/capture_board_screens.py against the synthetic demo board through the shipped /mesh route after selecting Swarm",
+      "viewport_or_device": "1600x1000 CSS pixels at 1x, dark palette, reduced motion, UTC",
+      "deterministic_fixture": "src/coordharness/demo.py",
+      "source_truth": [
+        "src/coordharness/board/server.py",
+        "src/coordharness/board/static/swarm-mesh-model.js",
+        "src/coordharness/board/static/swarm-mesh.js"
+      ],
+      "third_party_assets": [
+
+      ]
+    },
+    {
+      "path": "docs/assets/screens/swarm-mesh-traversal.png",
+      "purpose": "Swarm Mesh bounded impact traversal: highlighted typed path, selected-node inspector, source fields, and omission receipts",
+      "provenance_class": "synthetic-web-capture",
+      "sha256": "7e4e14e397fbd8bb4d439aba80905b79ffbb30773ec762a4b7181aa1498d39d6",
+      "width": 1600,
+      "height": 1000,
+      "synthetic": true,
+      "capture_method": "tools/capture_board_screens.py against the synthetic demo board through the shipped /mesh route after asking the bounded impact question; nonempty path required",
+      "viewport_or_device": "1600x1000 CSS pixels at 1x, dark palette, reduced motion, UTC",
+      "deterministic_fixture": "src/coordharness/demo.py",
+      "source_truth": [
+        "src/coordharness/board/operations.py",
+        "src/coordharness/board/static/ops-atlas-model.js",
+        "src/coordharness/board/static/swarm-mesh.js"
+      ],
+      "third_party_assets": [
+
+      ]
+    },
+    {
+      "path": "docs/assets/single-authority-flow.svg",
+      "purpose": "CLI, MCP, and Python convergence on one authority",
+      "source_truth": [
+        "src/coordharness/entry.py",
+        "src/coordharness/coord/cli.py",
+        "src/coordharness/coord/mcp_coord_server.py"
+      ],
+      "third_party_assets": [
+
+      ]
+    },
+    {
+      "path": "docs/assets/system-architecture.svg",
+      "purpose": "Product-level actors, surfaces, authority, and viewers",
+      "source_truth": [
+        "src/coordharness/coord",
+        "src/coordharness/board",
+        "apps"
+      ],
+      "third_party_assets": [
+
+      ]
+    },
+    {
+      "path": "src/coordharness/board/static/mark-accelerator.png",
+      "purpose": "owner mark for local work holding the GPU (web board)",
+      "provenance_class": "maintainer-artwork",
+      "sha256": "066d6cc27bd10b988f45f39a69ac801e1f6bb6a96a7a8f4834a1bf4832f3bcbc",
+      "width": 210,
+      "height": 256,
+      "synthetic": true,
+      "capture_method": "authored by the maintainer; resized to 256px and stripped of EXIF/XMP on import",
+      "viewport_or_device": "not a capture; drawn at 9-18pt by the owner column",
+      "deterministic_fixture": "apps/brand/Assets/README.md",
+      "source_truth": [
+        "src/coordharness/board/static/app.js"
+      ],
+      "third_party_assets": [
+
+      ]
+    },
+    {
+      "path": "src/coordharness/board/static/mark-claude.png",
+      "purpose": "chat-agent owner mark (web board)",
+      "provenance_class": "maintainer-artwork",
+      "sha256": "ed141659e5bedb300683956ccd313887661cc2da62d8c1d8900078fdd04b8230",
+      "width": 256,
+      "height": 227,
+      "synthetic": true,
+      "capture_method": "authored by the maintainer; resized to 256px and stripped of EXIF/XMP on import",
+      "viewport_or_device": "not a capture; drawn at 9-18pt by the owner column",
+      "deterministic_fixture": "apps/brand/Assets/README.md",
+      "source_truth": [
+        "src/coordharness/board/static/app.js"
+      ],
+      "third_party_assets": [
+
+      ]
+    },
+    {
+      "path": "src/coordharness/board/static/mark-codex.png",
+      "purpose": "code-agent owner mark (web board)",
+      "provenance_class": "maintainer-artwork",
+      "sha256": "0602a08b8cc30390953029defe29bd53bdaa475e27e3917bb7677e94eeabf53e",
+      "width": 256,
+      "height": 256,
+      "synthetic": true,
+      "capture_method": "authored by the maintainer; resized to 256px and stripped of EXIF/XMP on import",
+      "viewport_or_device": "not a capture; drawn at 9-18pt by the owner column",
+      "deterministic_fixture": "apps/brand/Assets/README.md",
+      "source_truth": [
+        "src/coordharness/board/static/app.js"
+      ],
+      "third_party_assets": [
+
+      ]
+    },
+    {
+      "path": "src/coordharness/board/static/mark-compute.png",
+      "purpose": "owner mark for local work on CPU (web board)",
+      "provenance_class": "maintainer-artwork",
+      "sha256": "917055fe56948a455e361c53bb045ca111b103cfb857f41a055a69f42af11788",
+      "width": 218,
+      "height": 256,
+      "synthetic": true,
+      "capture_method": "authored by the maintainer; resized to 256px and stripped of EXIF/XMP on import",
+      "viewport_or_device": "not a capture; drawn at 9-18pt by the owner column",
+      "deterministic_fixture": "apps/brand/Assets/README.md",
+      "source_truth": [
+        "src/coordharness/board/static/app.js"
+      ],
+      "third_party_assets": [
+
+      ]
+    },
+    {
+      "path": "src/coordharness/board/static/wordmark.png",
+      "purpose": "wordmark in the web board header",
+      "provenance_class": "maintainer-artwork",
+      "sha256": "dda7fcf09d8cecb0f3db7a3c545d035f813ec7fdaf8bb0aef16ce9b1f7395299",
+      "width": 1024,
+      "height": 233,
+      "synthetic": true,
+      "capture_method": "maintainer's own artwork; resized from the supplied master and stripped of EXIF/XMP",
+      "viewport_or_device": "not a capture",
+      "deterministic_fixture": "apps/brand/Assets/README.md",
+      "source_truth": [
+        "src/coordharness/board/static/index.html"
+      ],
+      "third_party_assets": [
+
+      ]
+    }
+  ]
+}

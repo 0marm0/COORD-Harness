@@ -1,0 +1,169 @@
+/* Styles for view-pulse.js. Served, not injected: the board's CSP forbids
+   inline styles. Token-only — no colour literals anywhere; fallbacks fall back
+   to tokens app.css always defines, never to a literal. Amber and red are
+   status-only house colours and deliberately appear NOWHERE in this file: a
+   recorded block or release event is a record, not a status, so those
+   families draw in neutral tokens told apart by fill, hollowness and dash. */
+
+.plroot { background: var(--c-bg, var(--panel)); display: grid; gap: 1rem; min-width: 0; }
+/* Grid items default to min-content width; one unwrappable line would widen
+   every region and hand the page a horizontal scrollbar. */
+.plroot > *, .pl-region { min-width: 0; }
+
+/* This file defines NO keyframes. A region used to rise on every repaint, which
+   read as "something arrived" on a poll that returned identical bytes and
+   contradicted this view's own copy ("it moves only when the poll returns
+   something new"). Arrival is motion.js's claim and only its claim: .m-new,
+   stamped from a real data-key diff. A view that wants motion asks the shared
+   layer for it. */
+
+.pl-hd { margin: 0 0 .5rem; font-size: .7rem; font-weight: 500; color: var(--muted);
+  letter-spacing: .12em; text-transform: uppercase; }
+.pl-floor { margin: .5rem 0 0; font-size: .76rem; color: var(--muted); }
+.pl-busfoot { margin: .45rem 0 0; font-size: .72rem; color: var(--muted); }
+.pl-empty { margin: 0; padding: .8rem 1rem; font-size: .84rem; color: var(--ink);
+  background: var(--panel); border: 1px solid var(--line); border-radius: 10px; }
+.pl-more { color: var(--muted); font-size: .74rem; margin: .2rem 0 0; }
+
+/* ------------------------------------------------------------- counters */
+.pl-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(108px, 1fr));
+  gap: .6rem; }
+.pl-stat { display: grid; gap: .15rem; padding: .55rem .7rem;
+  background: var(--c-card-a, var(--panel)); border: 1px solid var(--c-hairline, var(--line));
+  border-radius: 10px; }
+.pl-stat-n { font-size: 1.35rem; font-weight: 600; color: var(--ink);
+  font-variant-numeric: tabular-nums; line-height: 1.1; }
+.pl-stat-l { font-size: 0.713rem; color: var(--muted); letter-spacing: .1em;
+  text-transform: uppercase; }
+
+/* ------------------------------------------------------------------ bus */
+.pl-bus { display: flex; align-items: center; gap: .6rem; overflow-x: auto;
+  padding: .45rem .2rem .6rem; border-bottom: 1px solid var(--c-hairline, var(--line));
+  scrollbar-width: thin; }
+.pl-bus-ev { display: inline-flex; align-items: center; gap: .4rem; flex: none;
+  height: 32px; padding: 0 .55rem; border: 1px solid var(--c-hairline, var(--line));
+  border-radius: 999px; background: var(--c-card-a, var(--panel)); color: var(--ink); }
+.pl-bus-kind { font-size: .74rem; color: var(--ink); }
+.pl-bus-to { font-size: .74rem; color: var(--green); }
+.pl-bus-at { font-size: .7rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.pl-bus-date { font-size: 0.759rem; color: var(--muted); border: 1px solid var(--line);
+  border-radius: 4px; padding: .1rem .3rem; font-variant-numeric: tabular-nums; }
+.pl-lanebadge { font-size: 0.736rem; color: var(--ink); border: 1px solid var(--line);
+  border-radius: 4px; padding: .08rem .26rem; text-transform: uppercase;
+  letter-spacing: .06em; }
+
+.pl-chip { appearance: none; font: inherit; font-size: .72rem; cursor: pointer;
+  color: var(--ink); background: var(--panel); border: 1px solid var(--line);
+  border-radius: 6px; padding: .12rem .4rem; font-variant-numeric: tabular-nums; }
+.pl-chip:hover { background: var(--c-hover, var(--panel));
+  border-color: var(--c-hairline, var(--line)); }
+.pl-chip:focus-visible { outline: 2px solid var(--green); outline-offset: 1px; }
+
+/* ---------------------------------------------------------- two columns */
+.pl-cols { display: grid; grid-template-columns: 300px 1fr; gap: 1rem; align-items: start; }
+@media (max-width: 900px) { .pl-cols { grid-template-columns: 1fr; } }
+
+/* ----------------------------------------------------------- lane roster */
+.pl-lanes { display: grid; gap: .6rem; }
+.pl-lane { padding: .65rem .75rem; border: 1px solid var(--c-hairline, var(--line));
+  border-radius: 10px; background: var(--c-card-a, var(--panel)); }
+.pl-lane-hd { display: flex; align-items: center; gap: .45rem; }
+.pl-lane-hd b { font-size: .82rem; font-weight: 600; color: var(--ink); }
+.pl-lane-ev { margin-left: auto; font-size: .72rem; color: var(--muted);
+  font-variant-numeric: tabular-nums; }
+.pl-lane-sess { display: flex; align-items: center; gap: .3rem; margin-top: .4rem;
+  font-size: .7rem; color: var(--muted); }
+.pl-live { width: 7px; height: 7px; border-radius: 50%; background: var(--green);
+  display: inline-block; flex: none; }
+.pl-live.off { background: transparent; border: 1px solid var(--line); }
+.pl-kmix { list-style: none; margin: .45rem 0 0; padding: 0; display: grid; gap: .18rem; }
+.pl-kmix li { display: flex; align-items: center; gap: .4rem; font-size: .74rem;
+  color: var(--muted); }
+.pl-kmix li b { margin-left: auto; color: var(--ink); font-weight: 500;
+  font-variant-numeric: tabular-nums; }
+
+/* ------------------------------------------------- the exchange (SVG) */
+.pl-tscroll { overflow-x: auto; }
+.pl-tmap { display: block; }
+.pl-lattice { stroke: var(--c-hairline, var(--line)); stroke-width: 1; }
+.pl-latticebg { opacity: .35; }
+.pl-tr { fill: none; stroke: var(--green); stroke-width: 1.4; opacity: .8; }
+.pl-tiphead { fill: var(--green); opacity: .8; }
+.pl-tlab { fill: var(--muted); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+.pl-tname { fill: var(--ink); font-size: 12px; }
+.pl-node { fill: var(--muted); }
+.pl-node.live { fill: var(--green); }
+.pl-node-glow { fill: var(--green); opacity: .7; }
+.pl-undir { list-style: none; margin: .35rem 0 0; padding: 0; display: grid; gap: .2rem; }
+.pl-undir li { display: flex; align-items: center; gap: .4rem; font-size: .76rem;
+  color: var(--muted); }
+
+/* -------------------------------------------------------- kind families
+   Neutral encodings only: fill / hollow / dash tell families apart and claim
+   nothing else. The accent (--green) marks the decision and routing families;
+   everything quieter is ink, muted or line. */
+.pl-sw { width: 10px; height: 10px; border-radius: 2px; display: inline-block;
+  flex: none; }
+.pl-f-decision { background: var(--green); }
+.pl-f-routing { background: var(--panel); border: 1.5px solid var(--green); }
+.pl-f-block { background: var(--panel); border: 1.5px dashed var(--ink); }
+.pl-f-release { background: var(--panel); border: 1.5px solid var(--ink); }
+.pl-f-repair { background: var(--muted); }
+.pl-f-note { background: var(--line); }
+.pl-f-other { background: var(--panel); border: 1px dashed var(--muted); }
+
+/* ---------------------------------------------------------- spectrum */
+.pl-spectrum { display: flex; height: 14px; border-radius: 4px; overflow: hidden;
+  border: 1px solid var(--c-hairline, var(--line)); }
+/* No min-width. A floor here would be a size that stops counting records: at
+   4999-vs-1 the thin segment is 0.02% (~0.14px of a 680px strip) and a 2px
+   minimum drew it fourteen times too wide. A kind too few to fill a pixel now
+   draws nothing and is read from the vocabulary list instead, which the caption
+   says. */
+.pl-seg { display: block; flex: none; height: 100%; border-radius: 0; }
+.pl-legendline { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem;
+  margin: .5rem 0 0; font-size: .72rem; color: var(--muted); }
+.pl-dotgap { width: .6rem; display: inline-block; }
+.pl-vocab { margin-top: .5rem; }
+.pl-vocab > summary { cursor: pointer; font-size: .74rem; color: var(--muted); }
+.pl-vocab > summary:focus-visible { outline: 2px solid var(--green); outline-offset: 1px; }
+.pl-kinds { list-style: none; margin: .4rem 0 0; padding: 0; display: grid;
+  gap: .2rem; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
+.pl-kinds li { display: flex; align-items: center; gap: .4rem; font-size: .74rem;
+  color: var(--muted); }
+.pl-kinds li b { margin-left: auto; color: var(--ink); font-weight: 500;
+  font-variant-numeric: tabular-nums; }
+
+/* --------------------------------------------------------- day ledger */
+.pl-days { list-style: none; margin: 0; padding: 0; display: grid; gap: .25rem;
+  margin-top: .3rem; }
+.pl-days li { display: flex; align-items: baseline; gap: .7rem; font-size: .76rem;
+  color: var(--muted); padding: .3rem .5rem; border: 1px solid var(--c-hairline, var(--line));
+  border-radius: 8px; background: var(--c-card-a, var(--panel)); }
+.pl-days li b { color: var(--ink); font-weight: 500; font-variant-numeric: tabular-nums; }
+.pl-day-n { font-variant-numeric: tabular-nums; }
+.pl-day-span { margin-left: auto; font-variant-numeric: tabular-nums; }
+
+/* ---------------------------------------------------------- readnote
+   Scoped under .plroot so this file stands alone; the shape matches the other
+   views' disclosure, and .body is the styled wrapper the paragraphs need. */
+.plroot .readnote { margin: .5rem 0 .9rem; }
+.plroot .readnote > summary { cursor: pointer; color: var(--muted); font-size: .78rem;
+  list-style: none; display: inline-flex; align-items: center; gap: .4em;
+  padding: .25rem .6rem; border: 1px solid var(--line); border-radius: 999px; }
+.plroot .readnote > summary::-webkit-details-marker { display: none; }
+.plroot .readnote > summary::before { content: "?"; font-size: .7rem; opacity: .6;
+  border: 1px solid currentColor; border-radius: 50%; width: 1.1em; height: 1.1em;
+  display: grid; place-items: center; }
+.plroot .readnote[open] > summary { color: var(--ink); }
+.plroot .readnote > summary:focus-visible { outline: 2px solid var(--green); outline-offset: 1px; }
+.plroot .readnote .body { margin-top: .6rem; padding-left: .8rem;
+  border-left: 2px solid var(--line); }
+.plroot .readnote .body p { margin: .45rem 0; font-size: .8rem; color: var(--muted); }
+
+/* Nothing view-local animates, so there is nothing view-local to switch off
+   here; motion.css kills the shared layer's four claims under the same query.
+   Transitions are pinned off so a future hover rule cannot smuggle motion in. */
+@media (prefers-reduced-motion: reduce) {
+  .plroot *, .plroot *::before, .plroot *::after { transition: none; animation: none; }
+}

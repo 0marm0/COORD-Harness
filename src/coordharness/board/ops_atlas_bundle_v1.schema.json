@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://coordharness.dev/schema/ops-atlas-bundle-v1.json",
+  "title": "OpsAtlasBundleV1",
+  "description": "One coherent Operations Atlas cache generation and its read receipt.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "generated_at",
+    "cache_generation",
+    "snapshot",
+    "graph",
+    "context",
+    "timeline",
+    "operations",
+    "read_status"
+  ],
+  "properties": {
+    "schema_version": {"const": "OpsAtlasBundleV1"},
+    "generated_at": {"type": "string", "minLength": 1},
+    "cache_generation": {"type": "integer", "minimum": 1},
+    "snapshot": {
+      "type": "object",
+      "required": ["schema_version", "generated_at", "rows"],
+      "additionalProperties": true
+    },
+    "graph": {
+      "type": "object",
+      "required": ["schema_version", "generated_at", "nodes", "edges"],
+      "additionalProperties": true
+    },
+    "context": {
+      "type": "object",
+      "required": ["schema_version", "generated_at", "items"],
+      "additionalProperties": true
+    },
+    "timeline": {
+      "type": "object",
+      "required": ["schema_version", "generated_at", "items"],
+      "additionalProperties": true
+    },
+    "operations": {"$ref": "https://coordharness.dev/schema/ops-atlas-v1.json"},
+    "read_status": {"$ref": "https://coordharness.dev/schema/read-status-v1.json"}
+  },
+  "additionalProperties": false
+}

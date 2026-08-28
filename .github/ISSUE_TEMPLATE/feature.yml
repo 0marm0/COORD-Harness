@@ -1,0 +1,30 @@
+name: Feature request
+description: Propose a product outcome or compatibility improvement.
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What user or operator failure should this prevent?
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Desired outcome
+      description: Describe observable behavior, not only an implementation.
+    validations:
+      required: true
+  - type: dropdown
+    id: boundary
+    attributes:
+      label: Boundary affected
+      options: [Lifecycle authority, MCP or CLI, Context retrieval, Jobs, Read-only projection, Native client, Security or privacy, Documentation]
+    validations:
+      required: true
+  - type: textarea
+    id: risks
+    attributes:
+      label: Compatibility and security risks

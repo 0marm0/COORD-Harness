@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 650" role="img" aria-labelledby="title desc">
+  <title id="title">Web and native read-only projection topology</title>
+  <desc id="desc">The coordination core is the only writer to SQLite. A loopback-by-default HTTP service opens the database read-only and exposes health plus a versioned snapshot. Browser and native clients issue GET requests and may cache the last good snapshot. Mutation methods are refused; non-loopback binding requires explicit two-part opt-in but adds no authentication.</desc>
+  <style>
+    :root{
+      --ink:#22292f; --muted:#5b666d; --line:#7d8a91; --rule:#d7dee1;
+      --surface:#f2f5f6; --bg:transparent;
+      --agent:#2C5F8D;     --agent-fill:#e4edf5;
+      --authority:#1F6F63; --authority-fill:#dcece8;
+      --derived:#6A5A9E;   --derived-fill:#ebe7f4;
+      --refused:#A6392B;   --refused-fill:#f6e5e2;
+      --proof:#3E7A2E;     --proof-fill:#e4f0df;
+    }
+    @media (prefers-color-scheme: dark){
+      :root{
+        --ink:#dfe6ec; --muted:#9aa4ad; --line:#8b959c; --rule:#2b3238;
+        --surface:#161c22; --bg:transparent;
+        --agent:#79AEE6;     --agent-fill:#152a3c;
+        --authority:#4FC3AC; --authority-fill:#0f2c27;
+        --derived:#B0A2E8;   --derived-fill:#221f38;
+        --refused:#F0887A;   --refused-fill:#33191a;
+        --proof:#74BF62;     --proof-fill:#182b14;
+      }
+    }
+    text{ font-family:ui-sans-serif, -apple-system, Segoe UI, Roboto, sans-serif; }
+    .label{ font-size:14px; font-weight:600; fill:var(--ink); text-anchor:middle; }
+    .small{ font-size:12px; fill:var(--muted); text-anchor:middle; }
+    .writer{ fill:var(--agent-fill); stroke:var(--agent); stroke-width:1.5; }
+    .db{ fill:var(--authority-fill); stroke:var(--authority); stroke-width:1.75; }
+    .api{ fill:var(--proof-fill); stroke:var(--proof); stroke-width:1.75; }
+    .client{ fill:var(--derived-fill); stroke:var(--derived); stroke-width:1.5; }
+    .deny{ fill:var(--refused-fill); stroke:var(--refused); stroke-width:1.5; }
+    .arrow{ fill:none; stroke:var(--line); stroke-width:1.5; marker-end:url(#a); }
+    .read{ fill:none; stroke:var(--proof); stroke-width:1.5; stroke-dasharray:6 5; marker-end:url(#g); }
+    .no{ fill:none; stroke:var(--refused); stroke-width:1.75; }
+  </style>
+  <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 10 5 0 10z" fill="var(--line)"/></marker><marker id="g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 10 5 0 10z" fill="var(--proof)"/></marker></defs>
+  <rect class="writer" x="55" y="75" width="270" height="100" rx="18"/><text class="label" x="190" y="112">typed lifecycle core</text><text class="small" x="190" y="141">only write path</text><text class="small" x="190" y="162">claim · lease · proof · event</text>
+  <rect class="db" x="440" y="75" width="320" height="100" rx="50"/><text class="label" x="600" y="115">coord.db</text><text class="small" x="600" y="143">SQLite-WAL authority</text><text class="small" x="600" y="163">local filesystem</text>
+  <path class="arrow" d="M325 125H438"/>
+  <rect class="api" x="385" y="260" width="430" height="135" rx="20"/><text class="label" x="600" y="298">coord-board · Preview</text><text class="small" x="600" y="326">127.0.0.1:7870 · read-only SQLite URI</text><text class="small" x="600" y="350">GET /api/v1/snapshot · GET /healthz</text><text class="small" x="600" y="375">Host checked · GET / HEAD only</text>
+  <path class="read" d="M600 175V258"/>
+  <rect class="client" x="55" y="500" width="300" height="100" rx="18"/><text class="label" x="205" y="537">browser dashboard</text><text class="small" x="205" y="565">same-origin GET requests</text><text class="small" x="205" y="586">no lifecycle controls</text>
+  <rect class="client" x="450" y="500" width="300" height="100" rx="18"/><text class="label" x="600" y="537">macOS client · Preview</text><text class="small" x="600" y="565">URLSession GET-only</text><text class="small" x="600" y="586">last-good local cache</text>
+  <rect class="client" x="845" y="500" width="300" height="100" rx="18"/><text class="label" x="995" y="537">iOS client · Preview</text><text class="small" x="995" y="565">URLSession GET-only</text><text class="small" x="995" y="586">last-good local cache</text>
+  <path class="read" d="M480 395V445H205V498"/><path class="read" d="M600 395V498"/><path class="read" d="M720 395V445H995V498"/>
+  <rect class="deny" x="875" y="250" width="270" height="110" rx="18"/><text class="label" x="1010" y="286">refused by default</text><text class="small" x="1010" y="315">POST · PUT · PATCH · DELETE</text><text class="small" x="1010" y="340">remote bind without two-part opt-in</text>
+  <path class="no" d="M890 267L1130 345M1130 267L890 345"/>
+  <text class="small" x="600" y="630">Viewers can be stale or unavailable without changing lifecycle truth.</text>
+</svg>

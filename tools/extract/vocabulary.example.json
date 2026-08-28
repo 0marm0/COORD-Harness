@@ -1,0 +1,43 @@
+{
+  "_comment": "Rename and refusal vocabulary for extracting your own code from a private repository. Copy to vocabulary.json and edit. vocabulary.json is gitignored on purpose: a table that lists what you are renaming, and a denylist that names what you are hiding, both disclose the thing they exist to remove.",
+  "renames": [
+    [
+      "\\byourproject\\.internal\\b",
+      "yourpackage.core"
+    ],
+    [
+      "\\bYOURPROJECT_",
+      "YOURPACKAGE_"
+    ],
+    [
+      "\\byourproject_",
+      "yourpackage_"
+    ],
+    [
+      "\\byourproject\\b",
+      "yourpackage"
+    ]
+  ],
+  "forbidden": [
+    [
+      "\\byourproject\\b",
+      "private project name",
+      "i"
+    ],
+    [
+      "\\bACME|Contoso\\b",
+      "customer names",
+      "i"
+    ],
+    [
+      "\\bTICKET-\\d+",
+      "internal ticket identifier",
+      "i"
+    ]
+  ],
+  "source_prefixes": [
+    "",
+    "subproject-a/",
+    "subproject-b/"
+  ]
+}

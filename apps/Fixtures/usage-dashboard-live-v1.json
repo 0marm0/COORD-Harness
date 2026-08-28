@@ -1,0 +1,65 @@
+{
+  "schema": "coordharness.usage-intelligence.v1",
+  "generated_at": "2026-08-26T16:25:01Z",
+  "stale_after": "2026-08-26T16:26:01Z",
+  "providers": {
+    "codex": {
+      "live_observed_at": "2026-08-26T16:25:00Z",
+      "source": {
+        "kind": "usage_v2_ledger",
+        "canonical": true,
+        "schema": "coordharness.usage-ledger.v2"
+      },
+      "history": {
+        "daily": [
+          {"date": "2026-08-26", "total_tokens": 101}
+        ],
+        "today_total_tokens": 101,
+        "rolling_7d_total_tokens": 701,
+        "calendar_week_total_tokens": 501,
+        "all_time_total_tokens": 9001,
+        "semantics": "canonical_correctable",
+        "ever_observed_envelope": {"total_tokens": 10001},
+        "provider_reported_account": {
+          "daily": [
+            {"date": "2026-08-26", "total_tokens": 202}
+          ],
+          "today_total_tokens": 202,
+          "rolling_7d_total_tokens": 1402,
+          "calendar_week_total_tokens": 1002,
+          "all_time_total_tokens": 18002,
+          "semantics": "provider_reported_account"
+        }
+      },
+      "breakdowns": {
+        "models": {
+          "status": "available",
+          "semantics": "canonical_ledger_coverage",
+          "canonical": true,
+          "coverage_start": "2026-02-27",
+          "coverage_end": "2026-08-26",
+          "observed_at": "2026-08-26T16:25:00Z",
+          "items": [
+            {
+              "key": "gpt-5.6-sol",
+              "label": "GPT-5.6 Sol",
+              "total_tokens": 9001,
+              "provider_native_cost_nanos": 123456789,
+              "api_rate_estimate_nanos": 987654321
+            }
+          ]
+        },
+        "projects": {
+          "status": "available",
+          "semantics": "sanitized_project_coverage",
+          "canonical": true,
+          "coverage_start": "2026-02-27",
+          "coverage_end": "2026-08-26",
+          "observed_at": "2026-08-26T16:25:00Z",
+          "items": []
+        }
+      }
+    }
+  },
+  "errors": []
+}

@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 650" role="img" aria-labelledby="title desc">
+  <title id="title">Work-item lifecycle, leases, and proof</title>
+  <desc id="desc">A queued item becomes running only under a live claim. Heartbeats renew its lease. Expiry returns it to queued. Completion checks the declared proof before atomically marking the claim and work item done.</desc>
+  <style>
+    :root{
+      --ink:#22292f; --muted:#5b666d; --line:#7d8a91; --rule:#d7dee1;
+      --surface:#f2f5f6; --bg:transparent;
+      --agent:#2C5F8D;     --agent-fill:#e4edf5;
+      --authority:#1F6F63; --authority-fill:#dcece8;
+      --derived:#6A5A9E;   --derived-fill:#ebe7f4;
+      --refused:#A6392B;   --refused-fill:#f6e5e2;
+      --proof:#3E7A2E;     --proof-fill:#e4f0df;
+    }
+    @media (prefers-color-scheme: dark){
+      :root{
+        --ink:#dfe6ec; --muted:#9aa4ad; --line:#8b959c; --rule:#2b3238;
+        --surface:#161c22; --bg:transparent;
+        --agent:#79AEE6;     --agent-fill:#152a3c;
+        --authority:#4FC3AC; --authority-fill:#0f2c27;
+        --derived:#B0A2E8;   --derived-fill:#221f38;
+        --refused:#F0887A;   --refused-fill:#33191a;
+        --proof:#74BF62;     --proof-fill:#182b14;
+      }
+    }
+    text{ font-family:ui-sans-serif, -apple-system, Segoe UI, Roboto, sans-serif; }
+    .label{ font-size:14px; font-weight:600; fill:var(--ink); text-anchor:middle; }
+    .small{ font-size:12px; fill:var(--muted); text-anchor:middle; }
+    .state{ fill:var(--surface); stroke:var(--line); stroke-width:1.5; }
+    .running{ fill:var(--agent-fill); stroke:var(--agent); stroke-width:1.75; }
+    .done{ fill:var(--proof-fill); stroke:var(--proof); stroke-width:1.75; }
+    .guard{ fill:var(--refused-fill); stroke:var(--refused); stroke-width:1.5; }
+    .arrow{ fill:none; stroke:var(--line); stroke-width:1.5; marker-end:url(#a); }
+    .return{ fill:none; stroke:var(--refused); stroke-width:1.5; stroke-dasharray:6 5; marker-end:url(#orange); }
+    .receipt{ fill:none; stroke:var(--proof); stroke-width:1.75; marker-end:url(#green); }
+  </style>
+  <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 10 5 0 10z" fill="var(--line)"/></marker><marker id="orange" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 10 5 0 10z" fill="var(--refused)"/></marker><marker id="green" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 10 5 0 10z" fill="var(--proof)"/></marker></defs>
+  <rect class="state" x="55" y="110" width="190" height="90" rx="45"/><text class="label" x="150" y="148">planned</text><text class="small" x="150" y="174">described</text>
+  <rect class="state" x="300" y="110" width="190" height="90" rx="45"/><text class="label" x="395" y="148">queued</text><text class="small" x="395" y="174">claimable</text>
+  <rect class="running" x="555" y="95" width="230" height="120" rx="60"/><text class="label" x="670" y="142">running</text><text class="small" x="670" y="170">live claim + valid lease</text><text class="small" x="670" y="191">+ process evidence</text>
+  <rect class="done" x="960" y="110" width="190" height="90" rx="45"/><text class="label" x="1055" y="148">done</text><text class="small" x="1055" y="174">proof + receipt</text>
+  <path class="arrow" d="M245 155H298"/><path class="arrow" d="M490 155H553"/>
+  <text class="small" x="522" y="138">claim_work</text>
+  <rect class="guard" x="815" y="270" width="300" height="116" rx="18"/><text class="label" x="965" y="305">completion gate</text><text class="small" x="965" y="334">live owning claim</text><text class="small" x="965" y="356">declared done_signal satisfied</text><text class="small" x="965" y="378">review / terminal guards pass</text>
+  <path class="arrow" d="M785 155H840V268"/><path class="receipt" d="M965 270V224H1055V202"/>
+  <rect class="guard" x="505" y="310" width="330" height="98" rx="18"/><text class="label" x="670" y="345">heartbeat</text><text class="small" x="670" y="373">renews lease; it does not create</text><text class="small" x="670" y="394">a second progress authority</text>
+  <path class="arrow" d="M670 215V308"/>
+  <rect class="state" x="175" y="485" width="250" height="100" rx="18"/><text class="label" x="300" y="523">paused / blocked</text><text class="small" x="300" y="550">durable next step + resume trigger</text>
+  <path class="arrow" d="M555 184C470 240 390 330 310 483"/>
+  <path class="return" d="M555 135C480 48 345 45 345 108"/><text class="small" x="430" y="48">lease expires or process dies → derived status queues again</text>
+  <path class="return" d="M300 485V440C300 430 395 430 395 202"/><text class="small" x="405" y="450">explicit recovery</text>
+  <text class="small" x="600" y="625">Declared intent and observed status are separate; readers recompute status from current evidence.</text>
+</svg>

@@ -1,0 +1,452 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://coordharness.dev/schema/graph-envelope-v1.json",
+  "title": "GraphEnvelopeV1",
+  "description": "Bounded public graph projection with complete omission and collision accounting.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "generated_at",
+    "source",
+    "population",
+    "eligible",
+    "emitted",
+    "omitted",
+    "collisions",
+    "unknowns",
+    "caps",
+    "complete",
+    "nodes",
+    "edges",
+    "frontier",
+    "admission"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "GraphEnvelopeV1"
+    },
+    "generated_at": {
+      "type": "string"
+    },
+    "source": {
+      "type": "object",
+      "required": [
+        "declared",
+        "graph_schema_version",
+        "content_sha256",
+        "freshness_state"
+      ],
+      "properties": {
+        "declared": {
+          "type": "string",
+          "minLength": 1
+        },
+        "graph_schema_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "content_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "freshness_state": {
+          "enum": [
+            "stale",
+            "not_declared_stale"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "population": {
+      "$ref": "#/$defs/countPair"
+    },
+    "eligible": {
+      "$ref": "#/$defs/countPair"
+    },
+    "emitted": {
+      "type": "object",
+      "required": [
+        "nodes",
+        "edges",
+        "bytes"
+      ],
+      "properties": {
+        "nodes": {
+          "$ref": "#/$defs/count"
+        },
+        "edges": {
+          "$ref": "#/$defs/count"
+        },
+        "bytes": {
+          "$ref": "#/$defs/count"
+        }
+      },
+      "additionalProperties": false
+    },
+    "omitted": {
+      "type": "object",
+      "required": [
+        "nodes",
+        "edges",
+        "node_reasons",
+        "edge_reasons"
+      ],
+      "properties": {
+        "nodes": {
+          "$ref": "#/$defs/count"
+        },
+        "edges": {
+          "$ref": "#/$defs/count"
+        },
+        "node_reasons": {
+          "$ref": "#/$defs/reasonRows"
+        },
+        "edge_reasons": {
+          "$ref": "#/$defs/reasonRows"
+        }
+      },
+      "additionalProperties": false
+    },
+    "collisions": {
+      "type": "object",
+      "required": [
+        "nodes",
+        "edges"
+      ],
+      "properties": {
+        "nodes": {
+          "$ref": "#/$defs/collisionReceipt"
+        },
+        "edges": {
+          "$ref": "#/$defs/collisionReceipt"
+        }
+      },
+      "additionalProperties": false
+    },
+    "unknowns": {
+      "type": "object",
+      "required": [
+        "node_kinds",
+        "edge_kinds",
+        "relationship_states"
+      ],
+      "properties": {
+        "node_kinds": {
+          "$ref": "#/$defs/reasonRows"
+        },
+        "edge_kinds": {
+          "$ref": "#/$defs/reasonRows"
+        },
+        "relationship_states": {
+          "$ref": "#/$defs/reasonRows"
+        }
+      },
+      "additionalProperties": false
+    },
+    "caps": {
+      "type": "object",
+      "required": [
+        "nodes",
+        "edges",
+        "bytes"
+      ],
+      "properties": {
+        "nodes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "edges": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "complete": {
+      "type": "boolean"
+    },
+    "nodes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/node"
+      }
+    },
+    "edges": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/edge"
+      }
+    },
+    "frontier": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rule",
+        "open_reserve_ratio",
+        "open_reserve",
+        "open_eligible",
+        "open_emitted",
+        "open_omitted",
+        "reserved_admitted"
+      ],
+      "properties": {
+        "rule": {
+          "type": "string"
+        },
+        "open_reserve_ratio": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "open_reserve": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "open_eligible": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "open_emitted": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "open_omitted": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "reserved_admitted": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "admission": {
+      "$ref": "#/$defs/admission"
+    }
+  },
+  "$defs": {
+    "count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "countPair": {
+      "type": "object",
+      "required": [
+        "nodes",
+        "edges"
+      ],
+      "properties": {
+        "nodes": {
+          "$ref": "#/$defs/count"
+        },
+        "edges": {
+          "$ref": "#/$defs/count"
+        }
+      },
+      "additionalProperties": false
+    },
+    "admission": {
+      "type": "object",
+      "required": [
+        "state",
+        "reason_code",
+        "reason",
+        "missing_prerequisite",
+        "population",
+        "eligible",
+        "admitted",
+        "omitted",
+        "source",
+        "freshness"
+      ],
+      "properties": {
+        "state": {
+          "enum": ["available", "low_information"]
+        },
+        "reason_code": {
+          "enum": [
+            "authoritative_relationships_admitted",
+            "authoritative_relationships_absent",
+            "authoritative_relationships_ineligible",
+            "authoritative_relationships_not_admitted"
+          ]
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 240
+        },
+        "missing_prerequisite": {
+          "enum": [
+            "",
+            "authoritative_graph_relationships",
+            "eligible_authoritative_graph_relationships",
+            "admitted_authoritative_graph_relationships"
+          ]
+        },
+        "population": {"$ref": "#/$defs/countPair"},
+        "eligible": {"$ref": "#/$defs/countPair"},
+        "admitted": {"$ref": "#/$defs/countPair"},
+        "omitted": {
+          "type": "object",
+          "required": ["nodes", "edges", "node_reasons", "edge_reasons"],
+          "properties": {
+            "nodes": {"$ref": "#/$defs/count"},
+            "edges": {"$ref": "#/$defs/count"},
+            "node_reasons": {"$ref": "#/$defs/reasonRows"},
+            "edge_reasons": {"$ref": "#/$defs/reasonRows"}
+          },
+          "additionalProperties": false
+        },
+        "source": {
+          "type": "object",
+          "required": [
+            "declared",
+            "graph_schema_version",
+            "generated_at",
+            "content_fingerprint_ref"
+          ],
+          "properties": {
+            "declared": {"type": "string", "minLength": 1, "maxLength": 160},
+            "graph_schema_version": {"type": "string", "minLength": 1, "maxLength": 80},
+            "generated_at": {"type": "string", "maxLength": 80},
+            "content_fingerprint_ref": {"const": "source.content_sha256"}
+          },
+          "additionalProperties": false
+        },
+        "freshness": {
+          "type": "object",
+          "required": ["state", "stale"],
+          "properties": {
+            "state": {"enum": ["stale", "not_declared_stale"]},
+            "stale": {"type": "boolean"}
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "reasonRows": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "reason",
+          "count"
+        ],
+        "properties": {
+          "reason": {
+            "type": "string",
+            "minLength": 1
+          },
+          "count": {
+            "$ref": "#/$defs/count"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "collisionReceipt": {
+      "type": "object",
+      "required": [
+        "identity_count",
+        "entry_count",
+        "ids",
+        "truncated"
+      ],
+      "properties": {
+        "identity_count": {
+          "$ref": "#/$defs/count"
+        },
+        "entry_count": {
+          "$ref": "#/$defs/count"
+        },
+        "ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "truncated": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "node": {
+      "type": "object",
+      "required": [
+        "id",
+        "kind",
+        "label",
+        "status",
+        "missing"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "type": "string"
+        },
+        "missing": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "edge": {
+      "type": "object",
+      "required": [
+        "id",
+        "source",
+        "target",
+        "kind",
+        "source_field",
+        "relationship_state"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source": {
+          "type": "string",
+          "minLength": 1
+        },
+        "target": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source_field": {
+          "type": "string"
+        },
+        "relationship_state": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}
