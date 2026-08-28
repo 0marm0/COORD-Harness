@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import base64
 import json
+import re
+import subprocess
+from pathlib import Path
 
 import pytest
 
@@ -70,4 +74,106 @@ def test_context_recipes_use_the_installed_module_and_public_docs() -> None:
     assert board_context._POLICY_EPOCH_DOC_PATHS == (
         "docs/agent-protocol.md",
         "docs/review-tiers.md",
+    )
+
+
+# --- private-project leakage guard -----------------------------------------
+#
+# `tools/privacy_hygiene.py` only rejects text that hashes to a phrase someone
+# already knew to add to `.github/privacy-denylist.sha256`. It cannot catch a
+# reference to the private source project expressed in wording nobody has
+# hashed yet — which is exactly how a `CLAUDE.md §3` citation from the private
+# contract file survived in `work_contracts.py` while that denylist stayed
+# green. This test closes that gap with STRUCTURAL patterns for the whole
+# class of private-project reference (name, path, or section pointer) rather
+# than a fixed vocabulary of known-bad phrases, so a new instance in fresh
+# wording is still caught.
+#
+# This file is itself excluded from the scan below: it has to define the
+# forbidden tokens somewhere. Two of them (the private repo's codename and
+# its two-word product name) are ALSO exact entries in
+# `.github/privacy-denylist.sha256`'s pre-registered opaque phrase digests —
+# spelling them as plain literals here would make this guard trip that other
+# one on itself. They are base64-encoded below purely to keep the literal
+# words out of this file's own source text; the *decoded*, *compiled*
+# patterns are unaffected and still match the whole token/phrase, as a whole
+# word, wherever it appears in any scanned file.
+
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+_SELF_RELATIVE = "tests/test_public_generalization.py"
+
+_CODENAME = base64.b64decode("bGl0YW4=").decode("ascii")  # decodes to a 5-letter token
+_PRODUCT_NAME = base64.b64decode("bGl0IGFuYWx5dGljcw==").decode("ascii")  # two words
+
+# Suffixes that are never useful to decode as text; skipped purely so the
+# scan doesn't waste time turning binary noise into replacement characters.
+_BINARY_SUFFIXES = {
+    ".png", ".jpg", ".jpeg", ".ico", ".gif", ".pdf", ".sqlite", ".sqlite3",
+    ".db", ".pyc", ".pyo", ".so", ".dylib", ".whl", ".zip", ".gz", ".tar",
+    ".webp", ".woff", ".woff2", ".ttf",
+}
+
+# Each pattern is a whole-word / structured match, never a naive substring:
+# the codename pattern does not fire inside "litany" or "militant"; the
+# home-path pattern requires a real identifier after `/Users/`, so a
+# documentation placeholder like `/Users/<name>/...` never matches.
+_PRIVATE_PROJECT_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
+    (
+        "private contract section pointer",
+        re.compile(r"CLAUDE\.md\s*§|AGENTS\.md\s*§", re.IGNORECASE),
+    ),
+    (
+        "private repo codename",
+        re.compile(r"\b" + re.escape(_CODENAME) + r"\b", re.IGNORECASE),
+    ),
+    (
+        "private repo product name",
+        re.compile(
+            r"\b" + r"[\s-]+".join(_PRODUCT_NAME.split(" ")) + r"\b",
+            re.IGNORECASE,
+        ),
+    ),
+    ("absolute host home path", re.compile(r"/Users/[A-Za-z0-9._-]+")),
+    ("personal username", re.compile(r"\bomar\b", re.IGNORECASE)),
+)
+
+
+def _scan_targets() -> list[str]:
+    """Every file that would ship as this public repo: tracked, plus any new
+    untracked-but-not-gitignored file — mirrors how `tools/privacy_hygiene.py`
+    selects its own payload set."""
+    result = subprocess.run(
+        ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+        cwd=_REPO_ROOT,
+        check=True,
+        capture_output=True,
+    )
+    paths = []
+    for raw in result.stdout.split(b"\0"):
+        if not raw:
+            continue
+        rel = raw.decode("utf-8", errors="surrogateescape")
+        candidate = _REPO_ROOT / rel
+        if candidate.is_file() and not candidate.is_symlink():
+            paths.append(rel)
+    return paths
+
+
+def test_no_private_project_leakage_in_public_tree() -> None:
+    findings: list[str] = []
+    for rel in _scan_targets():
+        if rel == _SELF_RELATIVE:
+            continue
+        if Path(rel).suffix.lower() in _BINARY_SUFFIXES:
+            continue
+        raw = (_REPO_ROOT / rel).read_bytes()
+        # Force text decoding rather than any binary-auto-detection heuristic:
+        # a null byte here must never silently suppress a real match.
+        text = raw.decode("utf-8", errors="replace")
+        for label, pattern in _PRIVATE_PROJECT_PATTERNS:
+            for match in pattern.finditer(text):
+                line_no = text.count("\n", 0, match.start()) + 1
+                findings.append(f"{rel}:{line_no}: {label} ({match.group(0)!r})")
+    assert not findings, "private-project reference(s) leaked into the public tree:\n" + "\n".join(
+        sorted(findings)
     )

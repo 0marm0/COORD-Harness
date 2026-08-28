@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 from contextlib import contextmanager
 from pathlib import Path
 import threading
@@ -11,6 +13,25 @@ from coordharness.board.server import make_server
 
 
 playwright_api = pytest.importorskip("playwright.sync_api")
+
+
+def _contrast(fg: str, bg: str) -> float:
+    """WCAG contrast ratio between two ``rgb(r, g, b)`` strings.
+
+    Recomputed here rather than pinned so a future palette change that lowers
+    legibility fails on the property that matters, not on a hex literal.
+    """
+
+    def luminance(value: str) -> float:
+        channels = [int(part) / 255 for part in re.findall(r"\d+", value)[:3]]
+        linear = [
+            c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+            for c in channels
+        ]
+        return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
+
+    high, low = sorted((luminance(fg), luminance(bg)), reverse=True)
+    return (high + 0.05) / (low + 0.05)
 
 
 @contextmanager
@@ -176,7 +197,12 @@ def test_board_uses_coord_cockpit_tokens_and_dense_geometry(tmp_path: Path) -> N
             assert contract["bodyBackground"] == "rgb(0, 0, 0)"
             assert contract["cardBackground"] == "rgb(7, 8, 11)"
             assert contract["text"] == "rgb(244, 246, 251)"
-            assert contract["muted"] == "rgb(111, 118, 131)"
+            # Raised from #6f7683 (4.25:1) to #8d95a3 (6.44:1) against the card
+            # background: this token carries the monospace work-id column, the one
+            # string a reader has to transcribe. Pinning the hex alone is what let
+            # the old value sit below AA unnoticed, so assert the ratio too.
+            assert contract["muted"] == "rgb(141, 149, 163)"
+            assert _contrast(contract["muted"], contract["cardBackground"]) >= 4.5
             assert contract["headerHeight"] == 58
             assert contract["activeUnderline"] == "rgb(94, 157, 255)"
             assert 32 <= contract["controlHeight"] <= 36

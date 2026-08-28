@@ -40,6 +40,17 @@ The checked-in `.codex/config.toml` and `.mcp.json` invoke
 activated shell, a GUI application's PATH, or an original developer's absolute path.
 The byte-identical copyable templates live in `.codex/templates/`.
 
+Those relative paths — `./.venv/bin/python`, `COORD_PROJECT_ROOT="."`, and
+`COORD_DB=".coordharness/coord.db"` — resolve against the client's working directory,
+so they are correct only for a project-scoped client that launches the server *in* the
+coordinated repository. That is exactly the case these two files cover. Launched from
+anywhere else the same values fail closed with
+`FileNotFoundError: coord.db does not exist: .coordharness/coord.db`, which is why the
+[README](../README.md) registration commands and the generic-client JSON use absolute
+paths: they register one server against a repository the client does not necessarily
+run in. Use relative paths for the in-repo configs, absolute paths for every
+registration that crosses out of the project root.
+
 For another fresh project that already contains the root instructions and mirrored
 skills, run:
 

@@ -944,7 +944,7 @@
   text-rendering: optimizeLegibility;
 }
 .mesh-body .eyebrow {
-  color: var(--faint, #6f7683);
+  color: var(--faint, #8d95a3);
   font: 720 10px/1.2 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
   letter-spacing: .10em;
   text-transform: uppercase;
@@ -979,7 +979,7 @@
 }
 .mesh-body .rail-metrics > div:first-child { border-left: 1px solid rgba(255, 255, 255, .045); }
 .mesh-body .rail-metrics dt {
-  color: var(--faint, #6f7683);
+  color: var(--faint, #8d95a3);
   font: 720 9.5px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
   letter-spacing: .08em;
 }
@@ -1004,7 +1004,7 @@
   letter-spacing: .09em;
 }
 .mesh-body .rail-state small {
-  color: var(--faint, #6f7683);
+  color: var(--faint, #8d95a3);
   font-size: 10.5px;
   white-space: nowrap;
 }
@@ -1057,7 +1057,7 @@
 .mesh-body .command-title > p:last-child {
   max-width: 38rem;
   margin-top: 5px;
-  color: var(--faint, #6f7683);
+  color: var(--faint, #8d95a3);
   font-size: 11.5px;
   line-height: 1.35;
 }
@@ -1094,7 +1094,7 @@
   background: var(--surface-2, #0b0d12);
 }
 .mesh-body .mesh-search > span {
-  color: var(--faint, #6f7683);
+  color: var(--faint, #8d95a3);
   font: 720 9.5px -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
 }
 .mesh-body .mesh-search input {
@@ -1107,7 +1107,7 @@
   box-shadow: 0 0 0 2px rgba(94, 157, 255, .16);
 }
 .mesh-body .mesh-search kbd {
-  color: var(--faint, #6f7683);
+  color: var(--faint, #8d95a3);
   font: 500 10.5px ui-monospace, "SF Mono", Menlo, monospace;
 }
 
@@ -1132,11 +1132,11 @@
   font: 600 11px -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
 }
 .mesh-body .generation-strip li span {
-  color: var(--faint, #6f7683);
+  color: var(--faint, #8d95a3);
   font: 500 9.5px ui-monospace, "SF Mono", Menlo, monospace;
 }
 .mesh-body #generation-receipt {
-  color: var(--faint, #6f7683);
+  color: var(--faint, #8d95a3);
   font: 500 10.5px ui-monospace, "SF Mono", Menlo, monospace;
 }
 
@@ -1199,7 +1199,7 @@
 }
 .mesh-body .cluster-row span,
 .mesh-body .cluster-row small {
-  color: var(--faint, #6f7683);
+  color: var(--faint, #8d95a3);
   font-size: 10.5px;
 }
 .mesh-body .scope-card {
@@ -1210,18 +1210,18 @@
   background: rgba(255, 255, 255, .014);
 }
 .mesh-body .scope-card h3 {
-  color: var(--faint, #6f7683);
+  color: var(--faint, #8d95a3);
   font: 700 9.5px -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
 }
 .mesh-body .scope-card dl { font-size: 11.5px; }
 .mesh-body .scope-card dd { font: 600 10.5px ui-monospace, "SF Mono", Menlo, monospace; }
-.mesh-body .side-note { color: var(--faint, #6f7683); font-size: 10.5px; line-height: 1.4; }
+.mesh-body .side-note { color: var(--faint, #8d95a3); font-size: 10.5px; line-height: 1.4; }
 
 .mesh-body .canvas-badges { gap: 4px; }
 .mesh-body .truth-badge {
   min-height: 22px;
   padding: 3px 6px;
-  color: var(--faint, #6f7683);
+  color: var(--faint, #8d95a3);
   border-color: rgba(255, 255, 255, .055);
   border-radius: 6px;
   background: rgba(255, 255, 255, .015);
@@ -1268,11 +1268,11 @@
   box-shadow: inset 0 -2px var(--blue, #5e9dff);
 }
 .mesh-body .canvas-tools output {
-  color: var(--faint, #6f7683);
+  color: var(--faint, #8d95a3);
   font: 500 10.5px ui-monospace, "SF Mono", Menlo, monospace;
 }
 .mesh-body .axis-key {
-  color: var(--faint, #6f7683);
+  color: var(--faint, #8d95a3);
   border-color: rgba(255, 255, 255, .055);
   border-radius: 8px;
   background: rgba(7, 8, 11, .78);
@@ -1281,7 +1281,7 @@
 .mesh-body #mesh-caption {
   min-height: 38px;
   padding: 7px 10px;
-  color: var(--faint, #6f7683);
+  color: var(--faint, #8d95a3);
   border-color: rgba(255, 255, 255, .045);
   font-size: 10.5px;
   line-height: 1.35;
@@ -1698,7 +1698,7 @@
 .mesh-body .mesh-caption-disclosure {
   flex: 0 0 auto;
   min-width: 0;
-  color: var(--faint, #6f7683);
+  color: var(--faint, #8d95a3);
 }
 .mesh-body .mesh-caption-disclosure summary {
   cursor: pointer;
@@ -1902,7 +1902,7 @@
 .mesh-body .evidence-drawer > summary::-webkit-details-marker { display: none; }
 .mesh-body .evidence-drawer > summary::after {
   content: "⌄";
-  color: var(--faint, #6f7683);
+  color: var(--faint, #8d95a3);
 }
 .mesh-body .evidence-drawer[open] {
   grid-column: 1 / -1;

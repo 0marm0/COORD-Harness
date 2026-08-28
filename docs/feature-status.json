@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "as_of": "2026-08-25",
+  "as_of": "2026-08-28",
   "vocabulary": {
     "Shipped": "Implemented in the repository with a usable local contract.",
     "Preview": "Implemented or integrating in this branch; public compatibility may still change.",
@@ -34,7 +34,7 @@
       "name": "MCP stdio server",
       "status": "Preview",
       "source": ["src/coordharness/coord/mcp_coord_server.py"],
-      "notes": "The stdio server and up to 30 tools register, but fresh generic and strict-profile board/preflight both fail closed; no standalone MCP deployment profile is accepted end-to-end."
+      "notes": "34 tools are declared and 33 register in the default generic profile; handoff_existing is deferred behind the promotion contract. Against a fresh generic coord.db, preflight, board, next_work, work_context, event_context, inbox, inbox_recent, runs, knowledge_search, facts_query, knowledge_index_status, the memory-proposal reads, and the claim/heartbeat/note/audit/decision/park/release writers all answer. Two default tools fail closed on a fresh checkout rather than answering: facts_lookup raises FactStoreUnavailable until a knowledge store exists, and orient requires an enforced exact-authority policy. The remaining writers refuse by contract until their preconditions hold rather than because the profile is unsupported: complete requires the declared artifact in Git's index, verdict refuses a same-lane pass, and request_audit refuses T2/T1 rows that self-verify. The strict deployment profile's board-backed reads fail closed by design."
     },
     {
       "id": "coord-mcp-entrypoint",
@@ -90,7 +90,7 @@
       "name": "Bounded context, facts, and full-text retrieval",
       "status": "Preview",
       "source": ["src/coordharness/coord/board_context.py", "src/coordharness/knowledge"],
-      "notes": "The bounded mechanisms ship, but fresh generic and strict-profile board-backed capsule/lens commands both fail closed; no standalone profile is accepted end-to-end."
+      "notes": "A fresh generic coord.db serves the capsule, digest, skeleton, focus, search, and curation lenses of python -m coordharness.coord.board_context directly. Under the strict deployment profile the same lenses fail closed with ExactQueryCoreError('exact-authority policy is not enforced and active'). Knowledge indexing and accepted-memory bootstrap remain library workflows: no MCP read creates .coordharness/knowledge.db."
     },
     {
       "id": "dependency-evidence-graph",

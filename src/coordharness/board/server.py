@@ -1200,6 +1200,25 @@ def make_server(
     )
 
 
+def _missing_database_message(db_path: str | None) -> str:
+    """What to print when there is no coord.db to read.
+
+    A first run has no database, which is the expected state and not a fault:
+    the board is a reader and nothing has written yet. It reached the terminal
+    as a nine-frame traceback ending in FileNotFoundError, which reads as a
+    broken install rather than an empty one. The path is resolved and named
+    here because the default is derived from COORD_PROJECT_ROOT and a reader
+    who does not know that cannot tell which file the board went looking for.
+    """
+    resolved = db_path if db_path is not None else config.coord_db_path()
+    return "\n".join((
+        f"coord-board: no coordination database at {resolved}",
+        "  the board reads an existing database; it never creates one.",
+        "  seed a demo board:      python -m coordharness.demo",
+        "  or name an existing one: coord-board --db /path/to/coord.db",
+    ))
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="coord-board")
     parser.add_argument("--host", default=os.environ.get("COORD_BOARD_HOST", DEFAULT_HOST))
@@ -1220,14 +1239,21 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("non-loopback bind requires --allow-remote and explicit --allowed-host")
     if not is_loopback_bind(args.host) and not args.allowed_host:
         parser.error("remote board bind requires at least one --allowed-host")
-    server = make_server(
-        args.host,
-        args.port,
-        db_path=args.db,
-        allowed_hosts=set(args.allowed_host) | set(ALLOWED_HOSTS),
-        allow_remote=args.allow_remote,
-        refresh_interval=args.refresh_seconds,
-    )
+    try:
+        server = make_server(
+            args.host,
+            args.port,
+            db_path=args.db,
+            allowed_hosts=set(args.allowed_host) | set(ALLOWED_HOSTS),
+            allow_remote=args.allow_remote,
+            refresh_interval=args.refresh_seconds,
+        )
+    except FileNotFoundError:
+        # Only this one condition is translated. A locked, corrupt, or
+        # oversized database is not something a caller can be told to fix in
+        # three lines, so those keep their traceback.
+        print(_missing_database_message(args.db), file=sys.stderr)
+        return 2
     wildcard_ipv4 = ".".join(("0", "0", "0", "0"))
     shown_host = args.host if args.host not in {wildcard_ipv4, "::"} else "127.0.0.1"
     print(f"coord-board read-only at http://{shown_host}:{server.server_port}")

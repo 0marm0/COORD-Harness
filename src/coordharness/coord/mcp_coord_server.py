@@ -2508,22 +2508,98 @@ def _tool_inbox(
     session_id: str | None = None,
     limit: int = 20,
     advance: bool = False,
+    backlog: bool = False,
+    directed_only: bool = False,
     db_path: str | None = None,
     env: dict | None = None,
 ) -> dict[str, Any]:
+    """The inbox as agents actually read it, so it must answer their question.
+
+    This surface reads newest-first for the same reason the CLI does: at any
+    limit smaller than the backlog, the oldest-first window is exactly the one
+    that excludes the message that just arrived, and an agent that reads five of
+    fifty old events concludes nothing came in. ``backlog=True`` restores queue
+    order for a caller that means to drain in the order things were written.
+
+    The acknowledgement is computed as the maximum event in the window that was
+    actually returned, never the last element of the list. Those are the same
+    row only under queue order; flipping the reading makes ``msgs[-1]`` the
+    OLDEST event shown, which would ack behind what the caller was just told.
+    """
     identity = _resolve(env)
     resolved_actor = actor or identity["actor"]
     resolved_sid = session_id or identity.get("session_id") or ""
     conn = _get_conn(db_path) if advance else _get_read_conn(db_path)
     try:
-        msgs = coord_db.read_inbox(conn, recipient_actor=resolved_actor,
-                                   session_id=resolved_sid, limit=limit)
+        msgs = coord_db.read_inbox(
+            conn, recipient_actor=resolved_actor, session_id=resolved_sid,
+            limit=limit, newest_first=not backlog, directed_only=directed_only,
+        )
+        # Counted before any acknowledgement, so these describe the queue the
+        # caller was handed rather than the one its own read just drained.
+        unread = coord_db.unread_inbox_counts(
+            conn, recipient_actor=resolved_actor, session_id=resolved_sid
+        )
+        scope_unread = unread["directed"] if directed_only else unread["total"]
+        acked_through: int | None = None
+        skipped_by_ack = 0
         if advance and msgs:
-            last_id = msgs[-1]["event_id"]
-            coord_db.advance_cursor(conn, resolved_actor, last_id, session_id=resolved_sid)
-        return {"actor": resolved_actor, "messages": msgs, "count": len(msgs)}
+            acked_through = max(int(m["event_id"]) for m in msgs)
+            # The cursor is a watermark, not a per-message read flag: acking the
+            # newest event shown also marks everything older as seen. Under the
+            # newest-first reading that can be a whole backlog, so say how many
+            # unread events this ack passed over without ever showing them.
+            skipped_by_ack = max(
+                0,
+                _unread_at_or_below(
+                    conn,
+                    recipient_actor=resolved_actor,
+                    session_id=resolved_sid,
+                    event_id=acked_through,
+                )
+                - len(msgs),
+            )
+            coord_db.advance_cursor(
+                conn, resolved_actor, acked_through, session_id=resolved_sid
+            )
+        return {
+            "actor": resolved_actor,
+            "messages": msgs,
+            "count": len(msgs),
+            "unread_total": unread["total"],
+            "directed_unread": unread["directed"],
+            "broadcast_unread": unread["broadcast"],
+            "not_shown": max(0, scope_unread - len(msgs)),
+            "order": "backlog" if backlog else "newest_first",
+            "scope": "directed" if directed_only else "all",
+            "acked_through": acked_through,
+            "skipped_by_ack": skipped_by_ack,
+        }
     finally:
         conn.close()
+
+
+def _unread_at_or_below(
+    conn, *, recipient_actor: str, session_id: str, event_id: int
+) -> int:
+    """Events past the cursor and no newer than ``event_id``.
+
+    Used to report what an acknowledgement swept up silently; it counts the same
+    two legs the inbox reads, so a broadcast skipped by the ack is disclosed even
+    when the read itself asked for directed messages only.
+    """
+    cursor = coord_db.get_cursor(conn, recipient_actor, session_id)
+    selectors = [f"actor:{recipient_actor}"]
+    if session_id:
+        selectors.append(f"session:{session_id}")
+    placeholders = ",".join("?" * len(selectors))
+    row = conn.execute(
+        f"SELECT COUNT(*) FROM events"
+        f" WHERE (to_selector IN ({placeholders}) OR to_selector IS NULL)"
+        f" AND event_id > ? AND event_id <= ?",
+        (*selectors, cursor, int(event_id)),
+    ).fetchone()
+    return int(row[0] if row else 0)
 
 
 def _typed_handoff_tool_response(
@@ -4951,9 +5027,12 @@ def build_server(
         session_id: str | None = None,
         limit: int = 20,
         advance: bool = False,
+        backlog: bool = False,
+        directed_only: bool = False,
     ) -> dict:
         return _tool_inbox(actor=actor, session_id=session_id, limit=limit,
-                           advance=advance, db_path=db_path)
+                           advance=advance, backlog=backlog,
+                           directed_only=directed_only, db_path=db_path)
 
     @mcp.tool()
     def audit(

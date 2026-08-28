@@ -19,7 +19,7 @@ This page defines supported interfaces, not every environment in which the code 
 - `coord` command names and required positional arguments are treated as public once shipped.
 - MCP tool names are public; preview tools and complex parameter contracts may evolve before a stable release.
 - The snapshot API is versioned under `/api/v1/`. Additive fields are expected; consumers must ignore unknown fields.
-- Native clients consume a snapshot and do not open `coord.db`. This keeps SQLite schema migration independent of app releases.
+- Native clients differ, and the difference is deliberate. The macOS menu-bar panel (`CoordMenuBar`) and the Cockpit window (`CoordCockpitWindow`) read `COORD_DB` directly over a `SQLITE_OPEN_READONLY` connection with `PRAGMA query_only=ON`, falling back to the HTTP snapshot when the file is absent or unreadable; they are therefore coupled to the SQLite schema and must be rebuilt across a migration. The iOS client (`CoordCockpitIOS`) and the snapshot-only macOS app (`CoordCockpitMac`) consume `/api/v1/snapshot` and `/healthz` over `URLSession` and never open the database, which keeps them independent of schema migration. No client writes.
 
 ## Portability limits
 

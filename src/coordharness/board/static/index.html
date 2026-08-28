@@ -26,11 +26,10 @@
     <span class="shell-right"><span class="pulse"><span></span><strong id="health">Connecting</strong></span></span>
   </nav>
 
-  <!-- Compatibility views remain command-palette and URL destinations.
-       The shared shell owns the visible Work navigation. -->
+  <!-- The shared shell owns navigation. Every panel below is reachable from
+       the Work switcher it paints, from the command palette, and from its own
+       URL capsule -- one list, declared once in shell.js. -->
   <div class="workspace">
-    <nav id="rail" class="rail" aria-label="Compatibility views" hidden></nav>
-
     <div class="stage">
       <div class="locbar">
         <span class="crumbs" id="crumbs" aria-live="polite"></span>
@@ -65,7 +64,6 @@
           <section id="jobs" class="panel"></section>
           <section id="graph" class="panel"></section>
           <section id="comms" class="panel" aria-label="Agent communications"></section>
-          <section id="activity" class="panel" aria-hidden="true"></section>
         </main>
         <aside id="detail" class="detail" aria-label="Selected work detail" hidden></aside>
       </div>

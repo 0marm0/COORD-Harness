@@ -156,6 +156,13 @@ table, one row per document *section* rather than per file, so a hit points at a
 collapsed), expanded through a small alias table, and turned into an FTS `OR` query; results are ranked by a
 heuristic favoring title/heading matches over body matches and penalizing sources already known to be stale.
 
+Both stores live in `.coordharness/knowledge.db`, and neither is created for you. `coord board`
+bootstraps `coord.db` only; no MCP read builds the knowledge database, so on a fresh checkout
+`facts_lookup` fails closed with `FactStoreUnavailable` while `facts_query` and
+`knowledge_index_status` answer by reporting the store as absent. Indexing and accepted-memory
+bootstrap are library workflows you run deliberately — that is the Preview qualifier on this row in
+[`feature-status.json`](feature-status.json).
+
 Without an index like this, "has anyone already decided this" costs roughly what reading the relevant files
 costs, every time it comes up. With it, the question costs one indexed query no matter how large the
 document set grows — growth shows up as index size, never as per-query cost. `kfts.read_note` extends the

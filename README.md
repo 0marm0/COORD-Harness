@@ -450,7 +450,7 @@ core against the same file.
 | Message mid-run | `coord note WORK --body "…"` | `note(...)` | `coord_db.post_note(...)` |
 | Read messages | `coord inbox` | `inbox`, `inbox_recent` | `coord_db.read_inbox(...)` |
 | Complete | `coord done WORK --artifact PATH` | `complete(...)` | `coord_db.complete_claim(...)` |
-| Read board | `coord board --group-by lane` | `board(...)` | read-only board queries |
+| Read board | `coord board --group-by module` | `board(...)` | read-only board queries |
 
 ### What MCP is doing here
 
@@ -469,12 +469,21 @@ the default profile and promoted deliberately, because handing a row to another
 agent is the one operation that moves ownership out from under a live holder.
 
 > **Current boundary:** the default generic profile is the one to use. All 33 default tools
-> answer against a fresh local database, read surfaces included. The strict deployment profile
-> adds repository-custody and exact-authority gates that a public checkout cannot satisfy — it
-> is for a deployment that has done its own authority activation, and its refusals there are
-> working as designed. Typed handoff over MCP stays behind the promotion contract; the CLI
-> `coord handoff` reaches the same fenced operation and demands the exact row version, owner,
-> and event heads by hand.
+> register against a fresh local database, and the ones a first session needs answer there:
+> `preflight`, `board`, `next_work`, `work_context`, `event_context`, `inbox`, `inbox_recent`,
+> `runs`, `knowledge_search`, `facts_query`, `knowledge_index_status`, the memory-proposal reads,
+> and the `claim_work`/`heartbeat`/`note`/`audit`/`decision`/`park`/`release` writers. Two of the
+> 33 fail closed on a fresh checkout rather than answering: `facts_lookup` raises
+> `FactStoreUnavailable` until a knowledge store exists — no MCP read creates one — and `orient`
+> requires an enforced exact-authority policy that a fresh checkout does not activate. The
+> remaining lifecycle writers refuse by contract until their preconditions hold: `complete`
+> demands the declared artifact in Git's index, `verdict` refuses a same-lane pass, and
+> `request_audit` refuses T2/T1 rows that self-verify. The strict deployment profile adds
+> repository-custody and exact-authority gates that a public checkout cannot satisfy — it is for
+> a deployment that has done its own authority activation, and its refusals there are working as
+> designed. Typed handoff over MCP stays behind the promotion contract; the CLI `coord handoff`
+> reaches the same fenced operation and demands the exact row version, owner, and event heads by
+> hand.
 
 <details>
 <summary><b>MCP client setup</b> &mdash; Claude Code, Codex, and generic clients</summary>
@@ -521,7 +530,7 @@ codex mcp add coordharness \
 }
 ```
 
-Set `COORD_PROJECT_ROOT` and `COORD_DB` in the client configuration when the MCP process does not inherit the coordinated repository as its working directory. Full client setup, tool groups, and a complete session sequence live in [MCP integration](docs/mcp-integration.md) and [MCP server reference](docs/mcp-server.md).
+These registrations use absolute paths because they point a client at a repository it does not necessarily run in. The repository's own checked-in `.mcp.json` and `.codex/config.toml` are the other case: a project-scoped client launched *in* this repository, where `./.venv/bin/python`, `COORD_PROJECT_ROOT="."`, and `COORD_DB=".coordharness/coord.db"` resolve against that working directory and stay free of any developer's absolute path. Use relative paths in-repo and absolute paths whenever the MCP process does not inherit the coordinated repository as its working directory — see [agent onboarding](docs/agent-onboarding.md). Full client setup, tool groups, and a complete session sequence live in [MCP integration](docs/mcp-integration.md) and [MCP server reference](docs/mcp-server.md).
 
 </details>
 
@@ -653,9 +662,13 @@ COORD_DB=$PWD/.coordharness/coord.db COORD_BOARD_URL=http://127.0.0.1:7870 \
 | **COORD** | Status-bar panel: a progress ring in the menu bar, running work and local jobs in the popover, with pause and mode controls | The system menu bar — no Dock icon by design |
 | **COORD Cockpit** | Full window: the Board plus embedded Mesh, Map, and Atlas views under one navigation | The Dock |
 
-Both read the database directly through a read-only SQLite connection and fall back
-to the HTTP snapshot; neither can write to the board — the panel's action buttons
-post typed requests to a separate, unshipped control endpoint, never to the store.
+Both read the database directly through a read-only SQLite connection
+(`SQLITE_OPEN_READONLY` plus `PRAGMA query_only=ON`) and fall back to the HTTP
+snapshot; neither can write to the board — the panel's action buttons post typed
+requests to a separate, unshipped control endpoint, never to the store. Reading the
+file directly couples these two apps to the SQLite schema; the iOS client and the
+snapshot-only `CoordCockpitMac` target take `/api/v1/snapshot` over HTTP instead and
+stay independent of it. See [compatibility](docs/compatibility.md).
 `COORD_DB` chooses the board, `COORD_BOARD_URL` the map to embed, and
 `COORD_MENUBAR_CONFIG` the panel's appearance. Exact targets and the iOS client are
 documented in [native clients](docs/native-clients.md).
@@ -678,10 +691,10 @@ The machine-readable source for this table is [`docs/feature-status.json`](docs/
 |---|---|---|
 | SQLite-WAL lifecycle, claims, leases, proof, events | **Shipped** | Stable local core |
 | `coord` CLI and Python API | **Shipped** | Stable core surface |
-| MCP stdio server | **Preview** | Generic fresh-project preflight works; strict-profile custody remains deployment-specific; 34 tools declared, 33 exposed by default |
-| `coord-mcp` executable | **Preview** | Packaged stdio launcher; use absolute project and database paths |
+| MCP stdio server | **Preview** | 34 tools declared, 33 exposed by default; fresh generic preflight, board, and lifecycle writes answer, while `facts_lookup` and `orient` fail closed until a knowledge store and an enforced exact-authority policy exist; strict-profile custody remains deployment-specific |
+| `coord-mcp` executable | **Preview** | Packaged stdio launcher; the checked-in project-scoped configs use paths relative to the project root, and absolute paths are required whenever the client does not launch the server there |
 | Local jobs and run telemetry | **Shipped** | Library surface; CLI is preview |
-| Bounded context, facts, and full-text retrieval | **Preview** | Generic board orientation works; the MCP server creates the fact ledger and names it on every read, but knowledge indexing and accepted-memory bootstrap remain library workflows |
+| Bounded context, facts, and full-text retrieval | **Preview** | The capsule, digest, skeleton, focus, search, and curation lenses render on a fresh generic `coord.db`; the MCP server names the fact ledger on every read but does not create it, and knowledge indexing and accepted-memory bootstrap remain library workflows |
 | `coord doctor` safety report | **Shipped** | Read-only stable v1 PASS/BLOCKED contract; exits 0 on a freshly seeded board and after a completed claim |
 | Codex and Claude project skill packages | **Shipped** | Byte-identical repository integration |
 | Local MLX model orchestration | **Preview** | Explicit catalog, preflight, and process-held resource lock |
