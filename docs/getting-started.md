@@ -10,24 +10,28 @@ exploration. Neither path requires provider credentials or a hosted COORD servic
 - Git
 - A POSIX shell for the copy-paste examples
 
-The complete macOS path also requires Xcode with its command-line tools selected
-and XcodeGen (`brew install xcodegen`). CLI-only setup does not require either native tool.
+Nothing above requires macOS, Xcode, or an agent runtime. Those are only needed for
+specific paths below:
+
+- The native macOS/iOS apps require Xcode with its command-line tools selected and
+  XcodeGen (`brew install xcodegen`). CLI-only setup needs neither.
+- The [Connect Claude Code and Codex](#connect-claude-code-and-codex) section needs
+  whichever of the Claude Code CLI (`claude`) or the Codex CLI (`codex`) you intend to
+  wire up — nothing before that section needs either installed.
 
 Windows process-liveness support is not currently claimed. See [compatibility](compatibility.md).
 
 ## Install from this repository
 
-On macOS, the complete stranger path is one command after cloning. It owns the clone's
-`.coordharness/coord.db`, installs the native apps, and starts the sole local board
-service on port 7870:
+Clone the repository first:
 
 ```bash
 git clone https://github.com/0marm0/COORD-Harness.git
 cd COORD-Harness
-./scripts/setup-macos.sh
 ```
 
-For CLI-only development on any supported platform:
+Then pick a path. **The CLI is the lower-friction default** — it has no Xcode
+dependency and runs on any supported platform:
 
 ```bash
 python3 -m venv .venv
@@ -38,7 +42,24 @@ python -m pip install -e '.[mcp,dev]'
 
 If you only need the core Python API and `coord` CLI, install `-e .`. The MCP server needs `[mcp]`; development checks need `[dev]`.
 
-Verify entry points:
+Want the native macOS/iOS apps too? On macOS, with Xcode's command-line tools selected
+and XcodeGen installed (`brew install xcodegen`), one command after cloning owns the
+clone's `.coordharness/coord.db`, installs the native apps, and starts the sole local
+board service on port 7870:
+
+```bash
+./scripts/setup-macos.sh
+```
+
+Without Xcode/XcodeGen — or if you only want the CLI and board — pass `--no-native` to
+skip that requirement and the native build entirely; it does the same `.venv` and
+`.coordharness/coord.db` setup as the manual CLI steps above, in one command:
+
+```bash
+./scripts/setup-macos.sh --no-native
+```
+
+Verify entry points (works after either path above — both leave a `.venv` at the repo root):
 
 ```bash
 .venv/bin/coord --help
@@ -110,9 +131,18 @@ From the repository root:
 .venv/bin/coord board --group-by module
 ```
 
-The seed is synthetic and fictional. It uses the current clock so live demo leases remain active; set `SOURCE_DATE_EPOCH` when you need a byte-reproducible capture. It writes 37 work rows under five initiatives — UI overhaul, Model development, Platform migration, Search relevance, and Operational hardening — with Claude, Codex, and service actors and rows in several lifecycle states. It does not copy or paraphrase a private board.
+The seed is synthetic and fictional. It uses the current clock so live demo leases remain active; set `SOURCE_DATE_EPOCH` when you need a byte-reproducible capture. It writes 37 rows total: 32 work items nested under five initiatives — UI overhaul, Model development, Platform migration, Search relevance, and Operational hardening — plus the five initiative rows themselves, with Claude, Codex, and service actors and rows in several lifecycle states. It does not copy or paraphrase a private board.
 
 It also writes ten job sidecars into `.coordharness/job_progress/`, each bound to one of those work rows. Seed with the default paths: if you send the database somewhere else with `--db`, the sidecars stay behind in `.coordharness/` and `coord doctor` will report the split.
+
+`scripts/demo.sh` (see the project README's "Everything at once" walkthrough) seeds this
+same fictional board a different way: it points `COORD_PROJECT_ROOT` at `var/demo/`
+instead of the repository root, so its database lands at `var/demo/.coordharness/coord.db`
+by design — that keeps the demo from ever attaching to a real board in this clone. It is
+not the `--db` split above (the sidecars and the database stay together), but `coord
+doctor` still needs `COORD_PROJECT_ROOT="$PWD/var/demo"` to find that board; run from the
+repository root with no override and doctor reports the *default* `.coordharness/` state
+(missing, if you have not seeded one there) rather than the demo's.
 
 Confirm the seeded board is healthy before going further:
 
@@ -184,19 +214,24 @@ For a real blocker, use `--status blocked` with a durable next step and resume t
 
 The checked `.codex/config.toml` and `.mcp.json` both select this clone's
 `.venv/bin/python` and `.coordharness/coord.db`. Register only missing installed-client
-entries and run the live handshake:
+entries and run the live handshake — this matches the invocation
+[agent onboarding](agent-onboarding.md) uses, and is safe to re-run even though the
+configs are already checked in (`--write-configs` only writes them when absent):
 
 ```bash
-.venv/bin/coord onboard --register-clients
+.venv/bin/coord onboard --write-configs --register-clients
 ```
+
+This step and everything below it needs at least one of the Claude Code or Codex CLIs
+installed; nothing above this point in the guide does.
 
 If Claude reports `approval_pending=true`, run `claude` in this clone and approve the
 `coordharness` project server. Then verify all layers again:
 
 ```bash
 .venv/bin/coord onboard
-codex mcp get coordharness
-claude mcp get coordharness
+codex mcp get coordharness   # needs the Codex CLI
+claude mcp get coordharness  # needs the Claude Code CLI
 ```
 
 Claude Code and Codex authenticate themselves to their providers. COORD does not

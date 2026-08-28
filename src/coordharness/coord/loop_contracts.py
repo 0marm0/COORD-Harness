@@ -83,7 +83,7 @@ LOOP_SUGGESTIONS_MODE = "advisory_loop_contract_suggestions"
 LOOP_SUGGESTIONS_COMPAT_DECISION = "schema_version_1_additive_requires_ranking_version_v2"
 REQUIRED_SUPERVISOR_RANK_FIELDS = ("rank", "rank_score", "rank_reasons", "action_policy")
 DEFAULT_OMITTED_LIMIT = 25
-COMPACT_VERIFY_COMMAND = "coordharness/.venv/bin/python coordharness/scripts/verify_jobs.py --summary --no-oks"
+COMPACT_VERIFY_COMMAND = "coordharness/.venv/bin/coord doctor"
 REQUIRED_RECEIPT_FIELDS = ("work_id", "loop_id", "iteration", "terminal_state", "observed", "action", "verification", "artifact_refs")
 MAX_RECEIPT_ARTIFACT_REFS = 20
 EXPENSIVE_TOOL_TERMS = {
@@ -623,7 +623,7 @@ def validate_loop_contract(contract: Any) -> list[LoopContractIssue]:
         if isinstance(artifacts, list) and artifacts and "done_signal" not in {str(a) for a in artifacts}:
             issues.append(_issue("weak_success_gate", "warn", "required_artifacts should include done_signal when work can close"))
         if not isinstance(commands, list) or not commands:
-            issues.append(_issue("missing_verify_command", "warn", "evidence.required_commands should include a focused gate or verify_jobs.py"))
+            issues.append(_issue("missing_verify_command", "warn", "evidence.required_commands should include a focused gate or coord doctor"))
 
     return issues
 

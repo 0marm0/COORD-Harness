@@ -7,7 +7,7 @@ import argparse
 from pathlib import Path
 from typing import Sequence
 
-BOARD_VIEWS = ("overview", "work", "jobs", "graph", "activity")
+BOARD_VIEWS = ("overview", "work", "jobs", "graph", "comms")
 MAP_VIEWS = ("fleet", "pulse", "flowpath", "ceiling", "topology", "deps", "shape", "crossings", "chronicle", "subjects", "orbit", "context")
 ATLAS_VIEWS = ("operations-atlas-overview", "operations-atlas-topology")
 MESH_VIEWS = (
@@ -23,7 +23,7 @@ VIEWPORT = {"width": 1600, "height": 1000}
 
 def capture(url: str, output_dir: Path, views: Sequence[str]) -> None:
     try:
-        from playwright.sync_api import sync_playwright
+        from playwright.sync_api import Error as playwright_error, sync_playwright
     except ImportError as exc:  # pragma: no cover - optional documentation tool
         raise SystemExit(
             "Playwright is required: install it and its Chromium runtime before capture"
@@ -65,14 +65,32 @@ def capture(url: str, output_dir: Path, views: Sequence[str]) -> None:
                 "work": "#work .worktable [data-row]",
                 "jobs": "#jobs .card",
                 "graph": "#graph .gnode",
-                "activity": "#activity .card",
+                # Comms is the one surface that shows the coordination this
+                # product exists to record, and it had never been captured.
+                "comms": "#comms .comms-events .comms-event",
             }
+            # Layout is personal display state and defaults to Cards, so the
+            # Board capture has to ask for the list it claims to show.
+            capsule = {"work": "v=work&layout=list"}
             for view in board:
-                page.locator(f'#rail button[data-view="{view}"]').click()
+                # Navigate by URL capsule, which is the destination contract
+                # every surface honours. This used to click a button inside
+                # `#rail` -- an element that has shipped hidden since the
+                # shared shell took over navigation, so the click waited for
+                # an actionable element that could never become one and the
+                # capture timed out before writing a single file.
+                page.goto(
+                    f"{url.rstrip('/')}/#{capsule.get(view, f'v={view}')}",
+                    wait_until="networkidle",
+                )
                 page.locator(f"#{view}.panel.active").wait_for()
+                try:
+                    page.locator(required[view]).first.wait_for(timeout=10_000)
+                except playwright_error:
+                    raise RuntimeError(
+                        f"board capture refused: {view} rendered nothing"
+                    ) from None
                 page.evaluate("window.scrollTo(0, 0)")
-                if page.locator(required[view]).count() == 0:
-                    raise RuntimeError(f"board capture refused: {view} rendered nothing")
                 if view == "graph" and page.locator("#graph path.gedge").count() == 0:
                     raise RuntimeError("graph capture refused: no rendered relationship edges")
                 page.screenshot(

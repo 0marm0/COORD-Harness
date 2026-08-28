@@ -591,7 +591,8 @@ def _held_claim_row(conn: sqlite3.Connection, claim_id: str) -> sqlite3.Row:
     if row is None:
         raise UnclaimedFleetError(
             f"unknown claim_id {claim_id!r}: a fleet must be recorded under an"
-            " already-claimed job row (CLAUDE.md §3 — no claim, no tracking)"
+            " already-claimed job row — a fleet spawned under no live claim leaves"
+            " no trace of the work it did, so claim the row before spawning"
         )
     if str(row["status"]) not in _HELD_CLAIM_STATES:
         raise UnclaimedFleetError(

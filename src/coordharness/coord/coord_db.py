@@ -3190,6 +3190,18 @@ def claim_work(
             " FROM work_items WHERE work_id=?",
             (work_id,),
         ).fetchone()
+        if wrow is None:
+            # Refuse the id here, while its name is still in hand. Every path
+            # below tolerates a missing row, so a typo would fall through to the
+            # INSERT and come back as "FOREIGN KEY constraint failed" -- true,
+            # and useless: it names neither the id that was wrong nor anywhere
+            # to find the right one. A caller that means to create the row
+            # passes work_fields, which was upserted above, so this cannot fire
+            # on a create-and-claim.
+            raise ValueError(
+                f"unknown work id {work_id!r}; run 'coord board' to see the "
+                "work ids on this board"
+            )
         session_row = conn.execute(
             "SELECT actor FROM agent_sessions WHERE session_id=?",
             (session_id,),
@@ -8957,32 +8969,64 @@ def post_note(
     }
 
 
-def unread_inbox_count(conn, *, recipient_actor: str, session_id: str = "") -> int:
-    """How many messages sit past the cursor, regardless of any read limit.
+def unread_inbox_counts(
+    conn, *, recipient_actor: str, session_id: str = ""
+) -> dict[str, int]:
+    """Unread past the cursor, split by whether the message was addressed here.
 
-    A caller that asks for twenty and receives twenty cannot tell whether that
-    was the whole queue or the front of it. Mid-flight, that difference decides
-    whether "nothing new arrived" is a fact or an artefact of the limit.
+    One summed number cannot answer the question an agent is actually asking.
+    Broadcasts are legitimate -- they are how the board reports its own activity
+    -- but they are written to nobody in particular, and on a working board they
+    outnumber directed messages by an order of magnitude. Summed, one interrupt
+    naming this actor is indistinguishable from forty events naming no one, so
+    "44 unread" reads as noise at exactly the moment it should read as "someone
+    is waiting on you". An interrupt is by definition directed; the split is
+    what makes it findable.
+
+    ``total`` remains the sum of the two legs, so a caller that only ever knew
+    the single number keeps reading the same figure.
     """
     cursor = get_cursor(conn, recipient_actor, session_id)
     selectors = [f"actor:{recipient_actor}"]
     if session_id:
         selectors.append(f"session:{session_id}")
     placeholders = ",".join("?" * len(selectors))
-    row = conn.execute(
-        f"SELECT COUNT(*) FROM ("
-        f"  SELECT event_id FROM events WHERE to_selector IN ({placeholders}) AND event_id > ?"
-        f"  UNION ALL"
-        f"  SELECT event_id FROM events WHERE to_selector IS NULL AND event_id > ?"
-        f")",
-        (*selectors, cursor, cursor),
+    directed_row = conn.execute(
+        f"SELECT COUNT(*) FROM events"
+        f" WHERE to_selector IN ({placeholders}) AND event_id > ?",
+        (*selectors, cursor),
     ).fetchone()
-    return int(row[0] if row else 0)
+    broadcast_row = conn.execute(
+        "SELECT COUNT(*) FROM events WHERE to_selector IS NULL AND event_id > ?",
+        (cursor,),
+    ).fetchone()
+    directed = int(directed_row[0] if directed_row else 0)
+    broadcast = int(broadcast_row[0] if broadcast_row else 0)
+    return {
+        "directed": directed,
+        "broadcast": broadcast,
+        "total": directed + broadcast,
+    }
+
+
+def unread_inbox_count(conn, *, recipient_actor: str, session_id: str = "") -> int:
+    """How many messages sit past the cursor, regardless of any read limit.
+
+    A caller that asks for twenty and receives twenty cannot tell whether that
+    was the whole queue or the front of it. Mid-flight, that difference decides
+    whether "nothing new arrived" is a fact or an artefact of the limit.
+
+    This is both legs summed. ``unread_inbox_counts`` splits them, which is the
+    reading that distinguishes an interrupt from board chatter.
+    """
+    return unread_inbox_counts(
+        conn, recipient_actor=recipient_actor, session_id=session_id
+    )["total"]
 
 
 def read_inbox(
     conn, *, recipient_actor: str, session_id: str = "", limit: int = 20,
-    newest_first: bool = False,
+    newest_first: bool = False, directed_only: bool = False,
 ) -> list[dict]:
     """Messages past this actor's cursor.
 
@@ -8996,6 +9040,16 @@ def read_inbox(
     ``newest_first`` answers that question instead. Both orders return the same
     set; they differ only in which end the limit truncates, which is precisely
     what made the default dangerous.
+
+    Every row carries ``directed``: true when the message named this actor or
+    its session in ``to_selector``, false when it was written to the board at
+    large. Without it the two arrive as one undifferentiated stream and the
+    reading end cannot tell an interrupt from board chatter.
+
+    ``directed_only`` drops the broadcast leg for a caller that wants just the
+    messages aimed at it. It is opt-in on purpose: the default has to keep
+    returning the same SET it always did, because a reader that quietly stopped
+    seeing broadcasts would be the same defect wearing the other sign.
     """
     cursor = get_cursor(conn, recipient_actor, session_id)
     selectors = [f"actor:{recipient_actor}"]
@@ -9003,15 +9057,31 @@ def read_inbox(
         selectors.append(f"session:{session_id}")
     placeholders = ",".join("?" * len(selectors))
     direction = "DESC" if newest_first else "ASC"
+    legs = [
+        f"  SELECT *, 1 AS _directed FROM events"
+        f"   WHERE to_selector IN ({placeholders}) AND event_id > ?"
+    ]
+    params: list[Any] = [*selectors, cursor]
+    if not directed_only:
+        legs.append(
+            "  SELECT *, 0 AS _directed FROM events"
+            "   WHERE to_selector IS NULL AND event_id > ?"
+        )
+        params.append(cursor)
     rows = conn.execute(
         f"SELECT * FROM ("
-        f"  SELECT * FROM events WHERE to_selector IN ({placeholders}) AND event_id > ?"
-        f"  UNION ALL"
-        f"  SELECT * FROM events WHERE to_selector IS NULL AND event_id > ?"
-        f") ORDER BY event_id {direction} LIMIT ?",
-        (*selectors, cursor, cursor, limit),
+        + "  UNION ALL".join(legs)
+        + f") ORDER BY event_id {direction} LIMIT ?",
+        (*params, limit),
     ).fetchall()
-    return [dict(r) for r in rows]
+    messages = []
+    for row in rows:
+        message = dict(row)
+        # ``_directed`` is the column name the sibling reader already uses; the
+        # caller gets it as a plain boolean rather than a private-looking int.
+        message["directed"] = bool(message.pop("_directed", 0))
+        messages.append(message)
+    return messages
 
 
 def open_audit_request_summary(
@@ -9455,6 +9525,20 @@ def board_rows(
         r["status"] = derive_work_status(r, at)
         r["proof_state"] = derive_proof_state(r, at)
         r["group"] = r.get(group_by) or "(ungrouped)"
+    # A group_by naming a field no row carries used to sort every row into
+    # "(ungrouped)" and return success, so a typo and a real grouping were
+    # indistinguishable in the output. Refuse instead, and say what can be
+    # grouped -- the caller cannot discover that from a silent all-ungrouped
+    # board.
+    if rows and group_by not in rows[0]:
+        groupable = sorted(
+            k for k, v in rows[0].items()
+            if isinstance(v, (str, type(None))) and not k.startswith("_")
+        )
+        raise ValueError(
+            f"cannot group the board by {group_by!r}: no such field on a work row; "
+            f"try one of: {', '.join(groupable)}"
+        )
     if wanted_statuses:
         rows = [
             r for r in rows if str(r.get("status") or "").lower() in wanted_statuses

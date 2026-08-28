@@ -1,4 +1,4 @@
-:root{color-scheme:dark;--c-bg:#000;--c-panel:#07080b;--c-card-a:#0b0d12;--c-card-b:#10131a;--c-hover:#151923;--c-ink:#f4f6fb;--c-muted:#a5abb7;--c-line:rgba(255,255,255,.07);--c-hairline:rgba(255,255,255,.045);--ink:#f4f6fb;--muted:#a5abb7;--faint:#6f7683;--line:rgba(255,255,255,.07);--panel:#07080b;--accent:#5e9dff;--accent-strong:#91bbff;--green:#59d499;--amber:#f2b84b;--red:#ff6b6b;--blue:#5e9dff;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",Arial,sans-serif}
+:root{color-scheme:dark;--c-bg:#000;--c-panel:#07080b;--c-card-a:#0b0d12;--c-card-b:#10131a;--c-hover:#151923;--c-ink:#f4f6fb;--c-muted:#a5abb7;--c-line:rgba(255,255,255,.07);--c-hairline:rgba(255,255,255,.045);--ink:#f4f6fb;--muted:#a5abb7;--faint:#8d95a3;--line:rgba(255,255,255,.07);--panel:#07080b;--accent:#5e9dff;--accent-strong:#91bbff;--green:#59d499;--amber:#f2b84b;--red:#ff6b6b;--blue:#5e9dff;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",Arial,sans-serif}
 *{box-sizing:border-box}body{margin:0;background:#000;color:var(--ink);min-height:100vh;background-image:none;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
 .mast{display:flex;justify-content:space-between;align-items:end;padding:2.4rem clamp(1rem,5vw,5rem) 1.5rem;border-bottom:1px solid var(--line)}h1{font:650 clamp(2rem,5vw,4.4rem)/.95 -apple-system,BlinkMacSystemFont,"SF Pro Display","Helvetica Neue",Arial,sans-serif;margin:.2rem 0}.eyebrow{letter-spacing:.14em;color:var(--muted);font-size:.7rem;margin:0}.pulse{display:flex;align-items:center;gap:.6rem;color:var(--muted);font-size:.8rem}.pulse span{width:.5rem;height:.5rem;border-radius:50%;background:var(--amber)}
 nav{display:flex;gap:.35rem;padding:1rem clamp(1rem,5vw,5rem);position:sticky;top:0;background:color-mix(in srgb,var(--c-bg,#080a09) 91%,transparent);backdrop-filter:blur(14px);z-index:2;border-bottom:1px solid var(--line);overflow:auto}button{font:inherit;color:var(--muted);background:transparent;border:1px solid transparent;border-radius:999px;padding:.55rem 1rem;cursor:pointer}button:hover,button.active{color:var(--ink);border-color:var(--c-hairline,#3d4643);background:var(--c-hover,#1a201e)}
@@ -32,6 +32,16 @@ table{width:100%;border-collapse:collapse;background:var(--panel);border:1px sol
 .owner{display:inline-flex;align-items:center;gap:.4em;}
 .mark{width:1.15em;height:1.15em;flex:0 0 auto;shape-rendering:crispEdges;}
 .mark rect[rx],.mark circle,.mark path{shape-rendering:geometricPrecision;}
+
+/* The legend for those marks. It sits under the summary metrics because that
+   is the landing surface a stranger reads first, and it draws its marks by
+   calling the same function the rows call, so it cannot drift from them. */
+.marklegend{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem 1.15rem;margin:.85rem 0 0;padding:.6rem .85rem;
+  border:1px solid var(--line);border-radius:10px;background:var(--c-card-a);color:var(--muted);font-size:.78rem;line-height:1.4}
+.marklegend-lead{color:var(--faint);font-size:.68rem;letter-spacing:.14em;text-transform:uppercase;font-weight:600}
+.marklegend-item{display:inline-flex;align-items:center;gap:.4em;min-width:0}
+.marklegend-none{color:var(--faint);font-style:italic}
+.marklegend-none>span{font-style:normal}
 
 /* The wordmark replaces the h1's text, so it inherits the heading's box and
    nothing else moves. Height is set from the type scale rather than a pixel
@@ -127,32 +137,23 @@ h1.wordmark{
 .tpct { margin-left: .45rem; font-size: .74rem; color: var(--muted); font-variant-numeric: tabular-nums }
 
 /* ==========================================================================
-   Workspace shell — rail, location bar, split list/detail
+   Workspace shell — location bar, split list/detail
    --------------------------------------------------------------------------
    The board used to be one horizontal tab strip over a full-width panel: no
    persistent destination list, no location, no detail, and Attention reduced
-   to "8 of 370" on a card. The rail carries destinations, the bar carries
-   location, and selecting a row opens one canonical detail plane beside the
-   list rather than navigating away from it.
+   to "8 of 370" on a card. The shared shell carries destinations, the bar
+   carries location, and selecting a row opens one canonical detail plane
+   beside the list rather than navigating away from it.
    ========================================================================== */
 .visually-hidden{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
 
 /* The document never scrolls: the panes do. A shell whose chrome rides away
    under scroll is a page, not a product -- and an 8,600-row table made the
    document 22,000px tall, which is nothing a window scrollbar should be asked
-   to represent. The rail and location bar hold still; the list and the detail
-   plane each scroll alone, exactly like the native cockpit. */
+   to represent. The shell chrome and location bar hold still; the list and
+   the detail plane each scroll alone, exactly like the native cockpit. */
 body.appshell{overflow:hidden;height:100vh;height:100dvh;width:100%;max-width:100vw;display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,1fr)}
-.workspace{display:grid;grid-template-columns:15rem minmax(0,1fr);align-items:stretch;height:auto;min-height:0;overflow:hidden}
-.rail{display:flex;flex-direction:column;gap:.1rem;padding:1rem .7rem;border-right:1px solid var(--line);border-bottom:0;overflow-y:auto;background:transparent;backdrop-filter:none}
-.rail .railgroup{margin:.9rem 0 .3rem;padding:0 .55rem;font-size:.68rem;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
-.rail button{display:flex;align-items:center;gap:.55rem;width:100%;text-align:left;border-radius:8px;padding:.42rem .55rem;font-size:.88rem;border:1px solid transparent}
-.rail button .rlabel{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.rail button .rcount{font-variant-numeric:tabular-nums;font-size:.78rem;color:var(--muted)}
-.rail button.active{background:var(--c-card-a,#151a18);border-color:var(--c-hairline,#3d4643);color:var(--ink)}
-.rail button.active .rcount{color:var(--ink)}
-.rail .rdot{width:.5rem;height:.5rem;border-radius:50%;flex:none;background:currentColor;opacity:.5}
-.rail button.urgent .rdot{background:var(--amber);opacity:1}
+.workspace{display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr);align-items:stretch;height:auto;min-height:0;overflow:hidden}
 
 .stage{position:relative;min-width:0;display:flex;flex-direction:column;min-height:0}
 .locbar{display:flex;align-items:center;gap:.9rem;padding:.7rem clamp(.8rem,2.4vw,1.6rem);border-bottom:1px solid var(--line);flex-wrap:wrap}
@@ -197,6 +198,24 @@ body.appshell{overflow:hidden;height:100vh;height:100dvh;width:100%;max-width:10
 .drel{font-family:ui-monospace,monospace;font-size:11.6px;padding:.28rem 0;border-bottom:1px solid var(--line);overflow-wrap:anywhere}
 .drel:last-child{border-bottom:0}
 .drel .rkind{color:var(--muted);text-transform:uppercase;letter-spacing:.07em;font-size:10.6px;margin-right:.5em}
+/* Exchanges: one line per recorded coordination act. Actor and destination
+   lead, because who handed what to whom is the fact the plane exists for; the
+   kind and the time follow it. The dot carries the same kind colours the Comms
+   feed uses, so the same act reads the same way in both places. */
+.dexch-list{display:flex;flex-direction:column}
+.dexch{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:baseline;gap:.15rem .5rem;
+  padding:.34rem 0;border-bottom:1px solid var(--line);font-size:.82rem}
+.dexch:last-child{border-bottom:0}
+.dexch-kind{align-self:center;width:.5rem;height:.5rem;border-radius:2px;background:var(--muted)}
+.dexch.routed .dexch-kind{background:var(--accent)}
+.dexch-kind.audit_request{background:var(--amber)}
+.dexch-kind.audit_verdict{background:var(--green)}
+.dexch-who{min-width:0;overflow-wrap:anywhere}
+.dexch-who b{font-weight:600}
+.dexch-arrow{color:var(--muted)}
+.dexch-what{grid-column:2;color:var(--muted);font-size:.74rem;letter-spacing:.05em;text-transform:uppercase}
+.dexch-at{grid-row:1/3;grid-column:3;align-self:center;color:var(--faint);font-size:.72rem;
+  font-variant-numeric:tabular-nums;white-space:nowrap}
 .dplane.absent .dfields dd{color:var(--muted)}
 .dplane.absent h3{color:var(--amber)}
 
@@ -221,10 +240,6 @@ body.appshell{overflow:hidden;height:100vh;height:100dvh;width:100%;max-width:10
 .keyhint kbd{font-family:ui-monospace,monospace;font-size:.74rem;border:1px solid var(--line);border-radius:4px;padding:.05rem .3rem;margin:0 .12rem}
 
 @media(max-width:900px){
-  .workspace{grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,1fr)}
-  .rail{flex-direction:row;flex-wrap:wrap;border-right:0;border-bottom:1px solid var(--line);position:static}
-  .rail .railgroup{width:100%;margin:.35rem 0 .1rem}
-  .rail button{width:auto}
   .split.showdetail{grid-template-columns:minmax(0,1fr)}
   .detail{position:static;max-height:none;border-left:0;border-top:1px solid var(--line)}
 }
@@ -324,9 +339,9 @@ body.appshell{overflow:hidden;height:100vh;height:100dvh;width:100%;max-width:10
    ========================================================================== */
 
 /* Panels breathe; scrollbars whisper. */
-.panes,.detail,.rail,.cmdk-list{scrollbar-width:thin;scrollbar-color:var(--c-hairline,#3d4643) transparent}
-.panes::-webkit-scrollbar,.detail::-webkit-scrollbar,.rail::-webkit-scrollbar,.cmdk-list::-webkit-scrollbar{width:8px}
-.panes::-webkit-scrollbar-thumb,.detail::-webkit-scrollbar-thumb,.rail::-webkit-scrollbar-thumb,.cmdk-list::-webkit-scrollbar-thumb{background:var(--c-hairline,#3d4643);border-radius:99px}
+.panes,.detail,.cmdk-list{scrollbar-width:thin;scrollbar-color:var(--c-hairline,#3d4643) transparent}
+.panes::-webkit-scrollbar,.detail::-webkit-scrollbar,.cmdk-list::-webkit-scrollbar{width:8px}
+.panes::-webkit-scrollbar-thumb,.detail::-webkit-scrollbar-thumb,.cmdk-list::-webkit-scrollbar-thumb{background:var(--c-hairline,#3d4643);border-radius:99px}
 .panes::-webkit-scrollbar-track,.detail::-webkit-scrollbar-track{background:transparent}
 
 /* The location bar is one quiet line. */
@@ -336,12 +351,6 @@ body.appshell{overflow:hidden;height:100vh;height:100dvh;width:100%;max-width:10
 .crumbs .sep{opacity:.35;padding:0 .3rem}
 .popcount{letter-spacing:.02em}
 
-/* Rail: section labels quieter, active row calmer, counts aligned. */
-.rail .railgroup{font-size:.64rem;letter-spacing:.16em;margin:1rem 0 .35rem}
-.rail button{font-size:.86rem;padding:.4rem .6rem}
-.rail button .rcount{font-size:.74rem;letter-spacing:.02em}
-.rail .rdot{width:.44rem;height:.44rem;opacity:.4}
-.rail button.active .rdot{opacity:.9;background:var(--green)}
 
 /* The table is the product. Sticky header, banded group heads, one-contrast
    titles, numerals that line up. */
@@ -388,8 +397,6 @@ body.appshell{overflow:hidden;height:100vh;height:100dvh;width:100%;max-width:10
    state-bearing copy stay at 14px; tertiary labels, ids, and source receipts
    may step down once, to 12px. */
 nav .accent .meta,
-.rail .railgroup,
-.rail button .rcount,
 .popcount,
 .metric small,
 .live .staleflag,
@@ -416,7 +423,6 @@ nav .accent .meta,
 .cmdk-hint kbd { font-size: .75rem; }
 
 nav .accent button,
-.rail button,
 .crumbs,
 #find,
 .board-read-alert,
@@ -464,16 +470,7 @@ input:focus-visible,
 .worktable tr[data-row]:focus-visible,
 .attn-list li:focus-visible{outline:2px solid var(--accent-strong);outline-offset:1px}
 
-.workspace{grid-template-columns:216px minmax(0,1fr);background:#000}
-.rail{gap:2px;padding:12px 9px;background:#07080b;border-color:rgba(255,255,255,.07)}
-.rail .railgroup{margin:13px 8px 5px;padding:0;color:var(--faint);font-size:12px;letter-spacing:.09em;font-weight:650}
-.rail button{min-height:36px;padding:0 10px;border:0;border-radius:7px;color:var(--muted);font-size:14px}
-.rail button:hover{background:#10131a;color:var(--ink)}
-.rail button.active{border:0;background:#10131a;color:var(--ink);box-shadow:inset 2px 0 0 var(--accent)}
-.rail button.active .rdot{background:var(--accent)}
-.rail button .rcount{color:var(--faint);font-size:12px}
-.rail button.active .rcount{color:var(--muted)}
-.rail .rdot{width:5px;height:5px}
+.workspace{background:#000}
 
 .stage{background:#000}
 .locbar{min-height:52px;gap:8px;padding:8px 16px;background:#07080b;border-color:rgba(255,255,255,.07);flex-wrap:nowrap}
@@ -574,8 +571,8 @@ input:focus-visible,
 .cmdk-hint kbd,.keyhint kbd{border-color:rgba(255,255,255,.1);background:#10131a;color:var(--muted)}
 .dact-row .amark,.cmdk-item .cm,.cmdk-hint kbd,.keyhint kbd{font-family:inherit}
 
-.panes,.detail,.rail,.cmdk-list{scrollbar-color:rgba(255,255,255,.13) transparent}
-.panes::-webkit-scrollbar-thumb,.detail::-webkit-scrollbar-thumb,.rail::-webkit-scrollbar-thumb,.cmdk-list::-webkit-scrollbar-thumb{background:rgba(255,255,255,.13)}
+.panes,.detail,.cmdk-list{scrollbar-color:rgba(255,255,255,.13) transparent}
+.panes::-webkit-scrollbar-thumb,.detail::-webkit-scrollbar-thumb,.cmdk-list::-webkit-scrollbar-thumb{background:rgba(255,255,255,.13)}
 
 @media(max-width:1100px){
   .metrics{grid-template-columns:repeat(3,minmax(120px,1fr))}
@@ -583,21 +580,13 @@ input:focus-visible,
 }
 
 @media(max-width:900px){
-  .workspace{grid-template-columns:minmax(0,1fr);grid-template-rows:44px minmax(0,1fr)}
-  .rail{display:flex;flex-direction:row;flex-wrap:nowrap;gap:3px;padding:5px 8px;overflow-x:auto;overflow-y:hidden;border:0;border-bottom:1px solid rgba(255,255,255,.07)}
-  .rail .railgroup{display:none}
-  .rail button{flex:0 0 auto;min-height:33px;padding:0 10px}
-  .rail button.active{box-shadow:inset 0 -2px 0 var(--accent)}
-  .rail button .rcount{margin-left:3px}
   .locbar{min-height:52px}
   .split.showdetail{grid-template-columns:minmax(0,1fr)}
   .detail{position:absolute;z-index:35;inset:52px 0 0 auto;width:min(420px,100%);max-height:none;border-top:1px solid rgba(255,255,255,.07);border-left:1px solid rgba(255,255,255,.07);box-shadow:-24px 0 70px rgba(0,0,0,.55)}
 }
 
 @media(max-width:620px){
-  .workspace{grid-template-rows:44px minmax(0,1fr)}
   .workspace,.stage,.split,.panes{width:100%;max-width:100vw;min-width:0}
-  .rail button .rcount,.rail .rdot{display:none}
   .locbar{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:7px;min-height:91px;padding:8px 10px}
   .crumbs{grid-column:1/2}
   .popcount{grid-column:2/4;grid-row:1;text-align:right}
@@ -688,8 +677,3 @@ body[data-view="work"][data-work-layout="board"] #work.active{height:100%;min-wi
   .timeline-event{grid-template-columns:62px minmax(0,1fr);gap:4px 8px}.timeline-event span,.timeline-event code{grid-column:2}.timeline-day{overflow:hidden}
 }
 @media(max-width:600px){.stage:has(#workmodes:not([hidden])) .detail{inset:132px 0 0}}
-
-
-/* R4 shared shell owns visible Work navigation; legacy views remain URL and command-palette compatible. */
-.workspace{grid-template-columns:minmax(0,1fr)!important;grid-template-rows:minmax(0,1fr)!important}
-.rail[hidden]{display:none!important}

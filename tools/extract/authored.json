@@ -19,9 +19,9 @@
     ".github/ISSUE_TEMPLATE/bug.yml": "written fresh for this repository",
     ".github/ISSUE_TEMPLATE/config.yml": "written fresh for this repository",
     ".github/ISSUE_TEMPLATE/feature.yml": "written fresh for this repository",
-    ".github/privacy-denylist.sha256": "opaque publication privacy denylist",
     ".github/SECURITY.md": "written fresh for this repository",
     ".github/dependabot.yml": "written fresh for this repository",
+    ".github/privacy-denylist.sha256": "opaque publication privacy denylist",
     ".github/pull_request_template.md": "written fresh for this repository",
     ".github/scripts/validate_docs.py": "written fresh for this repository",
     ".github/workflows/native.yml": "written fresh for this repository",
@@ -244,7 +244,7 @@
     "src/coordharness/board/static/search.css": "token-only global row search styling",
     "src/coordharness/board/static/search.js": "dependency-free ranked global row navigation",
     "src/coordharness/board/static/shell.css": "shared product shell chrome",
-    "src/coordharness/board/static/shell.js": "reads the embedded flag so a native host draws the chrome once",
+    "src/coordharness/board/static/shell.js": "reads the embedded flag so a native host draws the chrome once, and declares the one destination model every board surface navigates by",
     "src/coordharness/board/static/swarm-mesh-model.js": "deterministic pseudo-3D cluster, occurrence-identity, filtering, traversal, and question model written fresh",
     "src/coordharness/board/static/swarm-mesh.css": "token-driven responsive Swarm Mesh control-room styling written fresh",
     "src/coordharness/board/static/swarm-mesh.html": "CSP-safe dependency-free Swarm Mesh control-room page written fresh",
@@ -275,10 +275,11 @@
     "src/coordharness/config.py": "fresh replacement for the source project's path table",
     "src/coordharness/coord/model_cli.py": "standalone model control CLI, written fresh",
     "src/coordharness/coord/onboarding.py": "standalone configuration generator and read-only onboarding doctor",
+    "src/coordharness/coord/panel_quorum.py": "panel quorum: N independent verdicts that must agree, for irreversible work",
     "src/coordharness/coord/policy/__init__.py": "package marker",
     "src/coordharness/coord/runners/__init__.py": "package marker",
     "src/coordharness/demo.py": "synthetic demo board; no real data",
-    "src/coordharness/entry.py": "CLI entry point: creates and migrates the database on first use",
+    "src/coordharness/entry.py": "CLI entry point: creates and migrates the database on first use, and delivers declared refusals as one line on stderr instead of a traceback",
     "src/coordharness/jobs/cli.py": "written fresh for this repository",
     "src/coordharness/jobs/resource_lock.py": "standalone job resource lock, written fresh",
     "src/coordharness/jobs/roadmap_binding.py": "standalone tracked-launch authority binding, written fresh",
@@ -314,6 +315,8 @@
     "tests/test_board.py": "written fresh for this repository",
     "tests/test_board_action_registry.py": "preview-only action availability, safety veto, and human-reason contract tests written fresh",
     "tests/test_board_comms_contract.py": "single-page communications, fleet-first, and pulse ordering regressions written fresh",
+    "tests/test_board_first_contact.py": "missing-database refusal, single-sourced destinations, owner-mark legend, contrast floor, and per-row exchange population regressions written fresh",
+    "tests/test_board_first_contact_browser.py": "real-browser exchanges plane, honest empty states, owner legend, and empty-board copy regressions written fresh",
     "tests/test_board_options_contract.py": "path-specific HTTP method advertisement and read-only route regressions written fresh",
     "tests/test_board_palette_browser.py": "real-browser active-palette, ablation, and global-search keyboard regression tests",
     "tests/test_board_query_action_routes.py": "GET-only semantic query and action registry route integration and ablation tests written fresh",
@@ -323,20 +326,26 @@
     "tests/test_board_shell_coherence_browser.py": "coherent bundle refresh, stale-generation, command-palette, and mobile-shell browser regressions written fresh",
     "tests/test_board_transient_panels_browser.py": "transient panel dismissal and focus browser regressions written fresh",
     "tests/test_board_work_layout_browser.py": "board work-layout density and responsive hierarchy browser regressions written fresh",
+    "tests/test_cli_error_boundary.py": "regressions for the CLI error boundary: refusals as one line on stderr, the unknown-work-id message, --traceback, and unanticipated errors still crashing",
+    "tests/test_cli_review_verbs.py": "coverage for the CLI review surface (request-audit, verdict)",
     "tests/test_comms_mesh_atlas_browser.py": "continuous communications, fleet, pulse, mesh, and atlas integration browser regressions written fresh",
+    "tests/test_coord_inbox.py": "directed/broadcast inbox split and newest-window acknowledgement regressions written fresh",
     "tests/test_coordination_map_dependencies_focus_browser.py": "dependency-focus map interaction browser regressions written fresh",
     "tests/test_coordination_map_embedded_chrome_browser.py": "embedded map chrome de-duplication browser regressions written fresh",
     "tests/test_coordination_map_live_stylesheet_browser.py": "live coordination-map stylesheet and computed-style browser regressions written fresh",
     "tests/test_coordination_map_mode_menu_browser.py": "coordination-map mode menu browser regressions written fresh",
     "tests/test_coordination_map_shell_browser.py": "coordination-map deep-link, omission, refresh-fence, and zero-topology browser regressions written fresh",
     "tests/test_coordination_map_typography_browser.py": "computed-style coordination-map type and control floor regressions written fresh",
+    "tests/test_doctor_first_run.py": "regression coverage for the first-run doctor path",
     "tests/test_documentation_validation.py": "adversarial local-link, JSON, SVG accessibility, visual-provenance, and bounded-report regressions written fresh",
     "tests/test_graph_envelope.py": "adversarial graph omission, collision, cap, and determinism tests",
     "tests/test_imports.py": "guards against dangling references to packages the extraction left behind",
     "tests/test_lifecycle_diagram.py": "deterministic source-drift and unknown-status regression tests",
     "tests/test_lifecycle_smoke.py": "end-to-end proof of the lifecycle and its guards",
     "tests/test_local_system_telemetry.py": "bounded local system telemetry parser and cache regression tests",
+    "tests/test_loop_contracts_verify_command.py": "regressions pinning the loop contract's verify command to a subcommand the package actually ships, and to the shared constant every emission site reads",
     "tests/test_mcp_generic_preflight.py": "fresh-database generic MCP preflight next-work and context regression tests",
+    "tests/test_mcp_preflight_fact_store.py": "regression coverage for the MCP fact-store bootstrap",
     "tests/test_mlx_runner_preflight.py": "local runner preflight regression tests",
     "tests/test_model_catalog_authority.py": "model catalog authority regression tests",
     "tests/test_model_productization.py": "model productization regression tests",
@@ -352,8 +361,10 @@
     "tests/test_operations_route.py": "atomic bundle, redacted health, and last-good-cache regressions",
     "tests/test_operations_schema.py": "Operations Atlas schema validation regressions",
     "tests/test_packaging.py": "guards defects that only appear once the package is installed",
-    "tests/test_privacy_hygiene.py": "opaque publication privacy gate regressions",
     "tests/test_palette.py": "computed-style palette sweep, persistence, and CSSOM ablation browser tests",
+    "tests/test_panel_quorum.py": "coverage for panel quorum",
+    "tests/test_policy_pipeline_resource_modes.py": "regressions asserting the policy pipeline and the config resolver agree on one resource-modes path, so the two cannot silently diverge again",
+    "tests/test_privacy_hygiene.py": "opaque publication privacy gate regressions",
     "tests/test_product_runtime.py": "written fresh for this repository",
     "tests/test_public_generalization.py": "public generalization regression tests",
     "tests/test_shared_shell_operations_atlas_label_browser.py": "shared shell and Operations Atlas naming coherence browser regressions written fresh",
@@ -378,14 +389,9 @@
     "tools/extract/merge_proposals.py": "merges agent-proposed port entries into the working manifest",
     "tools/extract/vocabulary.example.json": "generic rename/refusal template; the real one is gitignored",
     "tools/generate_lifecycle_diagram.py": "stdlib AST-based lifecycle SVG generator written fresh for this repository",
-    "tools/publication_gate.py": "standalone exact-object local and signed-remote release decision gate written fresh",
     "tools/privacy_hygiene.py": "opaque current-tree and reachable-history privacy gate",
-    "tools/validate_documentation.py": "single read-only documentation and visual-provenance validator used by CI and local publication review",
-    "src/coordharness/coord/panel_quorum.py": "panel quorum: N independent verdicts that must agree, for irreversible work",
-    "tests/test_cli_review_verbs.py": "coverage for the CLI review surface (request-audit, verdict)",
-    "tests/test_panel_quorum.py": "coverage for panel quorum",
-    "tests/test_doctor_first_run.py": "regression coverage for the first-run doctor path",
-    "tests/test_mcp_preflight_fact_store.py": "regression coverage for the MCP fact-store bootstrap"
+    "tools/publication_gate.py": "standalone exact-object local and signed-remote release decision gate written fresh",
+    "tools/validate_documentation.py": "single read-only documentation and visual-provenance validator used by CI and local publication review"
   },
   "derived": {
     "apps/Shared/Sources/ProviderManagementView.swift": {
@@ -530,13 +536,13 @@
     },
     "src/coordharness/coord/cli.py": {
       "origin": "ported, then extended in this repository",
-      "reason": "Re-reviewed after adding standalone onboarding, generated client configuration, exact work-context reads, and typed fenced handoff commands; lifecycle writes remain explicit and database-scoped.",
-      "reviewed_sha256": "a2546a50155bdf5dfe873c1f85f0bd541cac06be84bfa06e1d5d8d063d0b1f4e"
+      "reason": "Re-reviewed after adding standalone onboarding, generated client configuration, exact work-context reads, and typed fenced handoff commands; lifecycle writes remain explicit and database-scoped. Re-reviewed again after the CLI error-boundary pass: `--traceback` is declared for help text only, a claim collision is translated to a sentence naming the holder that the code reads back rather than infers, `work-context` now takes the not-found branch that `_work_row`'s empty-dict return had made unreachable, and `route` refuses a `--usage-db` path that is absent. No new write path and no change to any domain message.",
+      "reviewed_sha256": "fe43a3cd9d3fe26596b48c2f0646183f6f02340975c8666abf02cb63895f5f9f"
     },
     "src/coordharness/coord/coord_db.py": {
       "origin": "ported, then extended in this repository",
-      "reason": "import closure of the coordination control plane (coordharness.coord.coord_db). Re-reviewed after adding `post_note` and `unread_inbox_count` and giving `read_inbox` a `newest_first` option. `post_note` mirrors the MCP note tool's bounds exactly (2048-char body, 200-char title, 32 refs, target must exist on the board) so the two surfaces cannot drift into different contracts for one event kind, and it writes kind='note' with lifecycle_mutation false. The read_inbox default is unchanged for existing callers; the new argument only chooses which end the limit truncates. Prior review of the session-close memory-proposal hook stands.",
-      "reviewed_sha256": "ec16e2e13d48fced21576d5b8725e44ad6bc804e5a0bb585ce697a9c0cb00582"
+      "reason": "import closure of the coordination control plane (coordharness.coord.coord_db). Re-reviewed after splitting the inbox into its directed and broadcast legs: `unread_inbox_counts` reports both plus their sum, `unread_inbox_count` now returns that sum so existing callers read the same figure, `read_inbox` labels every row `directed`, and its new `directed_only` argument is opt-in so the default reading returns the same SET of messages it always did. No new write path, no change to which events are recorded. Prior review of `post_note`, the `newest_first` option, and the session-close memory-proposal hook stands. Re-reviewed again after `claim_work` gained a pre-INSERT refusal for a work id that is not on the board: it replaces a foreign-key error with the id and where to look, cannot fire on the create-and-claim path that passes work_fields, and changes no other outcome. Re-reviewed again after `board_rows` began refusing a `group_by` that names no field on a work row: the old behaviour sorted every row into \"(ungrouped)\" and exited zero, so a typo and a real grouping were indistinguishable in the output. The refusal names the groupable fields. Read path only; no write path and no schema change.",
+      "reviewed_sha256": "5ff138a62a82987c9e6196d2fc4f07a753ac34ebc305a6d745f8570908c45b9f"
     },
     "src/coordharness/coord/create_schema.py": {
       "origin": "ported, then extended in this repository",
@@ -555,8 +561,8 @@
     },
     "src/coordharness/coord/mcp_coord_server.py": {
       "origin": "ported, then extended in this repository",
-      "reason": "Re-reviewed after making preflight, next-work, work-context, knowledge reads, and typed handoff generic to the caller project and exact database rather than any private installation.",
-      "reviewed_sha256": "0264e5ff03117adac13b7f5f92524254054c24787dbe12c4ef8a593eee4fdf2e"
+      "reason": "Re-reviewed after making preflight, next-work, work-context, knowledge reads, and typed handoff generic to the caller project and exact database rather than any private installation, and again after correcting the inbox tool: it now reads newest-first like the CLI, acknowledges the maximum event in the window it actually returned instead of the last list element, keeps an explicit backlog mode, and reports the directed/broadcast split plus what the acknowledgement swept past. Reads and one cursor write only.",
+      "reviewed_sha256": "ac75a763f806a3180b41cc5e8849966a2a43362b1c803c3789b78beef3bf2e56"
     },
     "src/coordharness/coord/modeld_lite.py": {
       "origin": "ported, then substantially adapted for standalone publication",
@@ -575,8 +581,8 @@
     },
     "src/coordharness/coord/work_contracts.py": {
       "origin": "ported, then substantially adapted for standalone publication",
-      "reason": "Write-scope exclusions use neutral state-directory paths rather than a deployment-specific runtime topology.",
-      "reviewed_sha256": "9f5f5c7ff56c57f0cba3d4630e5858706a8cce9bcb6345b360bf500e20dfa9c5"
+      "reason": "Write-scope exclusions use neutral state-directory paths rather than a deployment-specific runtime topology. Re-reviewed after the claim-required refusal stopped citing a section number in a private contract file and stated the rule itself instead. Message wording only; the refusal and its conditions are unchanged.",
+      "reviewed_sha256": "35bb624c9a241c22897f9b9f964ee54bd2240201bfcc7daba01bf54b060b5541"
     },
     "src/coordharness/jobs/diagnostic_marker.py": {
       "origin": "ported, then extended in this repository",

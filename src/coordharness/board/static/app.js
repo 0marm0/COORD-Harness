@@ -236,6 +236,24 @@ function ownerMark(owner){
   if(lane==="operator")return operatorMark();
   return "";
 }
+// The mark is the first thing every row says about itself and no surface said
+// what it meant. The legend is rendered by calling ownerMark() with the same
+// lane tokens the rows carry, so a mark cannot appear on a row and be absent
+// from the legend, or drift from it: one function decides both.
+const OWNER_LEGEND=[
+  ["claude","chat agent"],
+  ["codex","code agent"],
+  ["local","local compute"],
+  ["local:gpu","local accelerator"],
+  ["operator","a person, not an agent"],
+];
+function ownerLegendHTML(){
+  return `<p class="marklegend"><span class="marklegend-lead">Owner marks</span>`
+    +OWNER_LEGEND.map(([owner,meaning])=>
+      `<span class="marklegend-item">${ownerMark(owner)}<span>${esc(meaning)}</span></span>`).join("")
+    +`<span class="marklegend-item marklegend-none">no mark<span>a lane this board does not name</span></span></p>`;
+}
+
 // One place holds what the board is currently showing. The detail plane, the
 // filter and the keyboard model all read this rather than re-fetching or
 // re-deriving, so they cannot disagree with the list about which rows exist.
@@ -369,6 +387,27 @@ function workGroups(rows,includeEmpty=false){
     .map(([key,members])=>({key:`${field}:${key}`,label:key,members}));
 }
 
+// An empty board and an over-narrow filter both render zero rows and are not
+// the same answer. A stranger who runs the board before anything has been
+// seeded was being told to "clear Find or adjust Filter" -- two controls that
+// are already empty -- with no mention of the one command that would give the
+// surface something to show. `summary.total` counts the whole board even when
+// the graph envelope trimmed every row out of this particular read, so the
+// three cases stay distinguishable.
+function emptyWorkCopy(shared){
+  const snapshot=STATE.snapshot;
+  const carried=snapshot?snapshot.rows.length:0;
+  const boardTotal=Number(snapshot&&snapshot.summary&&snapshot.summary.total!=null
+    ? snapshot.summary.total:carried);
+  if(!boardTotal){
+    return `<b>This board has no rows yet.</b><p>Nothing has been claimed, handed off or recorded against it. Seed a demonstration board with <code>python -m coordharness.demo</code>, then reload.</p>`;
+  }
+  if(!carried){
+    return `<b>This read carries none of the board's ${formatCount(boardTotal)} rows.</b><p>The graph envelope emitted no rows for this generation. Nothing is inferred from their absence.</p>`;
+  }
+  return `<b>No rows match this view.</b><p>${shared}</p>`;
+}
+
 function renderWorkList(){
   const mount=document.querySelector("#work");
   if(!mount||!STATE.snapshot)return;
@@ -379,7 +418,7 @@ function renderWorkList(){
     ?`${formatCount(rows.length)} of ${formatCount(total)} rows`:`${formatCount(total)} rows`;
   if(!rows.length){
     STATE.order=[];
-    mount.innerHTML=`<div class="empty" role="status"><b>No rows match this view.</b><p>Clear Find or adjust Filter. A selected row may remain open from the shared URL even when the current population excludes it.</p></div>`;
+    mount.innerHTML=`<div class="empty" role="status">${emptyWorkCopy("Clear Find or adjust Filter. A selected row may remain open from the shared URL even when the current population excludes it.")}</div>`;
     document.querySelector("#popcount").textContent=populationLabel;
     return;
   }
@@ -461,7 +500,7 @@ function renderWorkBoard(){
     ?`${formatCount(rows.length)} of ${formatCount(total)} rows`:`${formatCount(total)} rows`;
   if(!rows.length){
     STATE.order=[];
-    mount.innerHTML=`<div class="work-board-shell">${workTruthDisclosure()}<div class="empty" role="status"><b>No rows match this view.</b><p>List and Board use the same filtered population.</p></div></div>`;
+    mount.innerHTML=`<div class="work-board-shell">${workTruthDisclosure()}<div class="empty" role="status">${emptyWorkCopy("List and Board use the same filtered population.")}</div></div>`;
     return;
   }
   const groups=workGroups(rows,true);
@@ -576,6 +615,7 @@ function render(snapshot,graph,timeline=null,bundleProjection=null){
   document.querySelector("#overview").innerHTML=`<div class="metrics">${
     metric(summary.running,"running")}${metric(summary.attention,"status attention")}${
     metric(summary.next,"next")}${metric(summary.done,"done")}${metric(summary.total,"total")}</div>
+    ${ownerLegendHTML()}
     <div class="twoup">${
       panelList(running,"Running now","Nothing holds a live claim on this board right now.")}${
       panelList(attention,attentionTotal>attention.length
@@ -821,20 +861,25 @@ function writeCapsule(){
 }
 
 // ---- destinations --------------------------------------------------------
-const VIEWS=[
-  {id:"attention",label:"Attention",group:"Work",
-   count:s=>attentionRows(s).length,
-   countLabel:s=>{
-     const rows=attentionRows(s);const reasons=new Set(rows.map(entry=>entry.plane.id)).size;
-     return `${formatCount(rows.length)} rows · ${formatCount(reasons)} reasons`;
-   },urgent:true},
-  {id:"overview", label:"Summary", group:"More"},
-  {id:"work",     label:"Board",    group:"Work",count:s=>s.rows.length},
-  {id:"jobs",     label:"Jobs",     group:"More",count:s=>s.rows.filter(r=>String(r.bucket).toLowerCase().includes("job")).length},
-  {id:"graph",    label:"Graph",    group:"More"},
-  {id:"comms",    label:"Comms",    group:"More",count:s=>Number(STATE.pulse?.counts?.events||0)},
-  {id:"usage",    label:"Usage",    group:"More"},
-];
+// The list itself belongs to shell.js, which paints navigation on every page;
+// this file paints panels on one. It used to keep a second list -- seven
+// destinations grouped Work/More, feeding a rail that had been shipped hidden
+// -- so the shared subnav and the command palette were free to disagree about
+// what the product contains, and did. What is added here is what only this
+// file can know: how many rows each destination currently holds.
+const VIEW_COUNTS={
+  attention:{
+    count:s=>attentionRows(s).length,
+    countLabel:s=>{
+      const rows=attentionRows(s);const reasons=new Set(rows.map(entry=>entry.plane.id)).size;
+      return `${formatCount(rows.length)} rows · ${formatCount(reasons)} reasons`;
+    },urgent:true},
+  work:{count:s=>s.rows.length},
+  jobs:{count:s=>s.rows.filter(r=>String(r.bucket).toLowerCase().includes("job")).length},
+  comms:{count:s=>Number(STATE.pulse?.counts?.events||0)},
+};
+const VIEWS=((typeof window!=="undefined"&&window.CoordNav&&window.CoordNav.boardPanels)||[])
+  .map(panel=>({id:panel.id,label:panel.label,...(VIEW_COUNTS[panel.id]||{})}));
 
 // Attention is a population, not a card. Rows are grouped by the plane that
 // raised them, because a stalled job and a blocked claim are different claims
@@ -867,25 +912,8 @@ function matchesQuery(row){
     .some(value=>String(value||"").toLowerCase().includes(q));
 }
 
-function renderRail(){
-  const snapshot=STATE.snapshot;
-  const rail=document.querySelector("#rail");
-  let lastGroup="";
-  rail.innerHTML=VIEWS.map(view=>{
-    const head=view.group!==lastGroup?`<p class="railgroup">${esc(view.group)}</p>`:"";
-    lastGroup=view.group;
-    const n=snapshot&&view.count?view.count(snapshot):null;
-    const countLabel=snapshot&&view.countLabel?view.countLabel(snapshot):n==null?"":String(n);
-    const urgent=view.urgent&&n;
-    const accessibleCount=countLabel?` aria-label="${esc(`${view.label}: ${countLabel}`)}"`:"";
-    return `${head}<button data-view="${view.id}"${accessibleCount} class="${STATE.view===view.id?"active":""}${urgent?" urgent":""}">`
-      +`<i class="rdot"></i><span class="rlabel">${esc(view.label)}</span>`
-      +`<span class="rcount">${esc(countLabel)}</span></button>`;
-  }).join("");
-}
-
 function renderLocation(){
-  const view=VIEWS.find(v=>v.id===STATE.view)||VIEWS.find(v=>v.id==="work");
+  const view=VIEWS.find(v=>v.id===STATE.view)||VIEWS.find(v=>v.id==="work")||{label:STATE.view};
   document.querySelector("#crumbs").innerHTML=
     `Work<span class="sep">/</span><b>${esc(view.label)}</b>`
     +(STATE.selected?`<span class="sep">/</span><span>${esc(STATE.selected)}</span>`:"");
@@ -908,7 +936,95 @@ function setWorkLayout(layout){
 function setView(view){
   STATE.view=view;
   document.querySelectorAll(".panel").forEach(panel=>panel.classList.toggle("active",panel.id===view));
-  syncWorkModes();renderRail();renderLocation();writeCapsule();
+  syncWorkModes();renderLocation();writeCapsule();
+}
+
+// ---- exchanges: the coordination recorded against one row ----------------
+// Lifecycle, telemetry, relationships and freshness describe a task. None of
+// them describe the coordination, which is the only reason two agents need a
+// board at all: a handoff from one lane to another, an audit requested, a
+// verdict returned. Every one of those acts was already in this page's state
+// and none of them were attached to the row they happened on.
+//
+// The per-row population comes from TimelineV1, which carries every recorded
+// event for every row the bundle emits. PulseV1's `recent` is the obvious
+// source and is the wrong one: it publishes the newest twelve events BOARD
+// WIDE, which on the seeded board names ten rows out of the twenty-six that
+// have events. A plane built on it renders empty for most rows, including the
+// handoff and the audit exchange that motivate having the plane at all.
+//
+// What `recent` carries that the timeline does not is the destination.
+// TimelineV1's event tuple is sealed at (at, kind, actor) by test, so the lane
+// a handoff was addressed TO reaches the client only inside that window. It is
+// joined on the full event tuple where it exists and declared missing where it
+// does not, because "we do not know where this went" and "this went nowhere"
+// are different facts and a blank would publish the second one.
+const EXCHANGE_ROUTED=new Set(["handoff","audit_request","audit_verdict"]);
+const EXCHANGE_CAP=12;
+const exchangeKey=(row,event)=>[row,event.at,event.kind,event.actor]
+  .map(value=>String(value??"")).join("|");
+function exchangeDestinations(){
+  const index=new Map();
+  const recent=STATE.pulse&&Array.isArray(STATE.pulse.recent)?STATE.pulse.recent:[];
+  for(const event of recent){
+    if(!event||!event.to)continue;
+    index.set(exchangeKey(event.row,event),String(event.to));
+  }
+  return index;
+}
+// null means this generation published no per-row event metadata at all, which
+// is a different answer from an empty list and is rendered as one.
+function rowExchanges(rowId){
+  const timeline=STATE.timeline;
+  if(!timeline||!Array.isArray(timeline.items))return null;
+  const item=timeline.items.find(entry=>entry&&String(entry.id)===String(rowId));
+  const events=item&&Array.isArray(item.events)?item.events:[];
+  const destinations=exchangeDestinations();
+  return events
+    .map(event=>({
+      at:String(event.at||""),
+      kind:String(event.kind||"event"),
+      actor:String(event.actor||""),
+      to:destinations.get(exchangeKey(rowId,event))||"",
+    }))
+    .sort((left,right)=>stableCompare(right.at,left.at));
+}
+function exchangeWhen(at){
+  const parsed=Date.parse(at);
+  return Number.isFinite(parsed)?new Date(parsed).toLocaleString():at||"time not published";
+}
+function exchangePlane(rowId){
+  const acts=rowExchanges(rowId);
+  if(acts===null){
+    return `<div class="dplane"><h3>Exchanges</h3><p class="dnote">This generation published no per-row event metadata, so no coordination act can be attached to this row. None is inferred.</p></div>`;
+  }
+  if(!acts.length){
+    return `<div class="dplane"><h3>Exchanges</h3><p class="dnote">No coordination act is recorded against this row: nothing was handed off, requested or returned here. That is the record, not a gap in it.</p></div>`;
+  }
+  const shown=acts.slice(0,EXCHANGE_CAP);
+  const routed=acts.filter(act=>EXCHANGE_ROUTED.has(act.kind)).length;
+  const addressed=acts.filter(act=>act.to).length;
+  const items=shown.map(act=>{
+    const isRouted=EXCHANGE_ROUTED.has(act.kind);
+    const actor=`<b>${esc(act.actor||"unattributed")}</b>`;
+    const destination=act.to
+      ? ` <span class="dexch-arrow" aria-hidden="true">&rarr;</span> <b>${esc(act.to)}</b>`
+      : isRouted
+        ? ` <span class="dexch-arrow" aria-hidden="true">&rarr;</span> <span class="missing">destination not in this read</span>`
+        : "";
+    return `<div class="dexch${isRouted?" routed":""}">`
+      +`<span class="dexch-kind ${esc(act.kind)}" aria-hidden="true"></span>`
+      +`<span class="dexch-who">${actor}${destination}</span>`
+      +`<span class="dexch-what">${esc(act.kind.replaceAll("_"," "))}</span>`
+      +`<time class="dexch-at" datetime="${esc(act.at)}">${esc(exchangeWhen(act.at))}</time>`
+      +`</div>`;
+  }).join("");
+  const receipt=`${formatCount(acts.length)} recorded act${acts.length===1?"":"s"}`
+    +(routed?` · ${formatCount(routed)} routed between lanes`:" · none routed between lanes")
+    +` · ${formatCount(addressed)} name a destination`
+    +(acts.length>shown.length?` · ${formatCount(acts.length-shown.length)} older not listed`:"");
+  return `<div class="dplane"><h3>Exchanges</h3><div class="dexch-list">${items}</div>`
+    +`<p class="dnote">${esc(receipt)}. A destination reaches this page only for the newest events board-wide; event bodies, refs and receipts are withheld from this public projection.</p></div>`;
 }
 
 // ---- canonical detail plane ---------------------------------------------
@@ -956,6 +1072,8 @@ function renderDetail(){
       ${relations||'<p class="dnote">No edge in the graph names this row.</p>'}
       ${edges.length>24?`<p class="dnote">${edges.length-24} more not listed.</p>`:""}
     </div>
+
+    ${exchangePlane(row.id)}
 
     <div class="dplane"><h3>Freshness</h3><dl class="dfields">
       ${plain("Source",snapshot.source)}
@@ -1592,7 +1710,7 @@ async function refreshBoard(){
     if(sequence!==STATE.readSequence)return;
     STATE.readFailure=error?.name==="AbortError"?"request timed out":String(error?.message||error||"request failed");
     renderBoardReadState();
-    if(!STATE.snapshot){renderRail();renderLocation();}
+    if(!STATE.snapshot)renderLocation();
   }finally{
     clearTimeout(timeout);
     if(sequence===STATE.readSequence){
@@ -1613,13 +1731,6 @@ function startBoard(){
   readCapsule();
   const find=document.querySelector("#find");
   find.value=STATE.query;
-
-  document.querySelector("#rail").addEventListener("click",event=>{
-    const button=event.target.closest("[data-view]");
-    if(!button)return;
-    setView(button.dataset.view);
-    applyFilter();
-  });
 
   // One handler for both lists: a row is a row wherever it is drawn.
   document.querySelector(".split").addEventListener("click",event=>{

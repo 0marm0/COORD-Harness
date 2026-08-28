@@ -23,7 +23,7 @@ The exact command flags are defined by `coord-board --help`. The documented defa
 
 ## Shipped views
 
-The five packaged tabs below are captured from the deterministic fictional board produced by `python -m coordharness.demo`.
+The packaged tabs below are captured from the deterministic fictional board produced by `python -m coordharness.demo`.
 
 For a documentation refresh, start the loopback board against that seeded database and run
 `python tools/capture_board_screens.py`. The helper fixes the viewport, color scheme, locale, and
@@ -44,10 +44,6 @@ Exact checked-in hashes remain declared in [`assets/provenance.json`](assets/pro
 
 <p align="center">
   <img src="assets/screens/board-graph.png" alt="Source-bound dependency graph with edge provenance." width="100%">
-</p>
-
-<p align="center">
-  <img src="assets/screens/board-activity.png" alt="Privacy-preserving activity view that excludes event bodies and command sources." width="100%">
 </p>
 
 These PNGs are release evidence only because they are synthetic, fixed-clock, hash-pinned, metadata-checked, and linked to source truth in [`assets/provenance.json`](assets/provenance.json).

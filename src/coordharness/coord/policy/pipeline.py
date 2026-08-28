@@ -217,9 +217,9 @@ def run_policy_pipeline(
 
 def _configured_modes() -> dict[str, PolicyMode]:
     try:
-        from coordharness.config import HARNESS_ROOT
+        from coordharness.config import resource_modes_path
 
-        path = Path(HARNESS_ROOT) / "data_local" / "resource_modes.json"
+        path = resource_modes_path()
         parsed = json.loads(path.read_text())
         raw = parsed.get("harness_policy_modes", {}) if isinstance(parsed, dict) else {}
         if not isinstance(raw, dict):

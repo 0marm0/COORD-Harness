@@ -33,11 +33,36 @@ done
 if [ ! -f "$DEMO/.coordharness/coord.db" ]; then
   echo "==> seeding a synthetic board in var/demo"
   mkdir -p "$DEMO/docs/reports"
-  git -C "$DEMO" rev-parse --git-dir >/dev/null 2>&1 || git -C "$DEMO" init -q
+  # var/demo is a plain subdirectory of this repository, not a separate clone.
+  # `git -C "$DEMO" rev-parse --git-dir` would find THIS repository's own .git
+  # by searching upward past $DEMO and report success without ever creating
+  # $DEMO/.git -- every git command below would then silently operate on the
+  # real repository containing this script. Check for $DEMO's own .git
+  # directly instead.
+  if [ ! -d "$DEMO/.git" ]; then
+    git -C "$DEMO" init -q
+  fi
+  # Belt and suspenders: refuse to go any further unless git agrees $DEMO is
+  # its own repository root, so add/commit below can never reach $REPO even if
+  # the check above is ever wrong.
+  DEMO_TOPLEVEL="$(git -C "$DEMO" rev-parse --show-toplevel)"
+  DEMO_REAL="$(cd "$DEMO" && pwd)"
+  if [ "$DEMO_TOPLEVEL" != "$DEMO_REAL" ]; then
+    echo "FAIL: demo git root ($DEMO_TOPLEVEL) is not $DEMO_REAL; refusing to touch git" >&2
+    exit 1
+  fi
   # The completion gate requires artifacts committed to version control, so the
-  # demo project needs to be a real repository, not just a directory.
-  ( cd "$DEMO" && git add -A >/dev/null 2>&1 || true
-    git -c user.name=demo -c user.email=demo@example.invalid commit -qm "demo project" >/dev/null 2>&1 || true )
+  # demo project needs to be a real repository, not just a directory. `-C`
+  # (never `cd`) keeps every git invocation scoped to $DEMO even if an earlier
+  # step failed, and the explicit pathspec keeps `add` from staging anything
+  # outside it. A genuine git failure here is left to propagate (no `|| true`)
+  # so it is never silently swallowed.
+  git -C "$DEMO" add -- .
+  if [ -n "$(git -C "$DEMO" status --porcelain)" ]; then
+    git -C "$DEMO" -c user.name=demo -c user.email=demo@example.invalid commit -qm "demo project"
+  else
+    echo "==> demo repository has nothing to commit yet; leaving it empty"
+  fi
   COORD_PROJECT_ROOT="$DEMO" PYTHONPATH="$REPO/src" "$PYTHON" -m coordharness.demo
 else
   echo "==> reusing the board in var/demo (pass --reset to rebuild it)"
@@ -87,5 +112,6 @@ fi
 
 echo
 echo "    Board:  http://127.0.0.1:$PORT"
+echo "    Doctor: COORD_PROJECT_ROOT=\"$DEMO\" \"$REPO/.venv/bin/coord\" doctor"
 echo "    Stop:   Ctrl-C"
 wait $SERVER

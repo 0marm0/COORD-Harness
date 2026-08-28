@@ -291,10 +291,15 @@ def test_board_http_ui_api_and_security(tmp_path: Path, monkeypatch):
         # what the server actually guarantees: every destination has a mount
         # point, including Attention, which used to be a card on Overview
         # showing eight of several hundred rows.
-        for panel in ("attention", "overview", "work", "jobs", "graph", "activity"):
+        for panel in ("attention", "overview", "work", "jobs", "graph", "comms", "usage"):
             assert f'id="{panel}" class="panel' in html, f"no mount point for {panel}"
-        assert 'id="rail"' in html
         assert 'id="detail"' in html
+        # The rail and the `activity` panel were removed: the rail shipped
+        # `hidden` while a second render function kept painting it, and nothing
+        # ever wrote to `#activity`. Assert their absence rather than dropping
+        # the check, so a re-added dead destination has to argue for itself.
+        assert 'id="rail"' not in html
+        assert 'id="activity"' not in html
         assert headers["Content-Security-Policy"].startswith("default-src 'self'")
         assert headers["X-Frame-Options"] == "DENY"
 

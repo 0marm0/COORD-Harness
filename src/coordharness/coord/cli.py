@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import sqlite3
 import sys
 
 from coordharness import config as harness_config
@@ -212,6 +213,13 @@ def _run_lifecycle_policy(conn, *, action: str, work_id: str, ident: dict, paylo
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="coord")
     ap.add_argument("--db", default=None)
+    # Declared here so `coord --help` lists it and a direct call to this module
+    # accepts it. The flag is consumed by the process entry point, which owns
+    # the error boundary it turns off, so it never reaches this parser from the
+    # installed command and nothing below reads it.
+    ap.add_argument("--traceback", action="store_true",
+                    help="show the full Python traceback instead of a one-line "
+                         "refusal")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     p = sub.add_parser("session")
@@ -287,6 +295,12 @@ def main(argv=None) -> int:
     # order for draining a backlog in the order it was written.
     p.add_argument("--backlog", action="store_true",
                    help="read oldest-first, in queue order, instead of newest-first")
+    # Opt-in, never the default. Broadcasts are legitimate traffic; the defect
+    # was that they were indistinguishable from a message addressed here, not
+    # that they were shown. Making this the default would only move the silence.
+    p.add_argument("--directed", action="store_true",
+                   help="show only messages addressed to this actor, not board-wide "
+                        "broadcasts")
 
     p = sub.add_parser("route", help="which provider has headroom, on measured usage")
     p.add_argument("--usage-db", required=True,
@@ -492,7 +506,10 @@ def main(argv=None) -> int:
 
         elif args.cmd == "work-context":
             row = _work_row(conn, args.work_id)
-            if row is None:
+            # _work_row returns an empty dict for a missing row, never None, so
+            # an `is None` test here never fired and an unknown id fell through
+            # to `row["version"]` below as a bare KeyError.
+            if not row:
                 _emit({
                     "ok": False,
                     "work_id": args.work_id,
@@ -562,7 +579,28 @@ def main(argv=None) -> int:
                 payload={"step": args.step},
             )
             _register_identity_session(conn, ident)
-            cid = coord_db.claim_work(conn, sid, args.work_id, step=args.step)
+            try:
+                cid = coord_db.claim_work(conn, sid, args.work_id, step=args.step)
+            except sqlite3.IntegrityError as exc:
+                # The one-held-claim unique index is the only integrity rule
+                # this insert can plausibly trip, but "only" is an assumption,
+                # so it is confirmed by reading the holder back rather than
+                # translated on faith. No live claim means something else broke,
+                # and that keeps its stack.
+                holder = conn.execute(
+                    "SELECT claim_id, session_id FROM claims WHERE work_id=?"
+                    " AND status IN ('running','paused','blocked')"
+                    " ORDER BY acquired_at DESC LIMIT 1",
+                    (args.work_id,),
+                ).fetchone()
+                if holder is None:
+                    raise
+                raise ValueError(
+                    f"work {args.work_id!r} is already claimed by session "
+                    f"{str(holder['session_id'])!r} (claim "
+                    f"{str(holder['claim_id'])}); that session must release it "
+                    "before another can take it"
+                ) from exc
             claim_row = conn.execute(
                 "SELECT lease_token FROM claims WHERE claim_id=?", (cid,)
             ).fetchone()
@@ -684,21 +722,34 @@ def main(argv=None) -> int:
             recipient = args.actor or ident["actor"]
             msgs = coord_db.read_inbox(
                 conn, recipient_actor=recipient, limit=args.limit,
-                newest_first=not args.backlog,
+                newest_first=not args.backlog, directed_only=args.directed,
             )
             # Say what was NOT shown. A caller that asks for twenty and gets
             # twenty cannot otherwise tell a drained queue from a truncated one,
             # and mid-flight that is the difference between "nothing arrived"
             # and "I did not look far enough".
-            unread = coord_db.unread_inbox_count(conn, recipient_actor=recipient)
+            #
+            # Split by whom the message named. One total cannot answer "did
+            # anything arrive for me": on a working board the broadcasts
+            # outnumber the directed messages many times over, so a single
+            # figure buries the one event that was actually addressed here.
+            unread = coord_db.unread_inbox_counts(conn, recipient_actor=recipient)
+            # Under --directed the broadcast leg was never eligible to be shown,
+            # so counting it as "not shown" would report a backlog that this
+            # reading is not waiting on.
+            scope_unread = unread["directed"] if args.directed else unread["total"]
             _emit({
                 "count": len(msgs),
-                "unread_total": unread,
-                "not_shown": max(0, unread - len(msgs)),
+                "unread_total": unread["total"],
+                "directed_unread": unread["directed"],
+                "broadcast_unread": unread["broadcast"],
+                "not_shown": max(0, scope_unread - len(msgs)),
                 "order": "backlog" if args.backlog else "newest_first",
+                "scope": "directed" if args.directed else "all",
                 "messages": [
                     {"id": m["event_id"], "kind": m["kind"], "from": m.get("actor"),
-                     "to": m.get("to_selector"), "work_id": m.get("work_id"),
+                     "to": m.get("to_selector"), "directed": m.get("directed"),
+                     "work_id": m.get("work_id"),
                      "title": m.get("title"), "body": m.get("body")} for m in msgs],
             })
 
@@ -716,6 +767,15 @@ def main(argv=None) -> int:
                     raise SystemExit(f"--budget expects PROVIDER=TOKENS, got {pair!r}")
                 budgets[name.strip()] = int(raw)
 
+            if not Path(args.usage_db).expanduser().exists():
+                # This ledger is only ever read, so a path that does not exist
+                # is a typo rather than a store to create. Left to UsageLedger
+                # it becomes an OSError about the parent directory, which names
+                # the wrong thing entirely.
+                raise ValueError(
+                    f"coord route --usage-db {args.usage_db!r} does not exist; "
+                    "pass the path of an existing usage ledger"
+                )
             ledger = UsageLedger(args.usage_db)
             try:
                 advice = routing.advise_from_ledger(

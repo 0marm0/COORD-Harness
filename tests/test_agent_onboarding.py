@@ -199,6 +199,127 @@ def test_mac_setup_help_is_side_effect_free(tmp_path: Path) -> None:
     assert not home.exists()
 
 
+def test_mac_setup_no_native_help_is_side_effect_free(tmp_path: Path) -> None:
+    """--no-native paired with --help must stay side-effect free even though
+    --help is not $1 -- this is the "closest non-destructive probe" a
+    stranger without Xcode/XcodeGen is expected to run, and it must never
+    fall through into the mutating setup path (venv creation, pip install,
+    apps/install.sh)."""
+    clone = tmp_path / "clone"
+    scripts = clone / "scripts"
+    apps = clone / "apps"
+    scripts.mkdir(parents=True)
+    apps.mkdir()
+    shutil.copy2(ROOT / "scripts" / "setup-macos.sh", scripts / "setup-macos.sh")
+    shutil.copy2(ROOT / "apps" / "install.sh", apps / "install.sh")
+
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    marker = tmp_path / "python-was-called"
+    tools = {
+        "uname": "#!/bin/sh\nprintf 'Darwin\n'\n",
+        # No xcodebuild/xcodegen on PATH at all: --no-native must never need them,
+        # including on the help path.
+        "python3": "#!/bin/sh\ntouch \"$COORD_MUTATION_MARKER\"\nexit 97\n",
+    }
+    for name, body in tools.items():
+        executable = fake_bin / name
+        executable.write_text(body)
+        executable.chmod(0o755)
+
+    home = tmp_path / "home"
+    result = subprocess.run(
+        ["/bin/bash", str(scripts / "setup-macos.sh"), "--no-native", "--help"],
+        cwd=clone,
+        env={
+            "HOME": str(home),
+            "PATH": f"{fake_bin}:/usr/bin:/bin",
+            "COORD_PYTHON": str(fake_bin / "python3"),
+            "COORD_MUTATION_MARKER": str(marker),
+        },
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0
+    assert "--no-native" in result.stdout
+    assert result.stderr == ""
+    assert not marker.exists()
+    assert not (clone / ".venv").exists()
+    assert not (clone / ".coordharness").exists()
+    assert not home.exists()
+
+
+def test_demo_seed_cannot_commit_in_enclosing_repository(tmp_path: Path) -> None:
+    """Regression guard for a live incident: var/demo is a plain subdirectory of
+    the repository that contains scripts/demo.sh, not a separate clone. A prior
+    version used `git -C "$DEMO" rev-parse --git-dir`, which succeeds by
+    searching upward and finding the ENCLOSING repository's own .git -- so
+    var/demo/.git was never created, and the seed step's `git add -A` /
+    `git commit` (guarded only loosely by a `cd`) ran against the real
+    repository, sweeping in whatever else was staged there. This proves the
+    current script cannot move the enclosing repository's HEAD or touch what
+    was already staged there, using exactly that nested layout."""
+    clone = tmp_path / "clone"
+    (clone / "scripts").mkdir(parents=True)
+    shutil.copy2(ROOT / "scripts" / "demo.sh", clone / "scripts" / "demo.sh")
+    (clone / "scripts" / "demo.sh").chmod(0o755)
+
+    git_env = {"PATH": "/usr/bin:/bin", "HOME": str(tmp_path / "git-home")}
+    run = lambda *args: subprocess.run(  # noqa: E731
+        ["git", *args], cwd=clone, env=git_env, check=True,
+        capture_output=True, text=True,
+    )
+    run("init", "-q")
+    run("config", "user.name", "t")
+    run("config", "user.email", "t@example.invalid")
+    (clone / "README.md").write_text("hello\n")
+    run("add", "README.md")
+    run("commit", "-qm", "initial")
+
+    # A staged-but-uncommitted change, standing in for another agent's live
+    # work-in-progress elsewhere in the same enclosing repository.
+    (clone / "dirty.txt").write_text("wip\n")
+    run("add", "dirty.txt")
+
+    before_head = run("rev-parse", "HEAD").stdout.strip()
+    before_status = set(run("status", "--porcelain").stdout.splitlines())
+
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    python_stub = fake_bin / "python3"
+    python_stub.write_text(
+        "#!/bin/sh\n"
+        'mkdir -p "$COORD_PROJECT_ROOT/.coordharness"\n'
+        'touch "$COORD_PROJECT_ROOT/.coordharness/coord.db"\n'
+        "exit 0\n"
+    )
+    python_stub.chmod(0o755)
+
+    result = subprocess.run(
+        ["/bin/bash", str(clone / "scripts" / "demo.sh")],
+        cwd=clone,
+        env={"HOME": str(tmp_path / "home"), "PATH": f"{fake_bin}:/usr/bin:/bin"},
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+
+    after_head = run("rev-parse", "HEAD").stdout.strip()
+    after_status = set(run("status", "--porcelain").stdout.splitlines())
+
+    assert after_head == before_head, "demo.sh must never move the enclosing repository's HEAD"
+    assert before_status <= after_status, (
+        "demo.sh must never alter what was already staged in the enclosing repository"
+    )
+    assert (clone / "var" / "demo" / ".git").is_dir(), (
+        "the demo board must get its own independent repository"
+    )
+
+
 def test_client_registration_commands_are_absolute_and_client_specific(
     monkeypatch,
 ) -> None:
