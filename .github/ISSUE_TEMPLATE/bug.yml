@@ -1,0 +1,41 @@
+name: Bug report
+description: Report a reproducible problem without private project data.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: Do not include secrets, real work-item text, databases, or vulnerability details. Use a private security advisory for security issues.
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Surface
+      options: [CLI, Python API, MCP, Jobs, Web board, macOS, iOS, Documentation]
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      placeholder: 0.1.0 or commit SHA
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal synthetic reproduction
+      description: Use invented IDs and data.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true

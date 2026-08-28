@@ -1,0 +1,124 @@
+/* Styles for view-flowpath.js — the Stations custody view. Served, never
+   injected: the board's CSP is style-src 'self' with no unsafe-inline.
+   Token-only, including fallbacks: --c-card-a / --c-hairline / --c-hover are
+   set by accent.js rather than declared in app.css, so they fall back to
+   tokens app.css always defines, never to a literal.
+   ASSERTION (binding, from the spec amendment): no arrowhead, chevron,
+   gradient or taper exists anywhere on the rail — the boxes plus the printed
+   counts carry every fact, and no mark asserts traversal or direction. A
+   later edit must not reintroduce one. */
+
+.stcard .stcap { margin: .35rem 0 .55rem; }
+.stcard .stcap b { color: var(--ink); font-weight: 600; }
+
+/* Instrument strip: dense live counters. The numerals change on refresh
+   because the documents changed, not because anything is animated. */
+.stcard .st-stats { display: flex; flex-wrap: wrap; gap: .6rem; margin: .6rem 0 .9rem; }
+.stcard .st-stat { border: 1px solid var(--line); border-radius: 9px; padding: .45rem .7rem .4rem;
+  min-width: 6.4rem; background: var(--c-card-a, var(--panel)); }
+.stcard .st-stat b { display: block; font-size: 1.25rem; font-weight: 600; color: var(--ink);
+  font-variant-numeric: tabular-nums; line-height: 1.15; }
+.stcard .st-stat span { font-size: 0.69rem; letter-spacing: .13em; text-transform: uppercase;
+  color: var(--muted); }
+.stcard .st-stat:hover { border-color: var(--c-hairline, var(--line)); background: var(--c-hover, var(--panel)); }
+
+/* The rail SVG. Boxes only — no connecting line (see the assertion above). */
+.stcard .strail { width: 100%; height: auto; display: block; }
+.strail .st-lat { stroke: var(--c-hairline, var(--line)); stroke-width: 1; opacity: .28; }
+.strail .st-box { fill: var(--c-card-a, var(--panel)); stroke: var(--c-hairline, var(--line)); }
+.strail .st-box.gap { fill: none; stroke: var(--c-hairline, var(--line)); stroke-dasharray: 3 2; }
+.strail .st-name { font-size: 11px; letter-spacing: .1em; text-transform: uppercase; fill: var(--muted); }
+.strail .st-num { font-size: 26px; fill: var(--ink); font-variant-numeric: tabular-nums; }
+.strail .st-traynum { font-size: 18px; fill: var(--ink); font-variant-numeric: tabular-nums; }
+.strail .st-gapnote { font-size: 11.5px; fill: var(--muted); }
+.strail .st-over { font-size: 11.5px; fill: var(--muted); font-variant-numeric: tabular-nums; }
+
+/* One tile = one row. Size is constant; only the count of tiles is a claim.
+   Every tile must therefore be equally VISIBLE: a tile painted at the box's own
+   fill is a record the eye cannot count, which would leave a 22-row station
+   reading emptier than a 10-row one. So the neutral tile is --muted, never the
+   panel or the hairline. Colour names a status; it never names a magnitude.
+   Fill and stroke are the SAME token on every tile — uniformly, so no tile is
+   bigger than another — because the shared arrival pulse (svg .m-new) animates
+   stroke-width, and a strokeless tile would silently swallow that claim. */
+.strail .st-unit { fill: var(--muted); stroke: var(--muted); cursor: pointer; }
+.strail .st-unit.running { fill: var(--green); stroke: var(--green); }
+.strail .st-unit.stopped { fill: var(--amber); stroke: var(--amber); }
+.strail .st-unit.failed { fill: var(--red); stroke: var(--red); }
+.strail .st-unit.done { fill: var(--muted); stroke: var(--muted); }
+.strail .st-unit.unowned { fill: none; stroke: var(--muted); stroke-dasharray: 2 2; }
+.strail .st-unit:hover { stroke: var(--green); stroke-width: 1.5; }
+.strail .st-unit:focus-visible { outline: 2px solid var(--green); outline-offset: 1px; }
+
+/* Proof gate: a line, not a station. Rows do not stand in it. Only the short
+   headline is drawn inside the viewBox; the sub-line is HTML underneath it,
+   because a sentence that grows with the board's numbers would be silently
+   clipped at the viewBox edge rather than wrapped. */
+.strail .st-gate { stroke: var(--line); stroke-width: 2; }
+.strail .st-gatelab { font-size: 11.5px; letter-spacing: .08em; fill: var(--muted); }
+.stcard .st-gatesub { margin: .1rem 0 0; text-align: right; font-size: .7rem;
+  letter-spacing: .02em; color: var(--muted); }
+
+/* Stopped tray: off the axis, above the stations. Amber = status, never magnitude. */
+.strail .st-tray { stroke: var(--amber); fill: none; stroke-dasharray: 3 2; }
+
+/* Lease horizon: six ordinal buckets, never a countdown bar. */
+.stcard .st-h { margin: 1.1rem 0 .45rem; font-size: 0.782rem; font-weight: 500;
+  letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+.stcard .stlease { display: grid; grid-template-columns: repeat(6, 1fr); gap: .5rem; }
+.stcard .st-cell { border: 1px solid var(--line); border-radius: 8px; padding: .5rem .55rem .45rem;
+  min-height: 4.4rem; display: flex; flex-direction: column; }
+.stcard .st-cell:hover { border-color: var(--c-hairline, var(--line)); background: var(--c-hover, var(--panel)); }
+.stcard .st-ticks { display: flex; flex-wrap: wrap; gap: 3px; margin-bottom: .45rem; min-height: 8px; }
+/* Same rule as the station tiles: one tick is one claim, so every tick has to
+   be countable by eye. A hairline tick on the page ground measured 1.35:1 —
+   a bucket holding ten claims read as an empty cell. Neutral is --muted. */
+.stcard .st-tick { width: 8px; height: 8px; padding: 0; margin: 0; border-radius: 1px; cursor: pointer;
+  background: var(--muted); border: 1px solid var(--muted); }
+.stcard .st-cell.expired .st-tick { background: var(--red); border-color: var(--red); }
+.stcard .st-cell.imminent .st-tick { background: var(--amber); border-color: var(--amber); }
+.stcard .st-tick:hover { border-color: var(--green); }
+.stcard .st-tick:focus-visible { outline: 2px solid var(--green); outline-offset: 1px; }
+.stcard .st-blab { font-size: 0.713rem; color: var(--muted); letter-spacing: .04em; margin-top: auto; }
+.stcard .st-bcount { font-size: .82rem; color: var(--ink); font-variant-numeric: tabular-nums; }
+.stcard .st-gapline { margin: 1rem 0 .4rem; }
+
+/* Drop ledger and the asymmetry. Numerals side by side, never two bars. */
+.stcard .stledger { display: grid; grid-template-columns: 1fr 1fr; gap: 1.1rem; margin-top: .4rem; }
+.stcard .st-class { margin: 0 0 .5rem; font-size: .8rem; color: var(--muted); }
+.stcard .st-clab { color: var(--ink); }
+.stcard .st-class.none .st-clab, .stcard .st-class.noctx .st-clab { color: var(--amber); }
+.stcard .st-class .chips { display: inline-flex; flex-wrap: wrap; gap: .3rem; margin-left: .45rem; }
+.stcard .st-asym { border-left: 2px solid var(--line); padding: .1rem 0 .1rem .8rem;
+  margin: 0 0 .8rem; font-size: .8rem; color: var(--muted); }
+.stcard .st-asym:hover { border-left-color: var(--c-hairline, var(--line)); }
+.stcard .st-asym b { color: var(--ink); }
+.stcard .st-n { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* Floor notes: everything excluded, unreadable, unstationed, unreconciled. */
+.stcard .st-floor { list-style: none; margin: .9rem 0 0; padding: 0; display: grid; gap: .3rem;
+  font-size: .78rem; color: var(--muted); }
+.stcard .st-floor b { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* Staged entrance on panel activation: transform only, under 400ms, so a
+   routine 5-second repaint replays it imperceptibly and no opacity flash
+   fakes an arrival — arrivals are motion.js's .m-new claim, not this. */
+.stcard .st-enter { animation: stfp-enter 240ms ease-out 1 both; }
+.stcard .st-d2 { animation-delay: 40ms; }
+.stcard .st-d3 { animation-delay: 80ms; }
+.stcard .st-d4 { animation-delay: 120ms; }
+@keyframes stfp-enter {
+  from { transform: translateY(4px); }
+  to { transform: translateY(0); }
+}
+
+@media (max-width: 720px) {
+  .stcard .stledger { grid-template-columns: 1fr; }
+  .stcard .stlease { grid-template-columns: repeat(3, 1fr); }
+}
+
+/* Kill switch: nothing in this view may move under reduced motion, and the
+   rule stays here so a future edit cannot add a mover that escapes it. */
+@media (prefers-reduced-motion: reduce) {
+  .stcard *, .strail * { transition: none !important; animation: none !important; }
+}

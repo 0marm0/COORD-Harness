@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>COORD Operations Atlas</title>
+  <link rel="icon" href="/static/mark-compute.png" type="image/png">
+  <link rel="stylesheet" href="/static/app.css">
+  <link rel="stylesheet" href="/static/shell.css">
+  <script src="/static/shell.js" defer></script>
+  <link rel="stylesheet" href="/static/ops-atlas.css">
+</head>
+<body class="atlas-body atlas-loading">
+  <nav class="shellbar" aria-label="Product areas">
+    <a class="shell-brand" href="/#v=work&layout=board"><span class="shell-mark">COORD</span><span class="shell-sub">Intelligence</span></a>
+    <span class="shell-nav">
+      <a href="/#v=work&layout=board">Work</a>
+      <a href="/map" aria-current="page">Intelligence</a>
+      <a href="/#v=usage">Usage</a>
+    </span>
+    <span class="atlas-head" aria-label="Atlas projection status">
+      <span class="atlas-headline">
+        <b>READ-ONLY TOPOLOGY</b>
+        <span id="atlas-clock" class="atlas-clock">Waiting for the board</span>
+      </span>
+      <span class="authority-seal">
+        <span class="seal-dot" aria-hidden="true"></span>
+        <span><b>PROJECTION</b><small>coord.db authority</small></span>
+      </span>
+    </span>
+  </nav>
+  <nav class="shell-subnav" aria-label="Intelligence views">
+    <a href="/map">Map</a>
+    <a href="/mesh">Mesh</a>
+    <a href="/ops" aria-current="page">Atlas</a>
+  </nav>
+
+  <div id="atlas-alert" class="atlas-alert" role="status" aria-live="polite" hidden></div>
+
+  <main class="atlas-main">
+    <details id="atlas-prelude" class="atlas-prelude" open>
+      <summary class="atlas-prelude-summary">
+        <span><span class="eyebrow">READ MODEL + SCOPE</span><b>Projection receipts and operating totals</b></span>
+        <span class="prelude-summary-action rail-hint">Show context</span>
+      </summary>
+      <div class="atlas-prelude-body">
+    <section class="atlas-intro">
+      <div>
+        <p class="eyebrow">OPERATIONS INTELLIGENCE</p>
+        <h1>Live coordination topology</h1>
+        <p class="atlas-dek">One coherent read of actors, work, dependencies, evidence, and structural attention.</p>
+      </div>
+      <div class="intro-copy">
+        <p>Trace who holds work, what waits on what, where evidence lands, and which recorded defects deserve intervention. Receipts disclose whether every mark came from one coherent bundle or a degraded compatibility read.</p>
+        <div id="atlas-questions" class="question-row" role="group" tabindex="0" aria-label="Structured graph questions; scroll horizontally for more options on compact screens">
+          <button data-question="impact" type="button">Downstream reach</button>
+          <button data-question="attention" type="button">Needs attention</button>
+          <button data-question="leases" type="button">Lease risk</button>
+          <button data-question="recent" type="button">Recent change</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="document-rail" aria-labelledby="document-title">
+      <header>
+        <p class="eyebrow">READ MODEL</p>
+        <h2 id="document-title">Coherent source bundle</h2>
+        <span class="document-rail-hint" aria-hidden="true">Scroll documents →</span>
+      </header>
+      <div id="document-stages" class="document-stages" tabindex="0" aria-label="Six coherent source documents; scroll horizontally on compact screens" aria-live="polite"></div>
+    </section>
+
+    <section class="atlas-metrics-shell" aria-label="Operational summary metrics">
+      <header class="metrics-rail-head"><span class="eyebrow">OPERATING TOTALS</span><span class="metrics-hint">Scroll metrics →</span></header>
+      <section id="atlas-metrics" class="atlas-metrics" tabindex="0" aria-label="Eight operational summary metrics; scroll horizontally on compact screens"></section>
+    </section>
+      </div>
+    </details>
+    <div id="atlas-question-dock" class="compact-question-dock" aria-label="Topology question shortcuts" hidden></div>
+
+    <section class="atlas-workspace">
+      <section class="topology-card" aria-labelledby="topology-title">
+        <header class="topology-head">
+          <div>
+            <p class="eyebrow">LIVE TOPOLOGY</p>
+            <h2 id="topology-title">Coordination graph</h2>
+            <p id="topology-scope" class="meta"></p>
+            <div id="topology-receipts" class="topology-receipts" aria-label="Graph completeness and source receipts" aria-live="polite"></div>
+          </div>
+          <div class="topology-command-surface" aria-label="Topology commands">
+            <div class="topology-actions" aria-label="Topology view mode">
+              <button class="active" type="button" data-mode="operating">Operating</button>
+              <button type="button" data-mode="critical">Critical path</button>
+              <button type="button" data-mode="neighbourhood">Neighbourhood</button>
+            </div>
+            <button id="atlas-expand" class="topology-command" type="button" aria-pressed="false">Expand admitted</button>
+            <div class="atlas-live-controls" aria-label="Live projection controls">
+              <button id="atlas-freeze" class="topology-command" type="button" aria-pressed="false">Freeze</button>
+              <button id="atlas-refresh" class="topology-command" type="button">Refresh</button>
+            </div>
+          </div>
+        </header>
+
+        <section id="topology-low-information" class="topology-low-information" aria-labelledby="topology-low-information-title" hidden>
+          <div class="low-information-summary">
+            <p class="eyebrow">TOPOLOGY ADMISSION OUTCOME</p>
+            <h3 id="topology-low-information-title">Topology not admitted</h3>
+            <p id="topology-low-information-reason" class="low-information-reason" data-absence-explanation="primary"></p>
+          </div>
+          <dl id="topology-low-information-facts" class="low-information-facts" aria-label="Admission, source, and freshness facts"></dl>
+          <details id="topology-technical-receipt" class="topology-technical-receipt">
+            <summary>Technical receipt</summary>
+            <dl id="topology-technical-facts" class="technical-facts"></dl>
+          </details>
+        </section>
+
+        <div class="atlas-toolbar" tabindex="0" aria-label="Graph controls; scroll horizontally on compact screens">
+          <label class="search-field">
+            <span>Find</span>
+            <input id="atlas-search" type="search" autocomplete="off" placeholder="id, title, owner, step" aria-label="Filter graph nodes">
+            <kbd>/</kbd>
+          </label>
+          <label><span>Status</span><select id="atlas-status"><option value="operational">Operational</option><option value="all">All states</option></select></label>
+          <label><span>Vertical</span><select id="atlas-module"><option value="all">All verticals</option></select></label>
+          <label class="hops-field"><span>Hops</span><select id="atlas-hops" aria-describedby="atlas-hops-help"><option value="1">1 hop</option><option value="2">2 hops</option><option value="all">All connected</option></select><small id="atlas-hops-help">Available in Neighbourhood after selecting a node.</small></label>
+          <div class="zoom-controls" aria-label="Graph scale">
+            <button id="atlas-zoom-out" type="button" aria-label="Zoom out">−</button>
+            <output id="atlas-zoom-value">100%</output>
+            <button id="atlas-zoom-in" type="button" aria-label="Zoom in">+</button>
+            <button id="atlas-zoom-fit" type="button">Fit</button>
+          </div>
+        </div>
+
+        <section id="topology-node-roster" class="topology-node-roster" aria-labelledby="topology-node-roster-title" hidden>
+          <header>
+            <h4 id="topology-node-roster-title">Admitted source nodes</h4>
+            <span id="topology-node-roster-count"></span>
+          </header>
+          <ul id="topology-node-roster-items" aria-live="polite"></ul>
+        </section>
+
+        <div id="topology-empty" class="topology-empty" hidden>
+          <b>No nodes match this scope.</b>
+          <span>Clear a filter or return to the operating view.</span>
+        </div>
+        <div id="topology-viewport" class="topology-viewport" tabindex="0" aria-label="Interactive coordination topology">
+          <svg id="topology-svg" role="group" aria-labelledby="topology-title topology-caption"></svg>
+        </div>
+        <footer class="topology-foot">
+          <p id="topology-caption">Columns encode node kind. Vertical order is deterministic grouping, not time, priority, or duration.</p>
+          <div class="edge-legend" aria-label="Topology legend">
+            <span><i class="legend-line owns"></i>holds</span>
+            <span><i class="legend-line depends"></i>waits on</span>
+            <span><i class="legend-line evidence"></i>evidence</span>
+            <span><i class="legend-node running"></i>running</span>
+            <span><i class="legend-node attention"></i>attention</span>
+          </div>
+        </footer>
+      </section>
+
+      <aside id="atlas-inspector" class="atlas-inspector" aria-labelledby="inspector-title" hidden>
+        <div class="inspector-empty">
+          <p class="eyebrow">SELECTED NODE</p>
+          <h2 id="inspector-title">Select a node</h2>
+          <p>Select an agent, work row, job, or artifact to inspect its recorded relationships and occurrence-only timeline.</p>
+        </div>
+      </aside>
+    </section>
+
+    <section class="atlas-lower">
+      <section id="atlas-traffic" class="atlas-panel traffic-panel" aria-labelledby="atlas-traffic-title">
+        <header><div><p class="eyebrow">COORDINATION TRAFFIC</p><h2 id="atlas-traffic-title">Recorded lane routing</h2></div><span id="traffic-freshness" class="panel-stat">WAITING</span></header>
+        <div id="traffic-facts" class="traffic-facts" aria-live="polite"></div>
+        <div id="traffic-routes" class="traffic-routes"></div>
+        <footer class="traffic-links">
+          <a href="/map?lens=pulse">Open Map Pulse</a><a href="/map?lens=topology">Open Map Lanes</a>
+        </footer>
+        <p id="traffic-truth" class="traffic-truth">Atlas summarizes counts only; Map carries the full recorded communication view.</p>
+      </section>
+
+      <section class="atlas-panel activity-panel">
+        <header><div><p class="eyebrow">EVENT OCCURRENCE</p><h2>Activity ledger</h2></div><span id="activity-count" class="panel-stat"></span></header>
+        <div id="activity-chart" class="activity-chart" aria-label="Recorded event volume by time bucket"></div>
+        <ol id="activity-ledger" class="activity-ledger"></ol>
+      </section>
+
+      <section class="atlas-panel health-panel">
+        <header><div><p class="eyebrow">GRAPH INTEGRITY</p><h2>Intervention ledger</h2></div><span id="health-state" class="panel-stat"></span></header>
+        <div id="health-ledger" class="health-ledger"></div>
+      </section>
+
+      <section class="atlas-panel impact-panel">
+        <header><div><p class="eyebrow">DEPENDENCY ECONOMICS</p><h2 id="impact-title">Release leverage</h2></div><span id="path-length" class="panel-stat"></span></header>
+        <div id="critical-strip" class="critical-strip"></div>
+        <div id="impact-ledger" class="impact-ledger"></div>
+      </section>
+
+      <section class="atlas-panel fleet-panel">
+        <header><div><p class="eyebrow">FLEET SHAPE</p><h2>Work by lane</h2></div><span id="fleet-count" class="panel-stat"></span></header>
+        <div id="fleet-ledger" class="fleet-ledger"></div>
+      </section>
+    </section>
+
+    <section class="truth-note">
+      <span class="seal-dot" aria-hidden="true"></span>
+      <p><b>This surface cannot act.</b> It reads bounded public projections over one coherent database copy. Event prose, decisions, knowledge text, credentials, permissions, cost, and unmeasured durations are intentionally absent.</p>
+    </section>
+  </main>
+
+  <script src="/static/ops-atlas-model.js" defer></script>
+  <script src="/static/accent.js" defer></script>
+  <script src="/static/ops-atlas.js" defer></script>
+</body>
+</html>

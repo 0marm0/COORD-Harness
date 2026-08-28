@@ -1,0 +1,51 @@
+{
+  "generated_at": "2026-08-24T12:00:00Z",
+  "rows": [
+    {
+      "bucket": "job",
+      "current_step": "Validate public snapshot contract",
+      "eta_seconds": 420,
+      "group": "Release",
+      "id": "work-001",
+      "module": "cockpit",
+      "owner": "agent-a",
+      "priority": 1,
+      "progress_fraction": 0.5,
+      "stale": false,
+      "status": "running",
+      "title": "Build native companion"
+    },
+    {
+      "bucket": "task",
+      "current_step": "Await deterministic test result",
+      "eta_seconds": null,
+      "group": "Release",
+      "id": "work-002",
+      "module": "validation",
+      "owner": "reviewer",
+      "priority": 2,
+      "progress_fraction": null,
+      "stale": true,
+      "status": "attention",
+      "title": "Review build receipt"
+    }
+  ],
+  "schema_version": "1",
+  "sessions": [
+    {
+      "actor": "agent-a",
+      "id": "session-001",
+      "label": "Native build",
+      "live": true
+    }
+  ],
+  "source": "synthetic-fixture",
+  "stale": false,
+  "summary": {
+    "attention": 1,
+    "done": 0,
+    "next": 0,
+    "running": 1,
+    "total": 2
+  }
+}

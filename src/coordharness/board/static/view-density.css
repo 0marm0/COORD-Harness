@@ -1,0 +1,65 @@
+/* Styles for view-density.js. Served, not injected: the board's CSP forbids inline styles. */
+
+.dvz-scroll { overflow-x: auto; }
+/* min-content, not auto: with table-layout:fixed a table sized by its content
+   hands the leftover pixels to whichever column comes first, so the largest
+   vertical was drawn ~7% wider than the rest and width started to look like a
+   quantity. min-content pins every column to exactly its declared width. */
+table.dvz { width: min-content; table-layout: fixed; border-collapse: collapse;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 12px; }
+table.dvz th, table.dvz td { padding: .4rem .5rem; font-size: .8rem; text-align: left;
+  vertical-align: top; border-bottom: 1px solid var(--line); }
+table.dvz tr:last-child th, table.dvz tr:last-child td { border-bottom: none; }
+table.dvz th.dvz-corner { width: 7rem; font-size: 11.5px; font-weight: 500;
+  color: var(--muted); opacity: .55; white-space: nowrap; }
+/* Wide enough to hold the shared 88px margin track plus its count: the footer
+   row puts one of those in every vertical's column, and in a narrower column the
+   bar runs on under the NEXT vertical's heading, which is a bar drawn against a
+   number it does not belong to. */
+table.dvz th.dvz-col { width: 124px; font-size: 12.1px; font-weight: 500; color: var(--muted);
+  overflow-wrap: anywhere; }
+table.dvz th.dvz-col b { display: block; font-weight: 600; color: var(--ink); }
+table.dvz td.dvz-slot { width: 124px; }
+table.dvz th.dvz-state { width: 7rem; font-size: 12.1px; font-weight: 500; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--muted); white-space: nowrap; }
+table.dvz th.dvz-margin, table.dvz td.dvz-margin { width: 124px; white-space: nowrap; }
+.dvz-tile { display: inline-block; width: 11px; height: 11px; margin: 2px; border-radius: 2px;
+  background: var(--dvz-tile); vertical-align: top; transition: transform .12s ease; }
+.dvz-tile:hover { transform: scale(1.35); }
+.dvz-tile.running { --dvz-tile: var(--green); }
+.dvz-tile.blocked, .dvz-tile.attention { --dvz-tile: var(--amber); }
+.dvz-tile.failed { --dvz-tile: var(--red); }
+.dvz-tile.other { --dvz-tile: color-mix(in srgb, var(--muted) 80%, transparent); }
+.dvz-tile.next { --dvz-tile: color-mix(in srgb, var(--muted) 62%, transparent); }
+.dvz-tile.planned { --dvz-tile: color-mix(in srgb, var(--muted) 45%, transparent); }
+.dvz-tile.done { --dvz-tile: color-mix(in srgb, var(--muted) 28%, transparent); }
+.dvz-tile.free { background: none; box-shadow: inset 0 0 0 1.5px var(--dvz-tile); }
+.dvz-tile:focus-visible { outline: 2px solid var(--green); outline-offset: 1px; }
+.dvz-tile.current { outline: 1.5px solid var(--green); outline-offset: 1px; }
+tr.dvz-void th.dvz-state { opacity: .4; }
+tr.dvz-void td.dvz-slot { height: 9px; padding-top: 3px; padding-bottom: 3px; }
+tr.dvz-foot th.dvz-state, tr.dvz-foot td { color: var(--muted); }
+.dvz-track { display: inline-block; width: 88px; height: 4px; border-radius: 2px;
+  vertical-align: middle; margin-right: .55em; overflow: hidden;
+  background: color-mix(in srgb, var(--muted) 12%, transparent); }
+.dvz-bar { display: block; height: 4px; border-radius: 2px;
+  background: color-mix(in srgb, var(--muted) 55%, transparent); }
+.dvz-n { font-size: .76rem; font-variant-numeric: tabular-nums; color: var(--muted); }
+.dvz-legend .dvz-tile { margin: 0 .3em 0 1em; vertical-align: -1px; }
+.dvz-legend .dvz-tile:first-child { margin-left: 0; }
+.dvz-legend .dvz-tile:hover { transform: none; }
+.dvz-note { color: var(--muted); font-size: .74rem; margin: .7rem 0 0; }
+@media (prefers-reduced-motion: reduce) {
+  .dvz-tile { transition: none; }
+  .dvz-tile:hover { transform: none; }
+}
+    /* Caveats belong with the picture, not in front of it. */
+    .readnote { margin: .5rem 0 .9rem; }
+    .readnote > summary { cursor: pointer; color: var(--muted); font-size: .78rem;
+      list-style: none; display: inline-flex; align-items: center; gap: .4em;
+      padding: .25rem .6rem; border: 1px solid var(--line); border-radius: 999px; }
+    .readnote > summary::-webkit-details-marker { display: none; }
+    .readnote[open] > summary { color: var(--ink); }
+    .readnote > summary:focus-visible { outline: 2px solid var(--green); outline-offset: 1px; }
+    .readnote .body { margin-top: .6rem; padding-left: .8rem; border-left: 2px solid var(--line); }
+    .readnote .body p { margin: .45rem 0; font-size: .8rem; color: var(--muted); }

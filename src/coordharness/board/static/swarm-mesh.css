@@ -1,0 +1,2176 @@
+/* COORD Swarm Mesh -------------------------------------------------------
+   The graph is the primary object. All palette values resolve through the
+   shared tokens in app.css; semantic amber/red do not follow the accent
+   switch. Spatial depth is deterministic layout and is labelled as such. */
+
+.mesh-body {
+  --mesh-grid: color-mix(in srgb, var(--line) 46%, transparent);
+  --mesh-glow: color-mix(in srgb, var(--green) 14%, transparent);
+  --mesh-sheet: color-mix(in srgb, var(--panel) 91%, transparent);
+  --mesh-deep: color-mix(in srgb, var(--c-bg) 96%, var(--panel));
+  overflow: hidden;
+  background:
+    linear-gradient(var(--mesh-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--mesh-grid) 1px, transparent 1px),
+    radial-gradient(circle at 54% 38%, var(--mesh-glow), transparent 34rem),
+    var(--c-bg);
+  background-size: 38px 38px, 38px 38px, auto, auto;
+  font-family: system-ui, -apple-system, 'SF Pro Text', Inter, 'Segoe UI', ui-sans-serif, sans-serif;
+}
+
+.mesh-body button,
+.mesh-body input { font: inherit; }
+.mesh-body h1,
+.mesh-body h2,
+.mesh-body h3,
+.mesh-body p,
+.mesh-body dl,
+.mesh-body ol { margin-block: 0; }
+
+.mesh-rail {
+  height: 50px;
+  display: grid;
+  grid-template-columns: 210px 1fr 245px;
+  align-items: stretch;
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--c-bg) 96%, transparent);
+}
+
+.mesh-brand {
+  display: flex;
+  align-items: center;
+  gap: .65rem;
+  padding-inline: .9rem;
+  color: var(--ink);
+  text-decoration: none;
+  border-right: 1px solid var(--line);
+}
+
+.mesh-brand-mark {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--green) 72%, var(--line));
+  color: var(--green);
+  font: 300 1rem/1 "Coord Brand", ui-sans-serif, sans-serif;
+  box-shadow: inset 0 0 .9rem color-mix(in srgb, var(--green) 8%, transparent);
+}
+
+.mesh-brand > span:last-child { display: grid; line-height: 1; }
+.mesh-brand b {
+  font: 300 1.15rem/1 "Coord Brand", ui-sans-serif, sans-serif;
+  letter-spacing: .25em;
+}
+.mesh-brand small,
+.rail-state small {
+  color: var(--muted);
+  font: 600 0.782rem/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: .13em;
+}
+
+.rail-metrics {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(120px, 1fr));
+  gap: .1rem 1.4rem;
+}
+.rail-metrics div {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-content: center;
+  gap: .45rem;
+  padding-inline: clamp(.5rem, 1.2vw, 1.1rem);
+  border-right: 1px solid var(--line);
+}
+.rail-metrics dt {
+  color: var(--muted);
+  font: 650 0.782rem ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: .12em;
+}
+.rail-metrics dd {
+  margin: 0;
+  color: var(--ink);
+  /* Georgia numerals are the board's display voice (app.css .metric b); the
+     mesh is the same product, so its readings are set the same way. */
+  font: 500 1.35rem Georgia, "Times New Roman", serif;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.05;
+}
+
+.rail-state {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: .58rem;
+  padding-inline: .9rem;
+}
+.rail-state > span:last-child { display: grid; text-align: right; }
+.rail-state b {
+  color: var(--green);
+  font: 700 0.73rem ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: .12em;
+}
+.state-dot {
+  /* Pixel-aligned so the reduced-motion documentation capture does not leave
+     a four-pixel subpixel-raster variance at the circle edge. */
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--green);
+  box-shadow: 0 0 .75rem var(--green);
+}
+.state-dot.attention { background: var(--amber); box-shadow: 0 0 .75rem var(--amber); }
+.state-dot.failure { background: var(--red); box-shadow: 0 0 .75rem var(--red); }
+
+.mesh-nav {
+  height: 36px;
+  position: static;
+  padding: 0 .7rem;
+  display: flex;
+  align-items: center;
+  gap: .14rem;
+  overflow: visible;
+  background: color-mix(in srgb, var(--c-bg) 94%, transparent);
+  border-bottom: 1px solid var(--line);
+}
+.mesh-nav a,
+.mesh-nav button {
+  color: var(--muted);
+  text-decoration: none;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  padding: .28rem .62rem;
+  font-size: 0.84rem;
+  letter-spacing: .03em;
+  white-space: nowrap;
+}
+.mesh-nav a:hover,
+.mesh-nav a.active,
+.mesh-nav button:hover,
+.mesh-nav button[aria-pressed="true"] {
+  color: var(--ink);
+  border-color: var(--c-hairline);
+  background: var(--c-hover);
+}
+.nav-spacer { flex: 1; }
+
+.mesh-alert {
+  position: fixed;
+  z-index: 10;
+  top: 86px;
+  inset-inline: 0;
+  padding: .55rem 1rem;
+  color: var(--red);
+  background: color-mix(in srgb, var(--red) 12%, var(--c-bg));
+  border-bottom: 1px solid color-mix(in srgb, var(--red) 45%, var(--line));
+  font-size: 0.92rem;
+}
+/* Not every disclosure is a failure. A search that found nothing inside a
+   bounded view is a caveat about the view, and red would overstate it. */
+.mesh-alert[data-tone="caution"] {
+  color: var(--amber);
+  background: color-mix(in srgb, var(--amber) 12%, var(--c-bg));
+  border-bottom-color: color-mix(in srgb, var(--amber) 45%, var(--line));
+}
+/* Embedded in a native cockpit the shell bar loses its brand and nav rows, so
+   a fixed offset measured against the full bar would float the alert over the
+   content instead of under the bar. */
+:root[data-embedded="1"] .mesh-alert { top: 48px; }
+
+.mesh-shell {
+  height: calc(100vh - 86px);
+  display: grid;
+  grid-template-rows: 58px 38px minmax(390px, 1fr) 174px 30px;
+  gap: 6px;
+  padding: 6px;
+  max-width: 1920px;
+  margin-inline: auto;
+}
+
+.mesh-command {
+  display: grid;
+  grid-template-columns: minmax(300px, 1fr) auto minmax(250px, .7fr) auto;
+  align-items: center;
+  gap: .85rem;
+  min-width: 0;
+  padding: .45rem .6rem;
+  border: 1px solid var(--line);
+  background: var(--mesh-sheet);
+}
+.command-title { min-width: 0; }
+.command-title h1 {
+  font-size: 1rem;
+  line-height: 1.2;
+  font-weight: 620;
+  letter-spacing: .01em;
+}
+.command-title > p:last-child {
+  margin-top: .15rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+.eyebrow {
+  color: var(--green);
+  font: 700 0.782rem/1.3 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: .16em;
+}
+
+.segmented {
+  display: flex;
+  align-items: center;
+  padding: 2px;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--c-bg) 52%, transparent);
+}
+.segmented button {
+  padding: .34rem .55rem;
+  border: 0;
+  border-radius: 2px;
+  color: var(--muted);
+  font-size: 0.79rem;
+  white-space: nowrap;
+}
+.segmented button:hover,
+.segmented button.active {
+  color: var(--ink);
+  background: var(--c-hover);
+}
+.segmented button.active { box-shadow: inset 0 -1px var(--green); }
+.segmented button:disabled,
+.question-buttons button:disabled {
+  cursor: not-allowed;
+  color: var(--muted);
+  opacity: .56;
+  background: transparent;
+  box-shadow: none;
+}
+
+.mesh-search {
+  height: 32px;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: .5rem;
+  padding-inline: .55rem;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--c-bg) 48%, transparent);
+}
+.mesh-search > span {
+  color: var(--muted);
+  font: 650 0.782rem ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: .12em;
+}
+.mesh-search input {
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  color: var(--ink);
+  background: transparent;
+  font-size: 0.87rem;
+}
+.mesh-search input::placeholder { color: var(--muted); opacity: .75; }
+.mesh-search kbd {
+  color: var(--muted);
+  font: 600 0.72rem ui-monospace, monospace;
+  border: 1px solid var(--line);
+  padding: .05rem .24rem;
+}
+
+.generation-strip {
+  display: grid;
+  grid-template-columns: 134px minmax(600px, 1fr) minmax(220px, auto);
+  align-items: center;
+  border: 1px solid var(--line);
+  background: var(--mesh-sheet);
+  min-width: 0;
+}
+.strip-title {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  padding-inline: .65rem;
+  border-right: 1px solid var(--line);
+}
+.strip-title b {
+  font: 650 0.7rem ui-monospace, monospace;
+  letter-spacing: .11em;
+}
+.generation-strip ol {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  min-width: 0;
+}
+.generation-strip li {
+  position: relative;
+  padding: .28rem .55rem;
+  border-right: 1px solid var(--line);
+  color: var(--muted);
+  font: 600 0.73rem ui-monospace, monospace;
+  white-space: nowrap;
+}
+.generation-strip li::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 -1px 0;
+  height: 1px;
+  background: var(--green);
+  opacity: .25;
+}
+.generation-strip li.ready { color: var(--ink); }
+.generation-strip li.ready::after { opacity: 1; box-shadow: 0 0 .45rem var(--green); }
+.generation-strip li span { margin-right: .35rem; color: var(--green); }
+.generation-strip > p {
+  padding-inline: .65rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font: 550 0.7rem ui-monospace, monospace;
+}
+
+.mesh-stage {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 220px minmax(650px, 1fr) 270px;
+  gap: 6px;
+}
+.mesh-side,
+.mesh-canvas-card,
+.telemetry-panel,
+.mesh-truth {
+  border: 1px solid var(--line);
+  background: var(--mesh-sheet);
+  min-width: 0;
+}
+
+.mesh-side {
+  padding: .65rem;
+  overflow: hidden;
+}
+.mesh-side > header,
+.telemetry-panel > header {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  gap: .5rem;
+  margin-bottom: .55rem;
+}
+.mesh-side h2,
+.telemetry-panel h2 {
+  margin-top: .08rem;
+  font-size: 0.97rem;
+  font-weight: 620;
+}
+.mesh-side output,
+.telemetry-panel output {
+  color: var(--green);
+  font: 650 0.74rem ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.cluster-roster {
+  display: grid;
+  gap: .24rem;
+  max-height: calc(100% - 170px);
+  overflow: auto;
+  scrollbar-width: thin;
+}
+.cluster-row {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: .45rem;
+  width: 100%;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  padding: .34rem .36rem;
+  text-align: left;
+  color: var(--muted);
+}
+.cluster-row:hover,
+.cluster-row.active {
+  color: var(--ink);
+  border-color: var(--line);
+  background: var(--c-hover);
+}
+.cluster-row i {
+  width: 7px;
+  height: 7px;
+  border: 1px solid var(--green);
+  border-radius: 50%;
+  box-shadow: 0 0 .4rem color-mix(in srgb, var(--green) 55%, transparent);
+}
+.cluster-row:nth-child(3n+2) i { border-color: var(--blue); box-shadow: 0 0 .4rem color-mix(in srgb, var(--blue) 55%, transparent); }
+.cluster-row:nth-child(3n) i { border-color: var(--amber); box-shadow: 0 0 .4rem color-mix(in srgb, var(--amber) 45%, transparent); }
+.cluster-row span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.82rem; }
+.cluster-row b { color: currentColor; font: 650 0.73rem ui-monospace, monospace; }
+
+.scope-card {
+  margin-top: .55rem;
+  padding-top: .55rem;
+  border-top: 1px solid var(--line);
+}
+.scope-card h3 {
+  margin-bottom: .35rem;
+  color: var(--muted);
+  font: 650 0.69rem ui-monospace, monospace;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+.scope-card dl { display: grid; grid-template-columns: 1fr auto; gap: .2rem .5rem; }
+.scope-card dt,
+.scope-card dd { font-size: 0.74rem; }
+.scope-card dt { color: var(--muted); }
+.scope-card dd { margin: 0; font-family: ui-monospace, monospace; }
+.side-note {
+  margin-top: .55rem !important;
+  color: var(--muted);
+  font-size: 0.7rem;
+  line-height: 1.45;
+}
+
+.mesh-canvas-card {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: minmax(44px, auto) minmax(0, 1fr) 27px;
+  overflow: hidden;
+}
+.canvas-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .8rem;
+  padding: .45rem .65rem;
+  border-bottom: 1px solid var(--line);
+  /* A third badge widened this row until the title had nowhere to go and its
+     two lines ran under the badges. Both halves may shrink, and the row wraps
+     rather than overlapping. */
+  flex-wrap: wrap;
+}
+.canvas-head > * { min-width: 0; }
+.canvas-head h2 { margin-top: .08rem; font-size: 1.02rem; font-weight: 620; }
+.canvas-badges { display: flex; gap: .32rem; flex-wrap: wrap; justify-content: flex-end; min-width: 0; }
+.truth-badge {
+  padding: .23rem .4rem;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  font: 650 0.782rem ui-monospace, monospace;
+  letter-spacing: .08em;
+}
+.truth-badge.live { color: var(--green); border-color: color-mix(in srgb, var(--green) 42%, var(--line)); }
+.truth-badge.replay { color: var(--blue); border-color: color-mix(in srgb, var(--blue) 42%, var(--line)); }
+.truth-badge.direction { color: var(--amber); border-color: color-mix(in srgb, var(--amber) 42%, var(--line)); }
+.truth-badge.perspective { color: var(--blue); border-color: color-mix(in srgb, var(--blue) 48%, var(--line)); }
+.truth-badge.flat { color: var(--green); border-color: color-mix(in srgb, var(--green) 42%, var(--line)); }
+.truth-badge.unavailable { color: var(--amber); border-color: color-mix(in srgb, var(--amber) 48%, var(--line)); }
+/* A suppressed label is an omission, so it reads as one. */
+.truth-badge[data-state="partial"] { color: var(--amber); border-color: color-mix(in srgb, var(--amber) 42%, var(--line)); }
+
+.mesh-viewport {
+  position: relative;
+  min-height: 0;
+  overflow: hidden;
+  outline: 0;
+  cursor: grab;
+  background:
+    radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--green) 6%, transparent), transparent 46%),
+    linear-gradient(color-mix(in srgb, var(--line) 20%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--line) 20%, transparent) 1px, transparent 1px),
+    var(--mesh-deep);
+  background-size: auto, 28px 28px, 28px 28px, auto;
+}
+.mesh-viewport:focus-visible { box-shadow: inset 0 0 0 1px var(--green); }
+.mesh-viewport.dragging { cursor: grabbing; }
+.mesh-viewport canvas { width: 100%; height: 100%; display: block; }
+
+.cluster-labels {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+.cluster-label {
+  position: absolute;
+  max-width: min(230px, calc(100% - 12px));
+  padding: .22rem .4rem;
+  color: var(--ink);
+  background: color-mix(in srgb, var(--c-bg) 94%, transparent);
+  border-left: 2px solid var(--green);
+  font: 650 0.84rem ui-monospace, monospace;
+  line-height: 1.2;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+  transform: translate(-50%, -50%);
+}
+.cluster-label:nth-child(3n+2) { border-left-color: var(--blue); }
+.cluster-label:nth-child(3n) { border-left-color: var(--amber); }
+
+.mesh-tooltip {
+  position: absolute;
+  z-index: 4;
+  width: min(270px, calc(100% - 20px));
+  pointer-events: none;
+  padding: .48rem .55rem;
+  border: 1px solid var(--c-hairline);
+  background: color-mix(in srgb, var(--c-bg) 95%, transparent);
+  box-shadow: 0 .8rem 2rem color-mix(in srgb, var(--c-bg) 62%, transparent);
+  font-size: 0.79rem;
+}
+.mesh-tooltip b { display: block; font-size: 0.84rem; }
+.mesh-tooltip span { display: block; margin-top: .16rem; color: var(--muted); }
+
+.canvas-tools {
+  position: absolute;
+  top: .55rem;
+  right: .55rem;
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--c-bg) 86%, transparent);
+}
+.canvas-tools button,
+.canvas-tools output {
+  min-width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  padding: 0 .42rem;
+  border: 0;
+  border-right: 1px solid var(--line);
+  border-radius: 0;
+  color: var(--muted);
+  font-size: 0.74rem;
+}
+.canvas-tools button:last-child { border-right: 0; }
+.canvas-tools button:hover { color: var(--ink); background: var(--c-hover); }
+.canvas-tools button.active,
+.canvas-tools button[aria-pressed="true"] {
+  color: var(--ink);
+  background: var(--c-hover);
+  box-shadow: inset 0 -1px var(--green);
+}
+.canvas-tools button:disabled {
+  cursor: not-allowed;
+  opacity: .5;
+  box-shadow: none;
+}
+
+.axis-key {
+  position: absolute;
+  left: .55rem;
+  bottom: .5rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: .55rem;
+  max-width: calc(100% - 1.1rem);
+  padding: .35rem .48rem;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--c-bg) 84%, transparent);
+  color: var(--muted);
+  font: 550 0.782rem ui-monospace, monospace;
+}
+.axis-key span { display: inline-flex; align-items: center; gap: .28rem; }
+.shape { width: 8px; height: 8px; display: inline-block; border: 1px solid var(--green); }
+.shape.agent { border-radius: 50%; box-shadow: 0 0 .35rem var(--green); }
+.shape.work { transform: rotate(45deg); border-color: var(--blue); }
+.shape.evidence { border-color: var(--amber); border-radius: 50% 50% 50% 0; transform: rotate(-45deg); }
+.edge { width: 17px; height: 0; display: inline-block; border-top: 1px solid var(--muted); }
+.edge.dependency { border-top-style: dashed; border-color: var(--blue); }
+.edge.ownership { border-color: var(--green); }
+.mesh-canvas-card > footer {
+  display: flex;
+  align-items: center;
+  padding-inline: .65rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 0.69rem;
+  border-top: 1px solid var(--line);
+}
+
+.mesh-inspector { overflow: auto; scrollbar-width: thin; }
+.mesh-inspector > header button {
+  padding: .2rem .35rem;
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  color: var(--muted);
+  font-size: 0.7rem;
+}
+.question-buttons { display: grid; gap: .24rem; }
+.question-buttons button {
+  display: grid;
+  grid-template-columns: 22px 1fr;
+  gap: .35rem;
+  padding: .38rem .42rem;
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  text-align: left;
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+.question-buttons button:hover,
+.question-buttons button.active { color: var(--ink); background: var(--c-hover); border-color: var(--c-hairline); }
+.question-buttons span { color: var(--green); font-family: ui-monospace, monospace; }
+.selection-inspector {
+  margin-top: .52rem;
+  padding-top: .52rem;
+  border-top: 1px solid var(--line);
+}
+.selection-empty { color: var(--muted); font-size: 0.77rem; line-height: 1.5; }
+.selection-kicker { color: var(--green); font: 650 0.782rem ui-monospace, monospace; letter-spacing: .1em; }
+.selection-inspector h3 { margin-top: .2rem; font-size: 1.0rem; line-height: 1.25; }
+.selection-id { margin-top: .18rem !important; color: var(--muted); font: 550 0.782rem ui-monospace, monospace; word-break: break-all; }
+.selection-tags { display: flex; flex-wrap: wrap; gap: .25rem; margin-top: .45rem; }
+.selection-tags span { padding: .16rem .28rem; border: 1px solid var(--line); color: var(--muted); font: 550 0.782rem ui-monospace, monospace; }
+.selection-step { margin-top: .5rem !important; font-size: 0.76rem; line-height: 1.45; }
+.selection-receipt { margin-top: .45rem; display: grid; grid-template-columns: 1fr auto; gap: .18rem .5rem; }
+.selection-receipt dt { color: var(--muted); font-size: 0.69rem; }
+.selection-receipt dd { margin: 0; font: 600 0.782rem ui-monospace, monospace; text-align: right; }
+
+.path-card { margin-top: .6rem; padding-top: .52rem; border-top: 1px solid var(--line); }
+.path-card header { display: flex; justify-content: space-between; align-items: center; }
+.path-card h3 { font-size: 0.78rem; }
+.path-card ol { list-style: none; padding: 0; margin-top: .3rem; display: grid; gap: .18rem; }
+.path-card li { display: grid; grid-template-columns: 16px 1fr; gap: .3rem; color: var(--muted); font-size: 0.69rem; }
+.path-card li span { color: var(--green); font-family: ui-monospace, monospace; }
+
+.telemetry-dock {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 1.25fr .92fr 1fr .92fr 1fr;
+  gap: 6px;
+}
+.topology-admission-receipt {
+  grid-column: 1 / -1;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(250px, .9fr) minmax(360px, 1.3fr) minmax(420px, 2fr);
+  gap: .8rem;
+  padding: .7rem;
+  border: 1px solid color-mix(in srgb, var(--amber) 45%, var(--line));
+  background: linear-gradient(120deg, color-mix(in srgb, var(--amber) 7%, var(--mesh-sheet)), var(--mesh-sheet));
+  overflow: hidden;
+}
+.topology-admission-receipt[hidden] { display: none; }
+.topology-admission-receipt h2 {
+  margin-top: .1rem;
+  font-size: 1rem;
+}
+.topology-reason {
+  margin-top: .38rem !important;
+  color: var(--muted);
+  font-size: .875rem;
+  line-height: 1.4;
+}
+.topology-prerequisite {
+  margin-top: .42rem !important;
+  color: var(--amber);
+  font: 600 .75rem/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.topology-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .42rem;
+  align-content: center;
+}
+.topology-facts > div {
+  min-width: 0;
+  padding: .42rem .5rem;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--c-bg) 45%, transparent);
+}
+.topology-facts dt {
+  color: var(--green);
+  font: 650 .75rem ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.topology-facts dd {
+  margin: .2rem 0 0;
+  color: var(--ink);
+  font: 550 .75rem/1.35 ui-monospace, SFMono-Regular, Menlo, monospace;
+  overflow-wrap: anywhere;
+}
+.static-node-register {
+  min-width: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  border-left: 1px solid var(--line);
+  padding-left: .75rem;
+}
+.static-node-register > header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: .5rem;
+}
+.static-node-register h3 { font-size: .875rem; }
+.static-node-register output {
+  color: var(--green);
+  font: 650 .75rem ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.static-node-register ol {
+  list-style: none;
+  min-height: 0;
+  margin: .4rem 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: .25rem;
+  overflow: auto;
+  scrollbar-width: thin;
+}
+.static-node-register button {
+  width: 100%;
+  min-width: 0;
+  padding: .3rem .38rem;
+  border: 1px solid var(--line);
+  text-align: left;
+  color: var(--muted);
+  background: color-mix(in srgb, var(--c-bg) 38%, transparent);
+}
+.static-node-register button b,
+.static-node-register button span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.static-node-register button b { color: var(--ink); font-size: .875rem; }
+.static-node-register button span { margin-top: .12rem; font-size: .75rem; }
+.static-node-register button.search-match,
+.static-node-register button.selected {
+  border-color: color-mix(in srgb, var(--green) 52%, var(--line));
+  background: color-mix(in srgb, var(--green) 9%, var(--c-bg));
+}
+.static-node-register button.search-dimmed { opacity: .62; }
+.telemetry-panel {
+  padding: .55rem;
+  overflow: hidden;
+}
+.telemetry-panel > header { margin-bottom: .42rem; }
+
+.event-ledger { list-style: none; padding: 0; display: grid; gap: .18rem; }
+.event-ledger li {
+  display: grid;
+  grid-template-columns: 48px 48px minmax(0, 1fr);
+  gap: .36rem;
+  color: var(--muted);
+  font: 550 0.7rem ui-monospace, monospace;
+}
+.event-ledger time { color: var(--green); }
+.event-ledger b { color: var(--ink); font-weight: 620; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.event-ledger .event-static::after { content: "stationary"; margin-left: .25rem; color: var(--amber); font-size: 0.782rem; }
+
+.edge-ledger,
+.integrity-ledger { display: grid; gap: .28rem; }
+.ledger-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: .5rem;
+  color: var(--muted);
+  font-size: 0.73rem;
+}
+.ledger-row > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ledger-row b { color: var(--ink); font: 650 0.72rem ui-monospace, monospace; }
+.ledger-segments { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(16, 1fr); gap: 2px; }
+.ledger-segments i { height: 3px; background: var(--line); }
+.ledger-segments i.on { background: var(--green); }
+.ledger-row:nth-child(3n+2) .ledger-segments i.on { background: var(--blue); }
+.ledger-row:nth-child(3n) .ledger-segments i.on { background: var(--amber); }
+
+.traversal-grid {
+  display: grid;
+  grid-template-columns: repeat(20, 1fr);
+  gap: 3px;
+  align-content: start;
+}
+.traversal-grid i {
+  aspect-ratio: 1;
+  min-height: 5px;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--muted) 6%, transparent);
+}
+.traversal-grid i.actor-0 { background: color-mix(in srgb, var(--green) 56%, transparent); border-color: color-mix(in srgb, var(--green) 72%, var(--line)); }
+.traversal-grid i.actor-1 { background: color-mix(in srgb, var(--blue) 56%, transparent); border-color: color-mix(in srgb, var(--blue) 72%, var(--line)); }
+.traversal-grid i.actor-2 { background: color-mix(in srgb, var(--amber) 48%, transparent); border-color: color-mix(in srgb, var(--amber) 62%, var(--line)); }
+.traversal-grid i.actor-3 { background: color-mix(in srgb, var(--red) 44%, transparent); border-color: color-mix(in srgb, var(--red) 58%, var(--line)); }
+.traversal-panel > p { margin-top: .4rem; color: var(--muted); font-size: 0.782rem; line-height: 1.35; }
+
+.integrity-ledger .ledger-row.attention b { color: var(--amber); }
+.integrity-ledger .ledger-row.failure b { color: var(--red); }
+
+.flow-panel canvas { width: 100%; height: 62px; display: block; border-bottom: 1px solid var(--line); }
+.flow-panel dl { margin-top: .35rem; display: grid; grid-template-columns: 1fr auto; gap: .18rem .4rem; }
+.flow-panel dt { color: var(--muted); font-size: 0.72rem; }
+.flow-panel dd { margin: 0; font: 620 0.72rem ui-monospace, monospace; }
+
+.mesh-truth {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  padding-inline: .65rem;
+  overflow: hidden;
+}
+.mesh-truth p { color: var(--muted); font-size: 0.69rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mesh-truth b { color: var(--ink); }
+
+.visually-hidden {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
+
+/* Operational controls stay legible even where their surrounding receipts
+   use the denser 12px tertiary scale. */
+.mesh-body button,
+.mesh-body input,
+.mesh-body select { font-size: 14px; }
+.mesh-body output { font-size: 12px; }
+.mesh-body .canvas-tools output { font-size: 14px; }
+
+@media (max-width: 1240px) {
+  .mesh-rail { grid-template-columns: 190px 1fr 205px; }
+  .rail-metrics div:nth-child(4) { display: none; }
+  .rail-metrics { grid-template-columns: repeat(3, minmax(110px, 1fr)); }
+  .mesh-command { grid-template-columns: minmax(250px, 1fr) auto minmax(210px, .75fr); }
+  .motion-switch { display: none; }
+  .mesh-stage { grid-template-columns: 170px minmax(0, 1fr) 215px; }
+  .telemetry-dock { grid-template-columns: 1.2fr 1fr 1fr 1fr; }
+  .flow-panel { display: none; }
+  .topology-admission-receipt {
+    grid-template-columns: minmax(190px, .9fr) minmax(250px, 1.3fr) minmax(300px, 2fr);
+  }
+}
+
+@media (max-width: 900px) {
+  .mesh-body { overflow: auto; }
+  .mesh-rail { grid-template-columns: 170px 1fr; }
+  .rail-state { display: none; }
+  .rail-metrics div:nth-child(3),
+  .rail-metrics div:nth-child(5) { display: none; }
+  .rail-metrics { grid-template-columns: repeat(3, 1fr); }
+  .mesh-shell { height: auto; min-height: calc(100vh - 86px); grid-template-rows: auto auto auto auto auto; }
+  .mesh-command { grid-template-columns: 1fr auto; min-height: 62px; }
+  .mesh-search { grid-column: 1 / -1; }
+  .generation-strip { grid-template-columns: 112px 1fr; min-height: 42px; }
+  .generation-strip > p { display: none; }
+  .generation-strip li { padding-inline: .3rem; overflow: hidden; text-overflow: ellipsis; }
+  .generation-strip li span { display: none; }
+  .mesh-stage { grid-template-columns: 1fr; }
+  .mesh-fleet { display: none; }
+  .mesh-canvas-card { min-height: 580px; }
+  .mesh-inspector { min-height: 240px; }
+  .telemetry-dock { grid-template-columns: repeat(2, 1fr); min-height: 360px; }
+  .topology-admission-receipt {
+    grid-template-columns: 1fr;
+    min-height: 520px;
+    overflow: visible;
+  }
+  .static-node-register { border-left: 0; border-top: 1px solid var(--line); padding: .65rem 0 0; }
+  .flow-panel { display: block; }
+}
+
+@media (min-width: 901px) and (max-height: 820px) {
+  .mesh-body {
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+  .mesh-shell {
+    height: auto;
+    min-height: calc(100vh - 86px);
+    min-height: calc(100dvh - 86px);
+    grid-template-rows:
+      minmax(58px, auto)
+      38px
+      minmax(350px, 1fr)
+      minmax(150px, auto)
+      minmax(42px, auto);
+  }
+  .mesh-truth {
+    align-items: flex-start;
+    padding-block: .48rem;
+  }
+  .mesh-truth p {
+    line-height: 1.35;
+    white-space: normal;
+  }
+}
+
+/* ==========================================================================
+   COORD Cockpit spatial-intelligence language
+   --------------------------------------------------------------------------
+   The canvas remains the primary object.  Chrome, receipts, roster, reader,
+   and telemetry are supporting instruments with a shared compact anatomy.
+   Blue carries focus and graph interaction; semantic colors remain state.
+   ========================================================================== */
+.mesh-body {
+  --mesh-grid: rgba(255, 255, 255, .032);
+  --mesh-glow: rgba(94, 157, 255, .11);
+  --mesh-sheet: rgba(7, 8, 11, .88);
+  --mesh-deep: #020304;
+  min-height: 100vh;
+  min-height: 100dvh;
+  height: 100vh;
+  height: 100dvh;
+  display: grid;
+  grid-template-rows: auto auto auto minmax(0, 1fr);
+  overflow: hidden;
+  color: var(--ink, #f4f6fb);
+  background:
+    radial-gradient(circle at 50% -14rem, rgba(94, 157, 255, .10), transparent 36rem),
+    #000;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+.mesh-body .eyebrow {
+  color: var(--faint, #6f7683);
+  font: 720 10px/1.2 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+  letter-spacing: .10em;
+  text-transform: uppercase;
+}
+
+.mesh-body .mesh-rail {
+  min-height: 44px;
+  padding: 0 max(24px, calc((100vw - 1740px) / 2));
+  display: flex;
+  align-items: stretch;
+  gap: 14px;
+  color: var(--muted, #a5abb7);
+  border-bottom: 1px solid rgba(255, 255, 255, .055);
+  background: rgba(7, 8, 11, .76);
+  box-shadow: inset 0 1px rgba(255, 255, 255, .018);
+}
+.mesh-body .rail-metrics {
+  min-width: 0;
+  flex: 1 1 auto;
+  display: grid;
+  grid-template-columns: repeat(6, minmax(72px, 1fr));
+  margin: 0;
+}
+.mesh-body .rail-metrics > div {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 7px;
+  padding: 8px 11px;
+  border-right: 1px solid rgba(255, 255, 255, .045);
+}
+.mesh-body .rail-metrics > div:first-child { border-left: 1px solid rgba(255, 255, 255, .045); }
+.mesh-body .rail-metrics dt {
+  color: var(--faint, #6f7683);
+  font: 720 9.5px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+  letter-spacing: .08em;
+}
+.mesh-body .rail-metrics dd {
+  margin: 0;
+  color: var(--ink, #f4f6fb);
+  font: 740 14px/1 -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+.mesh-body .rail-state {
+  min-width: 210px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-inline: 12px;
+}
+.mesh-body .rail-state > span:last-child { display: grid; gap: 2px; }
+.mesh-body .rail-state b {
+  color: var(--green, #4ade80);
+  font: 760 9.5px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+  letter-spacing: .09em;
+}
+.mesh-body .rail-state small {
+  color: var(--faint, #6f7683);
+  font-size: 10.5px;
+  white-space: nowrap;
+}
+.mesh-body .state-dot {
+  width: 7px;
+  height: 7px;
+  box-shadow: 0 0 10px color-mix(in srgb, var(--green, #4ade80) 52%, transparent);
+}
+.mesh-body .mesh-alert {
+  position: static;
+  top: auto;
+  z-index: auto;
+  padding: 8px max(24px, calc((100vw - 1740px) / 2));
+  color: color-mix(in srgb, var(--red, #f87171) 80%, #fff);
+  border-color: color-mix(in srgb, var(--red, #f87171) 34%, rgba(255, 255, 255, .07));
+  background: color-mix(in srgb, var(--red, #f87171) 9%, rgba(7, 8, 11, .97));
+  font-size: 12px;
+}
+
+.mesh-body .mesh-shell {
+  width: min(1740px, calc(100vw - 48px));
+  height: auto;
+  min-height: 0;
+  margin: 0 auto;
+  padding: 12px 0 16px;
+  display: grid;
+  grid-template-rows: auto auto minmax(430px, 1fr) minmax(170px, auto) auto;
+  gap: 10px;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+.mesh-body .mesh-command {
+  min-height: 74px;
+  display: grid;
+  grid-template-columns: minmax(270px, .9fr) auto minmax(220px, .75fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 11px 13px;
+  border: 1px solid rgba(255, 255, 255, .07);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, .015);
+  box-shadow: 0 14px 38px rgba(0, 0, 0, .20), inset 0 1px rgba(255, 255, 255, .018);
+}
+.mesh-body .command-title h1 {
+  margin: 3px 0 0;
+  color: var(--ink, #f4f6fb);
+  font: 760 20px/1.1 -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", system-ui, sans-serif;
+  letter-spacing: -.02em;
+}
+.mesh-body .command-title > p:last-child {
+  max-width: 38rem;
+  margin-top: 5px;
+  color: var(--faint, #6f7683);
+  font-size: 11.5px;
+  line-height: 1.35;
+}
+.mesh-body .segmented {
+  min-width: max-content;
+  padding: 2px;
+  gap: 2px;
+  border: 1px solid rgba(255, 255, 255, .07);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, .018);
+}
+.mesh-body .segmented button {
+  min-height: 30px;
+  padding: 5px 8px;
+  color: var(--muted, #a5abb7);
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  font: 600 12px/1.1 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+}
+.mesh-body .segmented button:hover,
+.mesh-body .segmented button.active,
+.mesh-body .segmented button[aria-pressed="true"] {
+  color: var(--ink, #f4f6fb);
+  background: rgba(255, 255, 255, .05);
+  box-shadow: inset 0 -2px var(--blue, #5e9dff), 0 6px 18px rgba(94, 157, 255, .06);
+}
+.mesh-body .mesh-search {
+  height: 34px;
+  min-width: 0;
+  padding: 0 8px 0 10px;
+  border: 1px solid rgba(255, 255, 255, .07);
+  border-radius: 8px;
+  background: var(--surface-2, #0b0d12);
+}
+.mesh-body .mesh-search > span {
+  color: var(--faint, #6f7683);
+  font: 720 9.5px -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+}
+.mesh-body .mesh-search input {
+  min-width: 0;
+  color: var(--ink, #f4f6fb);
+  font-size: 12.5px;
+}
+.mesh-body .mesh-search:focus-within {
+  border-color: var(--blue, #5e9dff);
+  box-shadow: 0 0 0 2px rgba(94, 157, 255, .16);
+}
+.mesh-body .mesh-search kbd {
+  color: var(--faint, #6f7683);
+  font: 500 10.5px ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+.mesh-body .generation-strip {
+  min-height: 38px;
+  padding: 0 10px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) minmax(170px, auto);
+  gap: 10px;
+  border: 1px solid rgba(255, 255, 255, .055);
+  border-radius: 10px;
+  background: rgba(7, 8, 11, .72);
+}
+.mesh-body .strip-title b {
+  color: var(--muted, #a5abb7);
+  font: 720 9.5px -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+  letter-spacing: .08em;
+}
+.mesh-body .generation-strip ol { min-width: 0; }
+.mesh-body .generation-strip li {
+  color: var(--muted, #a5abb7);
+  font: 600 11px -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+}
+.mesh-body .generation-strip li span {
+  color: var(--faint, #6f7683);
+  font: 500 9.5px ui-monospace, "SF Mono", Menlo, monospace;
+}
+.mesh-body #generation-receipt {
+  color: var(--faint, #6f7683);
+  font: 500 10.5px ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+.mesh-body .mesh-stage {
+  min-height: 430px;
+  display: grid;
+  grid-template-columns: 230px minmax(0, 1fr) 280px;
+  gap: 10px;
+}
+.mesh-body .mesh-side,
+.mesh-body .mesh-canvas-card,
+.mesh-body .telemetry-panel,
+.mesh-body .topology-admission-receipt {
+  min-width: 0;
+  border: 1px solid rgba(255, 255, 255, .07);
+  border-radius: 14px;
+  background: rgba(7, 8, 11, .86);
+  box-shadow: 0 14px 38px rgba(0, 0, 0, .20), inset 0 1px rgba(255, 255, 255, .018);
+  overflow: hidden;
+}
+.mesh-body .mesh-side > header,
+.mesh-body .canvas-head,
+.mesh-body .telemetry-panel > header {
+  min-height: 52px;
+  padding: 10px 12px;
+  border-color: rgba(255, 255, 255, .055);
+}
+.mesh-body .mesh-side h2,
+.mesh-body .canvas-head h2,
+.mesh-body .telemetry-panel h2,
+.mesh-body .topology-admission-receipt h2 {
+  margin-top: 3px;
+  color: var(--ink, #f4f6fb);
+  font: 700 14px/1.2 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+  letter-spacing: -.01em;
+}
+.mesh-body .mesh-side output,
+.mesh-body .telemetry-panel output {
+  color: var(--blue, #5e9dff);
+  font: 700 10.5px ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+.mesh-body .cluster-roster { padding: 7px; }
+.mesh-body .cluster-row {
+  min-height: 37px;
+  padding: 6px 7px;
+  color: var(--muted, #a5abb7);
+  border-color: rgba(255, 255, 255, .045);
+  border-radius: 8px;
+}
+.mesh-body .cluster-row:hover,
+.mesh-body .cluster-row.active {
+  color: var(--ink, #f4f6fb);
+  border-color: rgba(94, 157, 255, .44);
+  background: rgba(94, 157, 255, .07);
+  box-shadow: inset 2px 0 var(--blue, #5e9dff);
+}
+.mesh-body .cluster-row b {
+  font: 650 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+}
+.mesh-body .cluster-row span,
+.mesh-body .cluster-row small {
+  color: var(--faint, #6f7683);
+  font-size: 10.5px;
+}
+.mesh-body .scope-card {
+  margin: 8px;
+  padding: 9px;
+  border-color: rgba(255, 255, 255, .055);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, .014);
+}
+.mesh-body .scope-card h3 {
+  color: var(--faint, #6f7683);
+  font: 700 9.5px -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+}
+.mesh-body .scope-card dl { font-size: 11.5px; }
+.mesh-body .scope-card dd { font: 600 10.5px ui-monospace, "SF Mono", Menlo, monospace; }
+.mesh-body .side-note { color: var(--faint, #6f7683); font-size: 10.5px; line-height: 1.4; }
+
+.mesh-body .canvas-badges { gap: 4px; }
+.mesh-body .truth-badge {
+  min-height: 22px;
+  padding: 3px 6px;
+  color: var(--faint, #6f7683);
+  border-color: rgba(255, 255, 255, .055);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, .015);
+  font: 650 9.5px ui-monospace, "SF Mono", Menlo, monospace;
+}
+.mesh-body .truth-badge.perspective,
+.mesh-body .truth-badge.direction { color: var(--blue, #5e9dff); }
+.mesh-body .mesh-viewport {
+  background:
+    linear-gradient(rgba(255, 255, 255, .025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, .025) 1px, transparent 1px),
+    radial-gradient(circle at 50% 48%, rgba(94, 157, 255, .10), transparent 23rem),
+    #020304;
+  background-size: 32px 32px, 32px 32px, auto, auto;
+}
+.mesh-body .mesh-viewport:focus-visible {
+  outline: 2px solid var(--blue, #5e9dff);
+  outline-offset: -2px;
+}
+.mesh-body .cluster-label {
+  color: var(--ink, #f4f6fb);
+  background: rgba(7, 8, 11, .88);
+  border-color: rgba(255, 255, 255, .08);
+  border-radius: 7px;
+  font: 650 11px -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+}
+.mesh-body .canvas-tools {
+  z-index: 6;
+  border-color: rgba(255, 255, 255, .07);
+  border-radius: 9px;
+  background: rgba(7, 8, 11, .88);
+  backdrop-filter: blur(18px);
+}
+.mesh-body .canvas-tools button {
+  min-height: 30px;
+  color: var(--muted, #a5abb7);
+  border-color: rgba(255, 255, 255, .045);
+  font-size: 11px;
+}
+.mesh-body .canvas-tools button:hover,
+.mesh-body .canvas-tools button.active {
+  color: var(--ink, #f4f6fb);
+  background: rgba(94, 157, 255, .08);
+  box-shadow: inset 0 -2px var(--blue, #5e9dff);
+}
+.mesh-body .canvas-tools output {
+  color: var(--faint, #6f7683);
+  font: 500 10.5px ui-monospace, "SF Mono", Menlo, monospace;
+}
+.mesh-body .axis-key {
+  color: var(--faint, #6f7683);
+  border-color: rgba(255, 255, 255, .055);
+  border-radius: 8px;
+  background: rgba(7, 8, 11, .78);
+  font-size: 10.5px;
+}
+.mesh-body #mesh-caption {
+  min-height: 38px;
+  padding: 7px 10px;
+  color: var(--faint, #6f7683);
+  border-color: rgba(255, 255, 255, .045);
+  font-size: 10.5px;
+  line-height: 1.35;
+}
+
+.mesh-body .question-buttons { padding: 7px; }
+.mesh-body .question-buttons button {
+  min-height: 36px;
+  padding: 6px 7px;
+  color: var(--muted, #a5abb7);
+  border-color: rgba(255, 255, 255, .045);
+  border-radius: 8px;
+  font: 600 11.5px -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+}
+.mesh-body .question-buttons button:hover,
+.mesh-body .question-buttons button.active {
+  color: var(--ink, #f4f6fb);
+  border-color: rgba(94, 157, 255, .44);
+  background: rgba(94, 157, 255, .07);
+}
+.mesh-body .question-buttons span { color: var(--blue, #5e9dff); font: 600 10px ui-monospace, "SF Mono", Menlo, monospace; }
+.mesh-body .selection-inspector { padding: 9px; }
+.mesh-body .selection-empty {
+  color: var(--muted, #a5abb7);
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+.mesh-body .selection-kicker {
+  color: var(--blue, #5e9dff);
+  font: 700 9.5px -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+}
+.mesh-body .selection-id,
+.mesh-body .selection-tags span,
+.mesh-body .selection-receipt dd {
+  font: 500 10.5px ui-monospace, "SF Mono", Menlo, monospace;
+}
+.mesh-body .path-card {
+  margin: 8px;
+  border-color: rgba(255, 255, 255, .055);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, .012);
+}
+.mesh-body .path-card h3 { font-size: 11.5px; }
+.mesh-body .path-card output { color: var(--blue, #5e9dff); }
+
+.mesh-body .telemetry-dock {
+  min-height: 170px;
+  display: grid;
+  grid-template-columns: 1.3fr 1fr 1fr 1fr 1fr;
+  gap: 10px;
+}
+.mesh-body .telemetry-panel { min-height: 170px; }
+.mesh-body .telemetry-panel > header { min-height: 48px; padding: 8px 10px; }
+.mesh-body .event-ledger,
+.mesh-body .edge-ledger,
+.mesh-body .integrity-ledger { padding: 5px 9px 9px; }
+.mesh-body .event-row,
+.mesh-body .ledger-row,
+.mesh-body .integrity-row {
+  min-height: 28px;
+  border-color: rgba(255, 255, 255, .045);
+  font-size: 10.5px;
+}
+.mesh-body .event-row time,
+.mesh-body .event-row b,
+.mesh-body .ledger-row b,
+.mesh-body .flow-panel dd {
+  font: 600 10.5px ui-monospace, "SF Mono", Menlo, monospace;
+}
+.mesh-body .event-row .event-kind { color: var(--blue, #5e9dff); }
+.mesh-body .ledger-segments i.on { background: var(--blue, #5e9dff); }
+.mesh-body .traversal-grid i.actor-0 { background: rgba(94, 157, 255, .55); border-color: rgba(145, 187, 255, .72); }
+.mesh-body .traversal-grid i.actor-1 { background: rgba(145, 187, 255, .42); border-color: rgba(145, 187, 255, .62); }
+.mesh-body .flow-panel canvas { max-height: 72px; }
+
+.mesh-body .mesh-truth {
+  min-height: 38px;
+  padding: 9px 11px;
+  gap: 8px;
+  color: var(--muted, #a5abb7);
+  border: 1px solid rgba(255, 255, 255, .055);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, .012);
+  font-size: 10.5px;
+  line-height: 1.4;
+}
+
+@media (max-width: 1260px) {
+  .mesh-body .mesh-command {
+    grid-template-columns: minmax(250px, 1fr) auto minmax(210px, .75fr);
+  }
+  .mesh-body .motion-switch { grid-column: 2 / -1; justify-self: end; }
+  .mesh-body .mesh-stage { grid-template-columns: 210px minmax(0, 1fr) 250px; }
+  .mesh-body .telemetry-dock { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+@media (max-width: 900px) {
+  .mesh-body {
+    height: auto;
+    min-height: 100dvh;
+    display: block;
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+  .mesh-body .mesh-rail {
+    min-height: 42px;
+    padding-inline: 10px;
+    overflow-x: auto;
+    scrollbar-width: thin;
+  }
+  .mesh-body .rail-metrics {
+    flex: 0 0 auto;
+    grid-template-columns: repeat(6, minmax(82px, 1fr));
+  }
+  .mesh-body .rail-state {
+    position: sticky;
+    right: 0;
+    min-width: 132px;
+    padding-inline: 9px;
+    background: rgba(7, 8, 11, .96);
+  }
+  .mesh-body .rail-state small { display: none; }
+  .mesh-body .mesh-shell {
+    width: calc(100% - 20px);
+    min-height: 0;
+    overflow: visible;
+    grid-template-rows: auto;
+  }
+  .mesh-body .mesh-command {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+  .mesh-body .segmented { width: max-content; max-width: 100%; overflow-x: auto; }
+  .mesh-body .motion-switch { grid-column: auto; justify-self: start; }
+  .mesh-body .generation-strip {
+    grid-template-columns: auto minmax(0, 1fr);
+    overflow: hidden;
+  }
+  .mesh-body #generation-receipt { display: none; }
+  .mesh-body .generation-strip ol { overflow-x: auto; }
+  .mesh-body .mesh-stage {
+    min-height: 0;
+    grid-template-columns: 1fr;
+  }
+  .mesh-body .mesh-canvas-card { order: 1; min-height: 560px; }
+  .mesh-body .mesh-fleet { order: 2; }
+  .mesh-body .mesh-inspector { order: 3; }
+  .mesh-body .telemetry-dock { grid-template-columns: 1fr 1fr; }
+}
+
+@media (max-width: 720px) {
+  .mesh-body .shellbar {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      "brand status actions"
+      "nav nav accent";
+    gap: 5px 8px;
+    min-height: 0;
+    padding: 7px 10px;
+    overflow: visible;
+  }
+  .mesh-body .shell-brand { grid-area: brand; min-width: 0; }
+  .mesh-body .shell-brand .shell-sub { display: none; }
+  .mesh-body .shell-nav {
+    grid-area: nav;
+    width: auto;
+    min-width: 0;
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    scrollbar-width: none;
+  }
+  .mesh-body .shell-nav::-webkit-scrollbar { display: none; }
+  .mesh-body .shell-right {
+    grid-area: actions;
+    display: flex;
+    justify-self: end;
+  }
+  .mesh-body .shell-right .shell-ctl { min-height: 28px; padding: 3px 7px; }
+  .mesh-body .accent {
+    grid-area: accent;
+    justify-self: end;
+    min-width: 0;
+    margin: 0;
+  }
+  .mesh-body .accent .meta { display: none; }
+  .mesh-body .accent button { min-height: 28px; padding: 3px 7px; }
+  .mesh-body .mesh-rail { padding-inline: 0; }
+  .mesh-body .mesh-command { padding: 11px; }
+  .mesh-body .command-title h1 { font-size: 19px; }
+  .mesh-body .mesh-canvas-card { min-height: 520px; }
+  .mesh-body .canvas-head { align-items: flex-start; flex-direction: column; }
+  .mesh-body .canvas-badges { justify-content: flex-start; }
+  .mesh-body .telemetry-dock { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 520px) {
+  .mesh-rail { grid-template-columns: 148px 1fr; }
+  .mesh-brand { padding-inline: .55rem; }
+  .mesh-brand small { display: none; }
+  .rail-metrics div:nth-child(2) { display: none; }
+  .rail-metrics { grid-template-columns: repeat(2, 1fr); }
+  .mesh-nav a:nth-child(-n+3) { display: none; }
+  .mesh-nav .accent { display: none; }
+  .mesh-command { grid-template-columns: 1fr; }
+  .command-title > p:last-child {
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+    line-height: 1.35;
+  }
+  .segmented { overflow-x: auto; }
+  .generation-strip { grid-template-columns: 1fr; }
+  .strip-title { display: none; }
+  .generation-strip li { text-align: center; font-size: 0.782rem; }
+  .mesh-canvas-card { min-height: 540px; grid-template-rows: minmax(64px, auto) minmax(0, 1fr) 27px; }
+  .canvas-head { align-items: start; }
+  .canvas-head > div:first-child { min-width: 0; }
+  .canvas-head h2 { font-size: 0.92rem; line-height: 1.16; }
+  .canvas-badges {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    flex: 1 0 100%;
+    width: 100%;
+    justify-items: stretch;
+  }
+  .truth-badge {
+    max-width: none;
+    white-space: normal;
+    line-height: 1.25;
+    text-align: left;
+  }
+  .canvas-badges .truth-badge:nth-child(n+3) { display: none; }
+  .cluster-label { max-width: 132px; font-size: 0.74rem; letter-spacing: .05em; }
+  .axis-key { gap: .35rem; }
+  .axis-key span:nth-child(n+4) { display: none; }
+  .telemetry-dock { grid-template-columns: 1fr; }
+  .telemetry-panel { min-height: 150px; }
+  .topology-facts,
+  .static-node-register ol { grid-template-columns: 1fr; }
+  .mesh-truth { min-height: 42px; }
+  .mesh-truth p { white-space: normal; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .state-dot { box-shadow: none; }
+}
+
+/* Interaction and reading text never drops below 14px. Compact provenance
+   receipts remain visibly tertiary, but never below 12px. */
+.mesh-body button,
+.mesh-body input { font-size: .875rem !important; }
+.command-title > p:last-child,
+.cluster-row span,
+.side-note,
+.mesh-tooltip,
+.selection-empty,
+.selection-step,
+.traversal-panel > p,
+.mesh-truth p { font-size: .875rem; }
+.eyebrow,
+.rail-state b,
+.rail-state small,
+.rail-metrics dt,
+.mesh-search > span,
+.mesh-search kbd,
+.strip-title b,
+.generation-strip li,
+.generation-strip > p,
+.mesh-side output,
+.telemetry-panel output,
+.cluster-row b,
+.scope-card h3,
+.scope-card dt,
+.scope-card dd,
+.truth-badge,
+.cluster-label,
+.axis-key,
+.mesh-canvas-card > footer,
+.selection-kicker,
+.selection-id,
+.selection-tags span,
+.selection-receipt dt,
+.selection-receipt dd,
+.path-card li,
+.event-ledger li,
+.ledger-row,
+.ledger-row b,
+.flow-panel dt,
+.flow-panel dd { font-size: .75rem; }
+
+/* Final hierarchy corrections sit after the legacy legibility floor. */
+.mesh-body .command-title > p:last-child {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+}
+.mesh-body .event-ledger li {
+  grid-template-columns: 76px 52px minmax(0, 1fr);
+  gap: 5px;
+  font-size: 10.5px;
+  line-height: 1.2;
+}
+.mesh-body .event-ledger time,
+.mesh-body .event-ledger b { white-space: nowrap; }
+.mesh-body .event-ledger .event-static::after {
+  display: inline;
+  margin-left: 4px;
+  white-space: nowrap;
+  font-size: 10px;
+}
+.mesh-body.mesh-loading .mesh-viewport::after,
+.mesh-body.mesh-no-generation .mesh-viewport::after {
+  content: "Building one coherent coordination graph…";
+  position: absolute;
+  inset: 0;
+  z-index: 8;
+  display: grid;
+  place-items: center;
+  padding: 28px;
+  color: var(--muted, #a5abb7);
+  background:
+    radial-gradient(circle at 50% 46%, rgba(94, 157, 255, .09), transparent 18rem),
+    rgba(2, 3, 4, .94);
+  font-size: 13px;
+  letter-spacing: .01em;
+}
+.mesh-body.mesh-no-generation .mesh-viewport::after {
+  content: "No coherent generation is available. Refresh to retry.";
+}
+
+/* Cross-axis acceptance guards for the premium graph-first composition.
+   Short desktop windows need document scroll, while wide desktop keeps the
+   command and graph headers compact enough that the canvas remains primary. */
+@media (min-width: 901px) and (max-height: 820px) {
+  .mesh-body {
+    height: auto;
+    min-height: 100vh;
+    min-height: 100dvh;
+    grid-template-rows: auto auto auto auto;
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+  .mesh-body .mesh-shell {
+    overflow: visible;
+  }
+}
+
+@media (min-width: 1450px) {
+  .mesh-body .mesh-shell {
+    grid-template-rows: auto auto minmax(500px, 1fr) 170px auto;
+  }
+  .mesh-body .mesh-command {
+    grid-template-columns: minmax(650px, 1fr) auto minmax(220px, .45fr) auto;
+    padding-block: 7px;
+  }
+  .mesh-body .command-title > p:last-child {
+    max-width: none;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .mesh-body .canvas-head {
+    flex-wrap: nowrap;
+    gap: 6px;
+    min-height: 50px;
+    padding-block: 8px;
+  }
+  .mesh-body .canvas-badges {
+    flex-wrap: nowrap;
+  }
+  .mesh-body .truth-badge {
+    padding-inline: 4px;
+    white-space: nowrap;
+  }
+}
+
+@media (max-width: 520px) {
+  .mesh-body .mesh-canvas-card {
+    min-height: 560px;
+  }
+}
+
+.mesh-body .canvas-tools #camera-zoom {
+  font-size: 14px;
+}
+
+/* Authority text is a control-plane boundary, not decorative chrome. Keep its
+   semantic core visible; the longer interaction and provenance caveats live
+   in a native disclosure that may grow the footer when the reader opens it. */
+.mesh-body .mesh-canvas-card {
+  grid-template-rows: minmax(52px, auto) minmax(0, 1fr) auto;
+}
+.mesh-body #mesh-caption {
+  min-height: 30px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px 10px;
+  padding: 4px 10px;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+}
+.mesh-body .mesh-caption-core {
+  flex: 1 1 250px;
+  min-width: 0;
+  color: var(--muted, #a5abb7);
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.35;
+  white-space: normal;
+}
+.mesh-body .mesh-caption-disclosure {
+  flex: 0 0 auto;
+  min-width: 0;
+  color: var(--faint, #6f7683);
+}
+.mesh-body .mesh-caption-disclosure summary {
+  cursor: pointer;
+  color: var(--blue, #5e9dff);
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.35;
+}
+.mesh-body .mesh-caption-disclosure[open] {
+  flex: 1 0 100%;
+  padding-top: 5px;
+  border-top: 1px solid rgba(255, 255, 255, .055);
+}
+.mesh-body .mesh-caption-detail {
+  display: block;
+  margin-top: 5px;
+  color: var(--muted, #a5abb7);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.mesh-body .mesh-truth {
+  min-height: 38px;
+  height: auto;
+  align-items: flex-start;
+  overflow: visible;
+}
+.mesh-body .mesh-truth p {
+  color: var(--muted, #a5abb7);
+  font-size: 14px;
+  line-height: 1.4;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+}
+
+/* Final readable-type guard. Operational controls and identity labels stay at
+   13–14px; dense provenance and telemetry stay at or above 12px. */
+.mesh-body button,
+.mesh-body input,
+.mesh-body select,
+.mesh-body .cluster-row span {
+  font-size: 14px !important;
+}
+.mesh-body .cluster-label {
+  font-size: 13px !important;
+}
+.mesh-body .eyebrow,
+.mesh-body .rail-state b,
+.mesh-body .rail-state small,
+.mesh-body .rail-metrics dt,
+.mesh-body .mesh-search > span,
+.mesh-body .mesh-search kbd,
+.mesh-body .strip-title b,
+.mesh-body .generation-strip li,
+.mesh-body .generation-strip li span,
+.mesh-body #generation-receipt,
+.mesh-body .mesh-side output,
+.mesh-body .telemetry-panel output,
+.mesh-body .scope-card h3,
+.mesh-body .scope-card dt,
+.mesh-body .scope-card dd,
+.mesh-body .truth-badge,
+.mesh-body .axis-key,
+.mesh-body #mesh-caption,
+.mesh-body .selection-kicker,
+.mesh-body .selection-id,
+.mesh-body .selection-tags span,
+.mesh-body .selection-receipt dt,
+.mesh-body .selection-receipt dd,
+.mesh-body .path-card li,
+.mesh-body .event-ledger li,
+.mesh-body .event-ledger time,
+.mesh-body .event-ledger b,
+.mesh-body .event-ledger .event-static::after,
+.mesh-body .ledger-row,
+.mesh-body .ledger-row b,
+.mesh-body .flow-panel dt,
+.mesh-body .flow-panel dd {
+  font-size: 12px !important;
+}
+.mesh-body .event-ledger li {
+  min-height: 30px;
+  grid-template-columns: 76px 58px minmax(0, 1fr);
+  align-items: start;
+  line-height: 1.35;
+}
+.mesh-body .event-ledger b,
+.mesh-body .ledger-row > span {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 520px) {
+  .mesh-body .mesh-canvas-card {
+    grid-template-rows: minmax(64px, auto) minmax(0, 1fr) auto;
+  }
+  .mesh-body .cluster-label {
+    max-width: min(180px, calc(100% - 12px));
+    letter-spacing: .03em;
+  }
+}
+
+@media (min-width: 1450px) and (min-height: 821px) {
+  .mesh-body .mesh-shell {
+    /* Preserve the canvas as the primary object after the readable 30px
+       authority footer replaces the clipped 27px single-line strip. */
+    grid-template-rows: auto auto minmax(526px, 1fr) 170px auto;
+  }
+}
+
+@media (min-width: 1450px) and (max-width: 1800px) {
+  .mesh-body .canvas-head > div:first-child {
+    flex: 0 0 286px;
+  }
+  .mesh-body .canvas-head h2 {
+    white-space: nowrap;
+  }
+  .mesh-body .canvas-badges #hidden-receipt {
+    display: none;
+  }
+}
+
+/* ==========================================================================
+   Premium Mesh R2 — one status band, one primary canvas, evidence on demand
+   ========================================================================== */
+.mesh-body {
+  grid-template-rows: auto minmax(0, 1fr);
+}
+.mesh-body .mesh-rail {
+  display: none;
+}
+.mesh-body .mesh-shell {
+  grid-template-rows: auto auto minmax(560px, 1fr);
+  gap: 12px;
+  padding-top: 12px;
+}
+.mesh-body .mesh-command {
+  grid-template-columns: minmax(280px, 1fr) auto minmax(220px, .62fr) auto auto;
+  min-height: 70px;
+}
+.mesh-body .mesh-view-actions {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.mesh-body .mesh-view-actions button {
+  min-height: 34px;
+  padding: 0 10px;
+  color: var(--muted, #a5abb7);
+  border: 1px solid rgba(255, 255, 255, .07);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, .018);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+  font-weight: 620;
+}
+.mesh-body .mesh-view-actions button:hover,
+.mesh-body .mesh-view-actions button[aria-pressed="true"] {
+  color: var(--ink, #f4f6fb);
+  border-color: rgba(94, 157, 255, .42);
+  background: rgba(94, 157, 255, .07);
+}
+.mesh-body .generation-strip {
+  min-height: 42px;
+  grid-template-columns: auto minmax(240px, 1fr) auto auto;
+  align-items: center;
+  padding: 5px 9px;
+  overflow: visible;
+}
+.mesh-body .coverage-summary {
+  min-width: 0;
+  margin: 0;
+  color: var(--ink, #f4f6fb);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.35;
+}
+.mesh-body #generation-receipt {
+  margin: 0;
+  white-space: nowrap;
+}
+.mesh-body .evidence-drawer {
+  min-width: max-content;
+  color: var(--muted, #a5abb7);
+}
+.mesh-body .evidence-drawer > summary {
+  min-height: 30px;
+  display: list-item;
+  padding: 6px 8px;
+  cursor: pointer;
+  list-style: none;
+  border: 1px solid rgba(255, 255, 255, .07);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, .018);
+  font-size: 13px;
+  font-weight: 620;
+}
+.mesh-body .evidence-drawer > summary::-webkit-details-marker { display: none; }
+.mesh-body .evidence-drawer > summary::after {
+  content: "⌄";
+  color: var(--faint, #6f7683);
+}
+.mesh-body .evidence-drawer[open] {
+  grid-column: 1 / -1;
+  width: 100%;
+  min-width: 0;
+  padding-top: 5px;
+}
+.mesh-body .evidence-drawer[open] > summary {
+  width: max-content;
+  margin-left: auto;
+}
+.mesh-body .evidence-drawer[open] > summary::after { content: "⌃"; }
+.mesh-body .evidence-drawer > summary output {
+  float: right;
+  margin-left: 8px;
+}
+.mesh-body .evidence-drawer output {
+  color: var(--blue, #5e9dff);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.mesh-body:has(#mesh-evidence[open]) {
+  height: auto;
+  min-height: 100vh;
+  min-height: 100dvh;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+.mesh-body:has(#mesh-evidence[open]) .mesh-shell {
+  overflow: visible;
+}
+.mesh-body .evidence-body {
+  display: grid;
+  gap: 10px;
+  margin-top: 8px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, .055);
+}
+.mesh-body .generation-strip ol {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 5px;
+  margin: 0;
+  padding: 0;
+}
+.mesh-body .generation-strip li {
+  min-height: 30px;
+  justify-content: center;
+  border: 1px solid rgba(255, 255, 255, .045);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, .012);
+}
+.mesh-body .evidence-body .telemetry-dock {
+  min-height: 0;
+  grid-template-columns: 1.3fr repeat(4, minmax(0, 1fr));
+}
+.mesh-body .evidence-body .telemetry-panel {
+  min-height: 170px;
+}
+.mesh-body .mesh-stage {
+  min-height: 560px;
+  grid-template-columns: 210px minmax(0, 1fr) 292px;
+  gap: 12px;
+}
+.mesh-body .mesh-canvas-card {
+  grid-template-rows: minmax(58px, auto) minmax(0, 1fr) auto;
+  min-height: 560px;
+}
+.mesh-body .canvas-head {
+  align-items: center;
+  gap: 12px;
+}
+.mesh-body .canvas-head > div:first-child {
+  flex: 0 1 360px;
+}
+.mesh-body .canvas-head-controls {
+  min-width: 0;
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.mesh-body .population-switch button {
+  white-space: nowrap;
+}
+.mesh-body .canvas-badges #hidden-receipt,
+.mesh-body .canvas-badges #label-receipt {
+  display: none;
+}
+.mesh-body .selection-inspector h3 {
+  margin: 4px 0 2px;
+  color: var(--ink, #f4f6fb);
+  font: 720 16px/1.2 -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", system-ui, sans-serif;
+  letter-spacing: -.01em;
+}
+.mesh-body .selection-step,
+.mesh-body .selection-empty,
+.mesh-body .side-note,
+.mesh-body .mesh-caption-detail,
+.mesh-body .mesh-truth p {
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+}
+.mesh-body .selection-receipt dd,
+.mesh-body .scope-card dd,
+.mesh-body .telemetry-panel output {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 1450px) {
+  .mesh-body .mesh-command {
+    grid-template-columns: minmax(250px, 1fr) auto minmax(210px, .7fr) auto;
+  }
+  .mesh-body .mesh-view-actions { grid-column: 4; }
+  .mesh-body .motion-switch { grid-column: 2 / 4; justify-self: end; }
+  .mesh-body .mesh-stage { grid-template-columns: minmax(0, 1fr) 280px; }
+  .mesh-body .mesh-fleet { display: none; }
+  .mesh-body .evidence-body .telemetry-dock { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+@media (max-width: 1050px) {
+  .mesh-body .mesh-command { grid-template-columns: 1fr auto; }
+  .mesh-body .command-title { grid-column: 1 / -1; }
+  .mesh-body .mesh-search { grid-column: 1; }
+  .mesh-body .motion-switch { grid-column: 1; justify-self: start; }
+  .mesh-body .mesh-view-actions { grid-column: 2; grid-row: 3; }
+  .mesh-body .generation-strip { grid-template-columns: auto minmax(0, 1fr) auto; }
+  .mesh-body #generation-receipt { display: none; }
+}
+
+@media (max-width: 900px) {
+  .mesh-body {
+    display: block;
+    height: auto;
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+  .mesh-body .mesh-shell {
+    width: calc(100% - 20px);
+    grid-template-rows: auto;
+    overflow: visible;
+  }
+  .mesh-body .mesh-command { grid-template-columns: 1fr; }
+  .mesh-body .command-title,
+  .mesh-body .mesh-search,
+  .mesh-body .motion-switch,
+  .mesh-body .mesh-view-actions {
+    grid-column: 1;
+    grid-row: auto;
+    justify-self: start;
+  }
+  .mesh-body .generation-strip { grid-template-columns: auto minmax(0, 1fr) auto; }
+  .mesh-body .mesh-stage { grid-template-columns: 1fr; }
+  .mesh-body .mesh-canvas-card { order: 1; min-height: 620px; }
+  .mesh-body .mesh-inspector { order: 2; }
+  .mesh-body .mesh-fleet { display: none; }
+  .mesh-body .evidence-body .telemetry-dock { grid-template-columns: 1fr 1fr; }
+}
+
+@media (max-width: 720px) {
+  .mesh-body .shellbar {
+    display: flex;
+    min-height: 58px;
+    padding: 0 10px;
+  }
+  :root[data-embedded="1"] .mesh-body .shellbar {
+    display: none;
+    min-height: 0;
+    padding: 0;
+  }
+  .mesh-body .mesh-command { padding: 10px; }
+  .mesh-body .generation-strip {
+    grid-template-columns: 1fr auto;
+    gap: 7px;
+  }
+  .mesh-body .strip-title { display: none; }
+  .mesh-body .coverage-summary { font-size: 12.5px; }
+  .mesh-body .evidence-drawer[open] { grid-column: 1 / -1; }
+  .mesh-body .generation-strip ol { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .mesh-body .evidence-body .telemetry-dock { grid-template-columns: 1fr; }
+  .mesh-body .canvas-head { align-items: flex-start; }
+  .mesh-body .canvas-head > div:first-child { flex: 0 0 auto; }
+  .mesh-body .canvas-head-controls {
+    width: 100%;
+    margin-left: 0;
+    justify-content: flex-start;
+  }
+  .mesh-body .canvas-badges { justify-content: flex-start; }
+  .mesh-body .mesh-canvas-card { min-height: 640px; }
+}
+
+@media (max-width: 520px) {
+  .mesh-body .mesh-canvas-card { min-height: 660px; }
+  .mesh-body .population-switch { width: 100%; }
+  .mesh-body .population-switch button { flex: 1 1 auto; }
+  .mesh-body .canvas-badges .truth-badge { white-space: normal; }
+}
+
+/* Native tall-desktop fill: the hidden product shell leaves the Mesh workspace
+   responsible for consuming the full embedded viewport. Keep short desktop
+   windows and phone layouts on their existing scroll/min-height contracts. */
+@media (min-width: 901px) and (min-height: 821px) {
+  :root[data-embedded="1"] .mesh-body .mesh-shell {
+    height: 100dvh;
+  }
+}
+
+/* PulseV1 is a separate recorded-traffic plane, not graph topology. */
+.mesh-body .mesh-canvas-card {
+  position: relative;
+  grid-template-rows: minmax(44px, auto) minmax(0, 1fr) 27px;
+}
+.mesh-body .mesh-comms-summary {
+  position: absolute;
+  z-index: 4;
+  top: 58px;
+  inset-inline: 8px;
+  display: grid;
+  grid-template-columns: minmax(150px, .8fr) minmax(220px, 1fr) minmax(260px, 1.35fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 7px 10px;
+  border: 1px solid color-mix(in srgb, var(--blue) 28%, var(--line));
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--mesh-sheet) 94%, transparent);
+  backdrop-filter: blur(8px);
+  pointer-events: none;
+}
+.mesh-body .mesh-comms-summary > * { min-width: 0; }
+.mesh-body .mesh-comms-summary > div { display: grid; gap: 2px; }
+.mesh-body .mesh-comms-summary h3 { margin: 0; font-size: .875rem; }
+.mesh-body .mesh-comms-summary p { margin: 0; }
+.mesh-body #mesh-comms-counts {
+  color: var(--ink);
+  font: 650 .75rem/1.35 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.mesh-body #mesh-comms-truth {
+  color: var(--muted);
+  font-size: .75rem;
+}
+.mesh-body .mesh-comms-summary a {
+  pointer-events: auto;
+  color: var(--blue);
+  font-size: .75rem;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.mesh-body .mesh-comms-summary a:hover { text-decoration: underline; }
+.mesh-body .mesh-comms-summary[data-state="unavailable"] #mesh-comms-counts { color: var(--muted); }
+.mesh-body .truth-badge.traffic { color: var(--blue); border-color: color-mix(in srgb, var(--blue) 48%, var(--line)); }
+
+@media (max-width: 1080px) {
+  .mesh-body .mesh-comms-summary { grid-template-columns: minmax(150px, .8fr) 1fr auto; }
+  .mesh-body #mesh-comms-truth { grid-column: 1 / -1; }
+}
+
+@media (max-width: 520px) {
+  .mesh-body .mesh-comms-summary { top: 52px; grid-template-columns: 1fr auto; gap: 4px 8px; padding: 6px 8px; }
+  .mesh-body .mesh-comms-summary > div { display: none; }
+  .mesh-body #mesh-comms-counts { grid-column: 1 / -1; }
+  .mesh-body #mesh-comms-truth { grid-column: 1; }
+  .mesh-body .mesh-comms-summary a { justify-self: end; align-self: end; }
+}
+
+@media (min-width: 1200px) {
+  .mesh-body .canvas-head { display: grid; grid-template-columns: minmax(190px, .55fr) minmax(0, 1.45fr); flex-wrap: nowrap; }
+  .mesh-body .canvas-head-controls { flex-wrap: nowrap; }
+  .mesh-body .canvas-badges { flex-wrap: nowrap; }
+}

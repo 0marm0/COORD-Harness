@@ -1,0 +1,261 @@
+/* Shared COORD Cockpit chrome. Surface-specific navigation lives below this
+   bar; this row only answers which operational area is open. */
+.shellbar {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  display: flex;
+  align-items: stretch;
+  gap: 24px;
+  width: 100%;
+  min-width: 0;
+  max-width: 100vw;
+  height: 58px;
+  min-height: 58px;
+  padding: 0 clamp(16px, 3vw, 32px);
+  overflow: visible;
+  border-bottom: 1px solid rgba(255, 255, 255, .07);
+  background: rgba(0, 0, 0, .88);
+  box-shadow: 0 1px 0 rgba(0, 0, 0, .72);
+  -webkit-backdrop-filter: blur(22px) saturate(125%);
+  backdrop-filter: blur(22px) saturate(125%);
+}
+
+.shell-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex: 0 0 auto;
+  color: var(--ink, #f4f6fb);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.shell-brand .shell-mark {
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", Arial, sans-serif;
+  font-size: 15px;
+  font-weight: 720;
+  letter-spacing: .12em;
+}
+
+.shell-brand .shell-sub {
+  color: var(--faint, #6f7683);
+  font-size: 12px;
+  font-weight: 560;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.shell-nav {
+  display: flex;
+  align-items: stretch;
+  gap: 22px;
+  min-width: 0;
+  flex: 0 0 auto;
+}
+
+.shell-nav a {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  padding: 1px 0 0;
+  border: 0;
+  border-radius: 0;
+  color: var(--muted, #a5abb7);
+  font-size: 13px;
+  font-weight: 560;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.shell-nav a::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: -1px;
+  left: 0;
+  height: 2px;
+  border-radius: 2px 2px 0 0;
+  background: transparent;
+}
+
+.shell-nav a:hover { color: var(--ink, #f4f6fb); }
+.shell-nav a[aria-current="page"] { color: var(--ink, #f4f6fb); }
+.shell-nav a[aria-current="page"]::after { background: var(--accent, #5e9dff); }
+.shell-nav a:focus-visible,
+.shell-ctl:focus-visible {
+  outline: 2px solid var(--accent-strong, #91bbff);
+  outline-offset: 3px;
+}
+
+.shell-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1 1 0;
+  min-width: 0;
+  justify-content: flex-end;
+  overflow: hidden;
+  color: var(--muted, #a5abb7);
+  font-size: 12px;
+}
+
+.shell-right .pulse {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--muted, #a5abb7);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.shell-right .meta {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted, #a5abb7);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shell-ctl {
+  min-height: 34px;
+  padding: 0 11px;
+  border: 1px solid rgba(255, 255, 255, .07);
+  border-radius: 8px;
+  background: #0b0d12;
+  color: var(--muted, #a5abb7);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.shell-ctl:hover { border-color: rgba(255, 255, 255, .13); color: var(--ink, #f4f6fb); }
+.shell-ctl[aria-pressed="true"] { border-color: rgba(94, 157, 255, .48); color: #f4f6fb; }
+
+.shellbar .accent button[aria-pressed="true"] {
+  box-shadow: 0 0 14px var(--accent-glow);
+}
+
+/* The global row names product areas; this reserved row names the modes inside
+   the current area. It stays in normal flow so it can never cover route-local
+   controls such as Work layout or Map lenses. */
+.shell-subnav {
+  position: relative;
+  z-index: 39;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  width: 100%;
+  min-width: 0;
+  max-width: 100vw;
+  height: 40px;
+  min-height: 40px;
+  padding: 4px clamp(16px, 3vw, 32px);
+  overflow-x: auto;
+  overflow-y: hidden;
+  border-bottom: 1px solid rgba(255, 255, 255, .055);
+  background: #07080b;
+  scrollbar-width: none;
+}
+
+.shell-subnav::-webkit-scrollbar { display: none; }
+
+.shell-subnav a {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 30px;
+  padding: 0 11px;
+  border-radius: 7px;
+  color: var(--muted, #a5abb7);
+  font-size: 13px;
+  font-weight: 590;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.shell-subnav a:hover {
+  color: var(--ink, #f4f6fb);
+  background: rgba(255, 255, 255, .035);
+}
+
+.shell-subnav a[aria-current="page"] {
+  color: var(--ink, #f4f6fb);
+  background: rgba(94, 157, 255, .10);
+  box-shadow: inset 0 -2px 0 var(--accent, #5e9dff);
+}
+
+.shell-subnav a:focus-visible {
+  outline: 2px solid var(--accent-strong, #91bbff);
+  outline-offset: -2px;
+}
+
+body.appshell.has-shell-subnav {
+  grid-template-rows: 58px 40px minmax(0, 1fr);
+}
+
+body.mesh-body.has-shell-subnav {
+  grid-template-rows: auto 40px auto auto minmax(0, 1fr);
+}
+
+/* A native host already provides product navigation. Keep only its useful
+   controls and preserve the same 58px rhythm. */
+:root[data-embedded="1"] .shell-brand,
+:root[data-embedded="1"] .shell-nav,
+:root[data-embedded="1"] .shell-subnav { display: none; }
+:root[data-embedded="1"] .shellbar { justify-content: flex-end; }
+:root[data-embedded="1"] .shellbar > * { margin-left: 0; }
+
+@media (max-width: 720px) {
+  .shellbar {
+    gap: 8px;
+    padding: 0 10px;
+  }
+
+  .shell-brand .shell-sub,
+  .shell-right:not(:has(.shell-ctl)) { display: none; }
+  .shell-brand { display: none; }
+  .shellbar:has(> .accent) .shell-brand { display: none; }
+  .shell-nav {
+    flex: 1 1 auto;
+    justify-content: flex-start;
+    gap: clamp(8px, 2.6vw, 12px);
+    overflow: hidden;
+  }
+  .shell-nav a { font-size: 12px; }
+  .shellbar .accent {
+    display: flex;
+    flex: 0 0 auto;
+    gap: 2px;
+    margin-left: 0;
+  }
+  .shellbar .accent .meta { display: none; }
+  .shellbar .accent button {
+    min-width: 0;
+    min-height: 34px;
+    padding: 0 5px;
+    font-size: 12px;
+  }
+  .shell-right:has(.shell-ctl) { display: flex; gap: 4px; }
+  .shell-right .shell-ctl { padding: 0 6px; font-size: 12px; }
+  .shellbar:has(.shell-ctl) .shell-brand { display: none; }
+}
+
+
+/* Embedded routes borrow the native cockpit chrome. They reserve no web
+   shell row; route-local actions must live with the route controls. */
+:root[data-embedded="1"] .shellbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  min-height: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  overflow: hidden !important;
+}

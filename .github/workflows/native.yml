@@ -1,0 +1,50 @@
+name: Native previews
+
+on:
+  push:
+    paths:
+      - "apps/**"
+      - ".github/workflows/native.yml"
+  pull_request:
+    paths:
+      - "apps/**"
+      - ".github/workflows/native.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  unsigned-builds:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install pinned XcodeGen
+        env:
+          XCODEGEN_URL: https://github.com/yonaskolb/XcodeGen/releases/download/2.45.4/xcodegen.zip
+          XCODEGEN_SHA256: 090ec29491aad50aec10631bf6e62253fed733c50f3aab0f5ffc86bc170bdbef
+        run: |
+          curl --fail --location --silent --show-error "$XCODEGEN_URL" --output "$RUNNER_TEMP/xcodegen.zip"
+          printf '%s  %s\n' "$XCODEGEN_SHA256" "$RUNNER_TEMP/xcodegen.zip" | shasum -a 256 -c -
+          unzip -q "$RUNNER_TEMP/xcodegen.zip" -d "$RUNNER_TEMP"
+          "$RUNNER_TEMP/xcodegen/bin/xcodegen" --version | grep -Fx 'Version: 2.45.4'
+          echo "$RUNNER_TEMP/xcodegen/bin" >> "$GITHUB_PATH"
+      - name: Generate project
+        working-directory: apps
+        run: xcodegen generate
+      - name: Test shared and macOS code
+        working-directory: apps
+        run: |
+          xcodebuild -project CoordCockpit.xcodeproj -scheme CoordCockpitMac -configuration Debug -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO test
+      - name: Build every distributable macOS scheme
+        working-directory: apps
+        run: |
+          for scheme in CoordCockpitMac CoordMenuBar CoordCockpitWindow; do
+            xcodebuild -project CoordCockpit.xcodeproj -scheme "$scheme" -configuration Release -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO build
+          done
+      - name: Build distributable iOS Simulator scheme
+        working-directory: apps
+        run: |
+          xcodebuild -project CoordCockpit.xcodeproj -scheme CoordCockpitIOS -configuration Release -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build

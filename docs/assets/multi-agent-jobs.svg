@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 680" role="img" aria-labelledby="title desc">
+  <title id="title">Multi-agent and local-job orchestration</title>
+  <desc id="desc">One orchestrator owns a durable work item. Bounded subagents roll up under that owner. Local CPU and GPU jobs attach as runs, publish compact liveness sidecars, and produce proof artifacts. All durable lifecycle changes go to one database.</desc>
+  <style>
+    :root{
+      --ink:#22292f; --muted:#5b666d; --line:#7d8a91; --rule:#d7dee1;
+      --surface:#f2f5f6; --bg:transparent;
+      --agent:#2C5F8D;     --agent-fill:#e4edf5;
+      --authority:#1F6F63; --authority-fill:#dcece8;
+      --derived:#6A5A9E;   --derived-fill:#ebe7f4;
+      --refused:#A6392B;   --refused-fill:#f6e5e2;
+      --proof:#3E7A2E;     --proof-fill:#e4f0df;
+    }
+    @media (prefers-color-scheme: dark){
+      :root{
+        --ink:#dfe6ec; --muted:#9aa4ad; --line:#8b959c; --rule:#2b3238;
+        --surface:#161c22; --bg:transparent;
+        --agent:#79AEE6;     --agent-fill:#152a3c;
+        --authority:#4FC3AC; --authority-fill:#0f2c27;
+        --derived:#B0A2E8;   --derived-fill:#221f38;
+        --refused:#F0887A;   --refused-fill:#33191a;
+        --proof:#74BF62;     --proof-fill:#182b14;
+      }
+    }
+    text{ font-family:ui-sans-serif, -apple-system, Segoe UI, Roboto, sans-serif; }
+    .label{ font-size:14px; font-weight:600; fill:var(--ink); text-anchor:middle; }
+    .small{ font-size:12px; fill:var(--muted); text-anchor:middle; }
+    .owner{ fill:var(--agent-fill); stroke:var(--agent); stroke-width:1.75; }
+    .child{ fill:var(--derived-fill); stroke:var(--derived); stroke-width:1.5; }
+    .job{ fill:var(--surface); stroke:var(--line); stroke-width:1.5; }
+    .store{ fill:var(--proof-fill); stroke:var(--proof); stroke-width:1.5; }
+    .db{ fill:var(--authority-fill); stroke:var(--authority); stroke-width:1.75; }
+    .white{ fill:var(--ink); }
+    .arrow{ fill:none; stroke:var(--line); stroke-width:1.5; marker-end:url(#a); }
+    .rollup{ fill:none; stroke:var(--derived); stroke-width:1.5; stroke-dasharray:6 5; marker-end:url(#violet); }
+  </style>
+  <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 10 5 0 10z" fill="var(--line)"/></marker><marker id="violet" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 10 5 0 10z" fill="var(--derived)"/></marker></defs>
+  <rect class="owner" x="410" y="48" width="380" height="100" rx="20"/><text class="label" x="600" y="87">orchestrator session</text><text class="small" x="600" y="115">owns one durable work item + claim</text><text class="small" x="600" y="136">Claude, Codex, or another trusted actor</text>
+  <rect class="child" x="65" y="235" width="270" height="100" rx="18"/><text class="label" x="200" y="273">bounded subagent A</text><text class="small" x="200" y="300">narrow analysis packet</text><text class="small" x="200" y="321">returns refs + conclusion</text>
+  <rect class="child" x="365" y="235" width="270" height="100" rx="18"/><text class="label" x="500" y="273">bounded subagent B</text><text class="small" x="500" y="300">non-overlapping file slice</text><text class="small" x="500" y="321">rolls up to owner</text>
+  <rect class="job" x="665" y="235" width="220" height="100" rx="18"/><text class="label" x="775" y="273">local CPU job</text><text class="small" x="775" y="301">run + process identity</text>
+  <rect class="job" x="915" y="235" width="220" height="100" rx="18"/><text class="label" x="1025" y="273">local GPU job</text><text class="small" x="1025" y="301">serialized resource lane</text>
+  <path class="rollup" d="M200 235V190H520V150"/><path class="rollup" d="M500 235V150"/><path class="arrow" d="M775 235V190H680V150"/><path class="arrow" d="M1025 235V174H735V150"/>
+  <text class="small" x="260" y="186">summaries, not peer claims</text><text class="small" x="920" y="180">tracked runs</text>
+  <rect class="store" x="690" y="425" width="410" height="92" rx="18"/><text class="label" x="895" y="461">job_progress/*.json</text><text class="small" x="895" y="488">bounded progress + PID + timestamp</text><text class="small" x="895" y="507">no argv · no stdout · no secrets</text>
+  <path class="arrow" d="M775 335V423"/><path class="arrow" d="M1025 335V423"/>
+  <rect class="store" x="75" y="425" width="390" height="92" rx="18"/><text class="label" x="270" y="461">artifacts / evidence refs</text><text class="small" x="270" y="488">work output remains outside coord.db</text><text class="small" x="270" y="507">done_signal points to proof</text>
+  <path class="rollup" d="M200 335V423"/><path class="rollup" d="M500 335V385H270V423"/>
+  <rect class="db" x="390" y="580" width="420" height="72" rx="36"/><text class="label white" x="600" y="610">coord.db</text><text class="small white" x="600" y="634">owner · claim · runs · events · proof receipt</text>
+  <path class="arrow" d="M270 517V550H600V578"/><path class="arrow" d="M895 517V550H600V578"/>
+</svg>

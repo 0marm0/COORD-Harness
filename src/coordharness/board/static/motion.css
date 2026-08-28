@@ -1,0 +1,1037 @@
+/* The shared motion layer. Meaning-bearing motion only — every rule here is
+   one of the four claims motion.js documents; anything else a view wants to
+   move is decoration and must use .m-ambient and say so in its copy. */
+
+/* Arrival: one pulse, applied by motion.js only to keys absent from the
+   previous paint. The element must read identically once the pulse ends. */
+.m-new { animation: m-arrive 900ms ease-out 1; }
+@keyframes m-arrive {
+  0%   { background-color: color-mix(in srgb, var(--green) 22%, transparent); }
+  100% { background-color: transparent; }
+}
+svg .m-new { animation: m-arrive-stroke 900ms ease-out 1; }
+@keyframes m-arrive-stroke {
+  0%   { stroke-width: 3; }
+  100% { stroke-width: 1; }
+}
+
+/* Recorded direction: the dash marches from provider to consumer because the
+   path is drawn that way. Phase comes from one rAF clock via --m-phase. */
+.m-flow {
+  stroke-dasharray: 7 17;
+  stroke-dashoffset: calc(var(--m-phase, 0) * 1px);
+}
+
+/* Derived-running: a steady breath. Period is fixed and carries no rate. */
+.m-run { animation: m-breathe 2.6s ease-in-out infinite; }
+@keyframes m-breathe {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.55; }
+}
+
+/* Ticker containers scroll their own overflow; newest-first is the view's
+   contract, staying pinned is motion.js's. */
+.m-ticker { overflow-y: auto; scrollbar-width: thin; }
+
+/* Ambient drift for decoration that CARRIES NOTHING. Slow on purpose. */
+.m-ambient { animation: m-drift 14s ease-in-out infinite alternate; }
+@keyframes m-drift {
+  from { transform: translateY(0); }
+  to   { transform: translateY(-6px); }
+}
+
+/* One switch kills every claim-free rendering of the claims above; the facts
+   all remain visible standing still. */
+@media (prefers-reduced-motion: reduce) {
+  .m-new, svg .m-new, .m-run, .m-ambient { animation: none; }
+  .m-flow { stroke-dasharray: none; stroke-dashoffset: 0; }
+}
+
+/* Final Map presentation remains in this already-allowlisted, Map-only asset
+   so a running server can serve the premium cascade without reloading its
+   static allowlist. Keep these rules last in cockpit.html. */
+/* Final Map cascade contract.
+
+   Lens styles are intentionally independent modules and load after cockpit.css.
+   This sheet loads last so no lens can silently shrink operational text below
+   14px or tertiary receipts below 12px. Keep it source-neutral: it changes only
+   presentation, never counts, labels, ordering, or graph geometry. */
+
+.mapbody main,
+.mapbody .drawer { font-size: 14px; }
+
+.mapbody #maptabs button,
+.mapbody main button,
+.mapbody main input,
+.mapbody main select,
+.mapbody main textarea,
+.mapbody .drawer button,
+.mapbody .drawer input,
+.mapbody .drawer select,
+.mapbody .drawer textarea,
+.mapbody [role="button"] { font-size: 14px; }
+
+.mapbody .wisp b,
+.mapbody .wisp .step,
+.mapbody .note b,
+.mapbody .note p,
+.mapbody .chip,
+.mapbody .chip span,
+.mapbody .drawer .step,
+.mapbody .drawer .why p,
+.mapbody .facts { font-size: 14px; }
+
+.mapbody .meta,
+.mapbody .legend,
+.mapbody .keys,
+.mapbody .coordsearch-label,
+.mapbody .pulse-refresh-receipt,
+.mapbody .map-read-alert,
+.mapbody .tlblock .tlnote,
+.mapbody .tlblock .tlfoot,
+.mapbody .tlblock .tlgap,
+.mapbody .matrix th.corner,
+.mapbody .matrix td.tot,
+.mapbody .matrix th.tot,
+.mapbody .matrix tr:first-child th span,
+.mapbody .gnode text { font-size: 12px; }
+
+/* Pulse ledger and owner lanes. */
+.mapbody #pulse li,
+.mapbody #pulse li span,
+.mapbody #pulse li b,
+.mapbody #pulse .pl-lanebadge,
+.mapbody #pulse .pl-tlab,
+.mapbody #pulse .pl-bus-kind,
+.mapbody #pulse .pl-bus-at,
+.mapbody #pulse .pl-bus-to,
+.mapbody #pulse .pl-stat-l,
+.mapbody #pulse .pl-hd,
+.mapbody #pulse .pl-lane-ev,
+.mapbody #pulse .pl-lane-sess,
+.mapbody #pulse .pl-busfoot,
+.mapbody #pulse .pl-legendline,
+.mapbody #pulse summary { font-size: 12px; }
+
+/* Stations and capacity ceiling. */
+.mapbody #flowpath .st-name,
+.mapbody #flowpath .st-stat span,
+.mapbody #flowpath .st-blab,
+.mapbody #flowpath .st-over,
+.mapbody #flowpath .st-gatelab,
+.mapbody #flowpath .st-gatesub,
+.mapbody #ceiling .cl-tick,
+.mapbody #ceiling .cl-wlabel,
+.mapbody #ceiling .cl-note,
+.mapbody #ceiling .cl-axname,
+.mapbody #ceiling .cl-kneelabel { font-size: 12px; }
+
+/* Lane topology receipts and labels. */
+.mapbody #topology .tp-kindline,
+.mapbody #topology .tp-kindline b,
+.mapbody #topology .tp-lanename,
+.mapbody #topology .tp-count,
+.mapbody #topology .tp-honest,
+.mapbody #topology .tp-lanetag,
+.mapbody #topology .tp-statlab,
+.mapbody #topology .tp-strip,
+.mapbody #topology .tp-nostrip,
+.mapbody #topology .tp-caption,
+.mapbody #topology .tp-legend,
+.mapbody #topology .tp-legend .key,
+.mapbody #topology summary,
+.mapbody #topology .tp-foot { font-size: 12px; }
+
+/* Density, crossing, order, subject, and orbit annotations. */
+.mapbody #shape .dvz-corner,
+.mapbody #shape .dvz-note,
+.mapbody #crossings .xv,
+.mapbody #crossings h4,
+.mapbody #crossings .xrel,
+.mapbody #crossings .xrank,
+.mapbody #chronicle h4,
+.mapbody #chronicle .ord-rel,
+.mapbody #chronicle .ord-stamp,
+.mapbody #chronicle .ord-n,
+.mapbody #chronicle .ord-lane,
+.mapbody #chronicle tspan,
+.mapbody #subjects .tz-rel,
+.mapbody #subjects .tz-key,
+.mapbody #subjects .tz-corner,
+.mapbody #subjects .tz-marginh,
+.mapbody #subjects .tz-keys,
+.mapbody #subjects .tz-foot,
+.mapbody #orbit .ob-rootid,
+.mapbody #orbit .ob-id,
+.mapbody #orbit .ob-key,
+.mapbody #orbit h4,
+.mapbody #orbit b { font-size: 12px; }
+
+.mapbody #orbit button.ob-re { font-size: 14px; }
+
+/* ==========================================================================
+   COORD Cockpit Intelligence
+   Last-loaded visual grammar for all twelve Map lenses. This layer is
+   presentation-only: data, ordering, graph geometry, receipts, and motion
+   semantics remain owned by their renderers.
+   ========================================================================== */
+
+body.mapbody {
+  --map-ground: #000;
+  --map-surface-0: #07080b;
+  --map-surface-1: #0b0d12;
+  --map-surface-2: #10131a;
+  --map-line: rgba(255, 255, 255, .07);
+  --map-hairline: rgba(255, 255, 255, .045);
+  --map-text: #f4f6fb;
+  --map-muted: #a5abb7;
+  --map-faint: #6f7683;
+  --map-focus: #5e9dff;
+  --map-focus-soft: #91bbff;
+  --map-focus-wash: rgba(94, 157, 255, .11);
+  --map-focus-glow: rgba(94, 157, 255, .24);
+  --map-running: #54d99a;
+  --map-amber: #e6a85f;
+  --map-red: #ff7272;
+  --c-bg: var(--map-ground);
+  --c-panel: var(--map-surface-0);
+  --c-card-a: var(--map-surface-1);
+  --c-card-b: var(--map-surface-0);
+  --c-line: rgba(255, 255, 255, .07);
+  --c-hairline: rgba(255, 255, 255, .10);
+  --c-hover: var(--map-focus-wash);
+  --c-muted: var(--map-muted);
+  --c-ink: var(--map-text);
+  --ink: var(--map-text);
+  --muted: var(--map-muted);
+  --line: var(--map-line);
+  --panel: var(--map-surface-0);
+  --amber: var(--map-amber);
+  --red: var(--map-red);
+  margin: 0;
+  min-width: 0;
+  color: var(--map-text);
+  background: var(--map-ground);
+  background-image: none;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display",
+    system-ui, "Helvetica Neue", Arial, sans-serif;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.mapbody *,
+.mapbody *::before,
+.mapbody *::after { box-sizing: border-box; }
+
+.mapbody ::selection { color: #fff; background: rgba(94, 157, 255, .42); }
+
+.mapbody :where(button, input, select, textarea) {
+  font-family: inherit;
+  font-size: 14px;
+}
+
+.mapbody :where(code, .coordsearch-hit-id, .eyebrow, .tltime, .tlfoot,
+  .projection-receipt, .relationship-receipt, .pulse-zero-receipt,
+  .pulse-refresh-receipt, #mapmeta, .facts code, .ob-id, .ob-rootid,
+  .gnode text, .ord-stamp, .pl-bus-at, .pl-bus-date) {
+  font-family: "SFMono-Regular", ui-monospace, Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Intelligence lens rail ------------------------------------------------- */
+.mapbody #maptabs {
+  position: sticky;
+  inset-block-start: 58px;
+  z-index: 38;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 48px;
+  max-width: 100%;
+  padding: 6px clamp(16px, 2.5vw, 40px);
+  overflow: visible;
+  border-bottom: 1px solid var(--map-line);
+  background: rgba(7, 8, 11, .94);
+  backdrop-filter: blur(18px) saturate(125%);
+  overscroll-behavior-inline: contain;
+  scroll-padding-inline: 16px;
+  scroll-snap-type: x proximity;
+  scrollbar-color: rgba(145, 187, 255, .32) transparent;
+  scrollbar-width: thin;
+  touch-action: pan-x;
+}
+:root[data-embedded="1"] .mapbody #maptabs,
+.mapbody.embedded #maptabs {
+  inset-block-start: 0;
+}
+:root[data-embedded="1"] .mapbody .maptabs-help {
+  display: none;
+}
+.mapbody #maptabs button {
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  height: 36px;
+  min-height: 36px;
+  padding: 0 11px;
+  border: 0;
+  border-radius: 7px;
+  color: var(--map-muted);
+  background: transparent;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .01em;
+  scroll-snap-align: start;
+}
+.mapbody #maptabs button:hover {
+  color: var(--map-text);
+  background: rgba(255, 255, 255, .035);
+}
+.mapbody #maptabs button.active,
+.mapbody #maptabs button[aria-selected="true"] {
+  color: var(--map-text);
+  background: var(--map-focus-wash);
+  box-shadow: inset 0 -2px 0 var(--map-focus), 0 9px 20px -14px var(--map-focus-soft);
+}
+.mapbody #maptabs button:focus-visible {
+  outline: 2px solid var(--map-focus);
+  outline-offset: -2px;
+}
+.mapbody #maptabs button:disabled {
+  color: #4d525d;
+  background: transparent;
+  cursor: not-allowed;
+}
+
+.mapbody .maptabs-direct {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.mapbody .map-more {
+  position: relative;
+  display: flex;
+  flex: 0 0 auto;
+}
+
+.mapbody .map-more-chevron {
+  margin-left: 5px;
+  color: var(--map-faint);
+  font-size: 12px;
+  line-height: 1;
+}
+
+.mapbody .map-more-menu {
+  position: absolute;
+  top: calc(100% + 7px);
+  right: 0;
+  z-index: 70;
+  display: grid;
+  gap: 2px;
+  width: min(190px, calc(100vw - 20px));
+  max-height: min(430px, calc(100vh - 120px));
+  padding: 6px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  border: 1px solid var(--map-line);
+  border-radius: 10px;
+  background: rgba(11, 13, 18, .985);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, .52);
+}
+
+.mapbody .map-more-menu[hidden] { display: none; }
+
+.mapbody #maptabs .map-more-menu button {
+  width: 100%;
+  justify-content: flex-start;
+  padding-inline: 10px;
+  text-align: left;
+}
+
+.mapbody #maptabs .map-more-menu button[aria-checked="true"] {
+  color: var(--map-text);
+  background: var(--map-focus-wash);
+}
+.mapbody .maptabs-help { display: none; }
+
+/* Search and provenance -------------------------------------------------- */
+.mapbody .global-search {
+  position: relative;
+  padding: 12px clamp(16px, 2.5vw, 40px) 0;
+}
+.mapbody .coordsearch { max-width: 720px; }
+.mapbody .coordsearch-label {
+  margin: 0 0 5px;
+  color: var(--map-faint);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .02em;
+  text-transform: none;
+}
+.mapbody .coordsearch-input {
+  height: 36px;
+  padding: 0 12px 0 34px;
+  border: 1px solid var(--map-line);
+  border-radius: 9px;
+  color: var(--map-text);
+  background:
+    linear-gradient(90deg, transparent 0 33px, var(--map-hairline) 33px 34px, transparent 34px),
+    var(--map-surface-1);
+  box-shadow: 0 10px 24px -22px #000;
+}
+.mapbody .coordsearch::before {
+  content: "⌕";
+  position: absolute;
+  z-index: 1;
+  inset-inline-start: 11px;
+  inset-block-end: 7px;
+  color: var(--map-faint);
+  font-size: 17px;
+  pointer-events: none;
+}
+.mapbody .coordsearch-input::placeholder { color: var(--map-faint); }
+.mapbody .coordsearch-input:hover { border-color: rgba(255, 255, 255, .13); }
+.mapbody .coordsearch-input:focus-visible {
+  border-color: var(--map-focus);
+  outline: 2px solid rgba(94, 157, 255, .24);
+  outline-offset: 1px;
+}
+.mapbody .coordsearch-results {
+  z-index: 45;
+  margin-top: 6px;
+  padding: 5px;
+  border: 1px solid rgba(145, 187, 255, .18);
+  border-radius: 10px;
+  background: rgba(11, 13, 18, .98);
+  box-shadow: 0 22px 60px rgba(0, 0, 0, .62);
+}
+.mapbody .coordsearch-hit {
+  min-height: 48px;
+  padding: 7px 9px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+}
+.mapbody .coordsearch-hit:hover,
+.mapbody .coordsearch-hit[aria-selected="true"] {
+  color: var(--map-text);
+  border-color: rgba(94, 157, 255, .18);
+  background: var(--map-focus-wash);
+}
+.mapbody .coordsearch-hit-title { color: var(--map-muted); font-size: 13px; }
+.mapbody .coordsearch-hit-id { color: var(--map-text); font-size: 12px; }
+.mapbody .coordsearch-hit-meta,
+.mapbody .coordsearch-hit-field { color: var(--map-faint); font-size: 12px; }
+
+.mapbody :where(.map-read-alert, .pulse-refresh-receipt, .projection-receipt,
+  .relationship-receipt, .pulse-zero-receipt) {
+  margin: 0;
+  padding: 8px 11px;
+  border: 1px solid var(--map-line);
+  border-radius: 8px;
+  color: var(--map-faint);
+  background: var(--map-surface-0);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.mapbody details.projection-receipt { padding: 0; }
+.mapbody .projection-receipt > summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 34px;
+  padding: 8px 11px;
+  cursor: pointer;
+  list-style: none;
+}
+.mapbody .projection-receipt > summary::-webkit-details-marker { display: none; }
+.mapbody .projection-receipt > summary::after {
+  content: "+";
+  margin-left: 0;
+  color: var(--map-faint);
+  font: 600 14px/1 system-ui, sans-serif;
+}
+.mapbody .projection-receipt[open] > summary::after { content: "−"; }
+.mapbody .projection-disclosure {
+  margin-left: auto;
+  color: var(--map-faint);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+  font-size: 12px;
+}
+.mapbody .projection-detail {
+  padding: 8px 11px 9px;
+  border-top: 1px solid var(--map-hairline);
+}
+.mapbody .projection-receipt[data-projection-state="capped"],
+.mapbody .projection-receipt[data-projection-state="degraded"],
+.mapbody .projection-receipt[data-projection-state="unavailable"],
+.mapbody .projection-receipt[data-projection-state="unapplied"] {
+  border-left: 2px solid var(--map-amber);
+}
+.mapbody .map-read-alert {
+  margin: 10px clamp(16px, 2.5vw, 40px) 0;
+  border-color: rgba(230, 168, 95, .34);
+  color: #d8b785;
+  background: rgba(230, 168, 95, .07);
+}
+.mapbody .pulse-refresh-receipt,
+.mapbody .pulse-zero-receipt { border-left: 2px solid var(--map-focus); }
+.mapbody .relationship-receipt { border-left: 2px solid var(--map-amber); }
+.mapbody :where(.projection-receipt, .relationship-receipt, .pulse-zero-receipt,
+  .pulse-refresh-receipt) b {
+  color: var(--map-muted);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+  font-weight: 600;
+}
+
+/* Panel architecture ----------------------------------------------------- */
+.mapbody main {
+  min-width: 0;
+  padding: 12px clamp(16px, 2.5vw, 40px) 56px;
+  font-size: 14px;
+}
+.mapbody .panel { min-width: 0; }
+.mapbody .panel.active {
+  display: grid;
+  gap: 12px;
+  animation: map-lens-in 180ms ease-out both;
+}
+@keyframes map-lens-in {
+  from { opacity: .72; transform: translateY(3px); }
+  to { opacity: 1; transform: none; }
+}
+.mapbody :where(.card, .lane, .pl-region) {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--map-line);
+  border-radius: 12px;
+  color: var(--map-text);
+  background: var(--map-surface-0);
+  background-image: none;
+  box-shadow: 0 18px 48px -42px rgba(145, 187, 255, .34);
+}
+.mapbody .panel > .card:first-of-type,
+.mapbody .panel > :where(.projection-receipt, .relationship-receipt) + .card {
+  border-color: rgba(145, 187, 255, .10);
+}
+.mapbody :where(.card, .lane, .pl-region) h3 {
+  margin: 0 0 7px;
+  color: var(--map-text);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text",
+    system-ui, sans-serif;
+  font-size: 15px;
+  font-weight: 650;
+  line-height: 1.3;
+  letter-spacing: -.01em;
+}
+.mapbody :where(.card, .lane, .pl-region) h4 {
+  color: var(--map-muted);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.4;
+  letter-spacing: .02em;
+  text-transform: none;
+}
+.mapbody .meta {
+  color: var(--map-muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+.mapbody :where(.card, .lane, .pl-region) > .meta { max-width: 92ch; }
+.mapbody .empty {
+  padding: 28px 16px;
+  border: 1px dashed rgba(255, 255, 255, .11);
+  border-radius: 10px;
+  color: var(--map-faint);
+  background: var(--map-surface-0);
+}
+
+/* Controls and selection ------------------------------------------------- */
+.mapbody main :where(button, input, select),
+.mapbody .drawer :where(button, input, select) { min-height: 34px; }
+.mapbody main button,
+.mapbody .drawer button {
+  border: 1px solid var(--map-line);
+  border-radius: 8px;
+  color: var(--map-muted);
+  background: var(--map-surface-1);
+}
+.mapbody main button:hover,
+.mapbody .drawer button:hover {
+  color: var(--map-text);
+  border-color: rgba(145, 187, 255, .24);
+  background: var(--map-focus-wash);
+}
+.mapbody :where(button, input, select, textarea, summary, [tabindex],
+  [data-row], [data-cell], [data-node]):focus-visible {
+  outline: 2px solid var(--map-focus) !important;
+  outline-offset: 2px;
+}
+.mapbody :where(.current, [aria-selected="true"]:not([role="tab"])) {
+  outline-color: var(--map-focus);
+  box-shadow: 0 0 0 1px var(--map-focus), 0 0 18px -8px var(--map-focus-soft);
+}
+.mapbody .gnode.current :where(circle, rect),
+.mapbody .ob-node.current .ob-disc {
+  stroke: var(--map-focus);
+  stroke-width: 2;
+}
+.mapbody .layoutpick,
+.mapbody .hop-control { gap: 4px; margin-bottom: 5px; }
+.mapbody .layoutpick button,
+.mapbody .hop-control button {
+  min-width: 34px;
+  min-height: 34px;
+  padding: 0 10px;
+  border-radius: 7px;
+  font-size: 12px;
+}
+.mapbody .layoutpick button.active,
+.mapbody .hop-control button.active {
+  color: var(--map-text);
+  border-color: rgba(94, 157, 255, .34);
+  background: var(--map-focus-wash);
+  box-shadow: inset 0 -2px 0 var(--map-focus);
+}
+.mapbody .chip {
+  min-height: 38px;
+  padding: 7px 9px;
+  border: 1px solid var(--map-line);
+  border-radius: 8px;
+  color: var(--map-text);
+  background: var(--map-surface-1);
+  box-shadow: none;
+}
+.mapbody .chip span { color: var(--map-muted); }
+.mapbody .chip:hover {
+  border-color: rgba(145, 187, 255, .26);
+  background: var(--map-focus-wash);
+}
+.mapbody .chip.running { border-left: 2px solid var(--map-running); }
+.mapbody .chip.blocked,
+.mapbody .chip.attention,
+.mapbody .chip.queued { border-left: 2px solid var(--map-amber); }
+.mapbody .chip.failed { border-left: 2px solid var(--map-red); }
+
+/* Runtime state is the only chromatic status vocabulary. */
+.mapbody :where(.dot.run, .pl-live, .tp-dot.live, .statedot.run) {
+  color: var(--map-running);
+  background: var(--map-running);
+}
+.mapbody :where(.badge.running, .s-running) { color: var(--map-running); }
+.mapbody :where(.badge.blocked, .badge.attention, .badge.queued, .s-waiting,
+  .s-queued, .s-attention) { color: var(--map-amber); }
+.mapbody :where(.badge.failed, .s-failed) { color: var(--map-red); }
+
+/* Tables and dense lists ------------------------------------------------- */
+.mapbody .tablewrap,
+.mapbody :where(.dvz-scroll, .tz-wrap, .ord-scroll, .gwrap, .pl-tscroll,
+  .tp-lanes, .tp-arcwrap, .cl-plotwrap) {
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  scrollbar-color: rgba(145, 187, 255, .25) transparent;
+  scrollbar-width: thin;
+}
+.mapbody .tablewrap {
+  margin-top: 10px;
+  border: 1px solid var(--map-line);
+  border-radius: 10px;
+  background: var(--map-surface-0);
+}
+.mapbody table {
+  border-color: var(--map-line);
+  border-radius: 10px;
+  color: var(--map-text);
+  background: var(--map-surface-0);
+}
+.mapbody :where(th, td) {
+  border-color: var(--map-hairline);
+  color: var(--map-muted);
+  font-size: 14px;
+}
+.mapbody th {
+  color: var(--map-faint);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .02em;
+  text-transform: none;
+}
+.mapbody td b,
+.mapbody th b { color: var(--map-text); }
+.mapbody tbody tr:hover { background: rgba(94, 157, 255, .035); }
+.mapbody .keys,
+.mapbody .legend {
+  color: var(--map-faint);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* Fleet ------------------------------------------------------------------ */
+.mapbody #fleet .matrix { border-collapse: separate; border-spacing: 0; }
+.mapbody #fleet .matrix th,
+.mapbody #fleet .matrix td {
+  min-width: 46px;
+  height: 36px;
+  padding: 7px 9px;
+  border-right: 1px solid var(--map-hairline);
+  border-bottom: 1px solid var(--map-hairline);
+}
+.mapbody #fleet .matrix th.who {
+  position: sticky;
+  inset-inline-start: 0;
+  z-index: 2;
+  min-width: 118px;
+  color: var(--map-text);
+  background: var(--map-surface-0);
+}
+.mapbody #fleet .matrix tr:first-child th span {
+  max-height: 104px;
+  color: var(--map-muted);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .02em;
+}
+.mapbody #fleet .matrix td.c0 { color: var(--map-faint); opacity: .45; }
+.mapbody #fleet .matrix td.cool { background: rgba(255, 255, 255, .018); }
+.mapbody #fleet .matrix td.warn { background: rgba(230, 168, 95, .08); }
+.mapbody #fleet .matrix td.hot { background: rgba(84, 217, 154, .09); }
+.mapbody #fleet .lanes {
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+.mapbody #fleet .lane { padding: 12px; }
+.mapbody #fleet .wisp { padding: 8px 0; border-color: var(--map-hairline); }
+.mapbody #fleet .wisp b { color: var(--map-text); font-size: 14px; }
+.mapbody #fleet .wisp .step { color: var(--map-muted); }
+
+/* Graphs, crossings, order, subjects, orbit ------------------------------ */
+.mapbody :where(.gwrap, .flowmap, .ob-map, .ord-strip, .strail, .cl-plot,
+  .tp-arcs, .pl-tmap) {
+  border-radius: 9px;
+  background: var(--map-surface-1);
+}
+.mapbody .edge.dep,
+.mapbody .flowmap .xarc,
+.mapbody .flowmap .xhead,
+.mapbody .ob-map .ob-spoke.up {
+  color: var(--map-focus-soft);
+  stroke: var(--map-focus-soft);
+}
+.mapbody .flowmap .xhead { fill: var(--map-focus-soft); }
+.mapbody .gnode :where(circle, rect),
+.mapbody .flowmap .xnode rect,
+.mapbody .ob-map .ob-node .ob-disc {
+  fill: var(--map-surface-2);
+  stroke: rgba(255, 255, 255, .12);
+  opacity: 1;
+}
+.mapbody .gnode.run :where(circle, rect) { fill: var(--map-running); }
+.mapbody .gnode.stuck :where(circle, rect) { fill: var(--map-amber); }
+.mapbody .gnode.done :where(circle, rect) { fill: var(--map-faint); opacity: .45; }
+.mapbody :where(.gnode text, .flowmap .xname, .ob-map .ob-id,
+  .ob-map .ob-rootid, .ord-strip text) { fill: var(--map-muted); }
+.mapbody .flowcard .xledger,
+.mapbody .ordcard .ord-bands,
+.mapbody .orbitcard .ob-roster,
+.mapbody .tzcard .tz-ledger { gap: 10px; }
+.mapbody :where(.flowcard .xpair, .ordcard .ord-pair, .tzcard .tz-cross) {
+  gap: 8px;
+  padding: 7px;
+  border: 1px solid var(--map-hairline);
+  border-radius: 9px;
+  background: var(--map-surface-1);
+}
+.mapbody table.dvz,
+.mapbody table.tz {
+  border-color: var(--map-line);
+  background: var(--map-surface-0);
+}
+.mapbody .dvz-tile.running { --dvz-tile: var(--map-running); }
+.mapbody .dvz-tile.blocked,
+.mapbody .dvz-tile.attention { --dvz-tile: var(--map-amber); }
+.mapbody .dvz-tile.failed { --dvz-tile: var(--map-red); }
+.mapbody .dvz-tile:focus-visible,
+.mapbody .dvz-tile.current { outline-color: var(--map-focus); }
+.mapbody table.tz td.tz-diag { background: rgba(94, 157, 255, .035); }
+.mapbody rect.tz-m.tz-dep { fill: var(--map-focus-soft); }
+.mapbody .orbitcard .ob-picker { gap: 6px; }
+.mapbody .orbitcard .ob-picker .chip { width: auto; }
+.mapbody .orbitcard .ob-pick.current { outline-color: var(--map-focus); }
+
+/* Pulse ------------------------------------------------------------------ */
+.mapbody .plroot {
+  gap: 12px;
+  color: var(--map-text);
+  background: transparent;
+}
+.mapbody .pl-region { padding: 12px; }
+.mapbody .pl-hd,
+.mapbody :where(.pl-stat-l, .pl-floor, .pl-busfoot, .pl-more) {
+  color: var(--map-faint);
+  font-size: 12px;
+  letter-spacing: .02em;
+  text-transform: none;
+}
+.mapbody .pl-stats { gap: 8px; }
+.mapbody .pl-stat,
+.mapbody .pl-lane,
+.mapbody .pl-days li,
+.mapbody .pl-bus-ev {
+  border-color: var(--map-line);
+  border-radius: 8px;
+  background: var(--map-surface-1);
+}
+.mapbody .pl-stat { min-height: 68px; padding: 9px 10px; }
+.mapbody .pl-stat-n { color: var(--map-text); font-size: 20px; }
+.mapbody .pl-bus {
+  border-color: var(--map-hairline);
+  scrollbar-color: rgba(145, 187, 255, .24) transparent;
+}
+.mapbody .pl-bus-ev { height: 34px; }
+.mapbody .pl-bus-to { color: var(--map-focus-soft); }
+.mapbody .pl-live { background: var(--map-running); }
+.mapbody .pl-tr { stroke: var(--map-focus-soft); }
+.mapbody .pl-tiphead { fill: var(--map-focus-soft); }
+.mapbody .pl-node.live,
+.mapbody .pl-node-glow { fill: var(--map-running); }
+.mapbody .pl-f-decision { background: var(--map-focus); }
+.mapbody .pl-f-routing { border-color: var(--map-focus-soft); }
+.mapbody .pl-spectrum { height: 10px; border-radius: 3px; }
+
+/* Stations --------------------------------------------------------------- */
+.mapbody .stcard { gap: 12px; }
+.mapbody .stcard .st-stats { gap: 8px; margin: 8px 0 10px; }
+.mapbody .stcard .st-stat,
+.mapbody .stcard .st-cell {
+  border-color: var(--map-line);
+  border-radius: 8px;
+  background: var(--map-surface-1);
+}
+.mapbody .stcard .st-stat { min-width: 112px; padding: 9px 10px; }
+.mapbody .stcard .st-stat b { color: var(--map-text); font-size: 20px; }
+.mapbody .stcard .st-stat span,
+.mapbody .stcard .st-h {
+  color: var(--map-faint);
+  font-size: 12px;
+  letter-spacing: .02em;
+  text-transform: none;
+}
+.mapbody .strail .st-box { fill: var(--map-surface-2); stroke: var(--map-line); }
+.mapbody .strail .st-unit.running { fill: var(--map-running); stroke: var(--map-running); }
+.mapbody .strail .st-unit.stopped { fill: var(--map-amber); stroke: var(--map-amber); }
+.mapbody .strail .st-unit.failed { fill: var(--map-red); stroke: var(--map-red); }
+.mapbody .stcard .st-cell.expired .st-tick {
+  border-color: var(--map-red);
+  background: var(--map-red);
+}
+.mapbody .stcard .st-cell.imminent .st-tick {
+  border-color: var(--map-amber);
+  background: var(--map-amber);
+}
+
+/* Ceiling and Lanes ------------------------------------------------------ */
+.mapbody .clcard { width: 100%; max-width: 980px; gap: 12px; }
+.mapbody .clcard .cl-h,
+.mapbody .tp-statlab,
+.mapbody .tp-lanename {
+  color: var(--map-faint);
+  font-size: 12px;
+  letter-spacing: .02em;
+  text-transform: none;
+}
+.mapbody .cl-plot .cl-curve,
+.mapbody .cl-plot .cl-knee { stroke: var(--map-focus-soft); }
+.mapbody .tp { max-width: none; gap: 12px; }
+.mapbody .tp-stats { gap: 8px; }
+.mapbody .tp-stat,
+.mapbody .tp-lane {
+  border-color: var(--map-line);
+  border-radius: 9px;
+  background: var(--map-surface-1);
+}
+.mapbody .tp-stat { min-width: 118px; padding: 9px 10px; }
+.mapbody .tp-statnum { color: var(--map-text); font-size: 20px; }
+.mapbody .tp-lanes { grid-auto-columns: minmax(220px, 248px); gap: 10px; }
+.mapbody .tp-lane { padding: 11px; }
+.mapbody .tp-arcs { border-color: var(--map-line); background: var(--map-surface-1); }
+.mapbody .tp-arcline { stroke: var(--map-focus-soft); }
+.mapbody .tp-arcs marker path,
+.mapbody .tp-legend marker path { fill: var(--map-focus-soft); }
+.mapbody .tp-dot.live { border-color: var(--map-running); background: var(--map-running); }
+
+/* Context and drawer ----------------------------------------------------- */
+.mapbody .ctxgroups {
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 10px;
+  margin-top: 0;
+}
+.mapbody .ctxgroups .ctx { background: var(--map-surface-1); }
+.mapbody .note { gap: 4px; padding: 9px 0; border-color: var(--map-hairline); }
+.mapbody .note b { color: var(--map-text); font-size: 14px; font-weight: 600; }
+.mapbody .note p { color: var(--map-muted); font-size: 14px; line-height: 1.5; }
+.mapbody .drawer {
+  z-index: 80;
+  width: min(470px, 94vw);
+  padding: 22px 18px 40px;
+  border-left: 1px solid rgba(145, 187, 255, .18);
+  color: var(--map-text);
+  background: rgba(7, 8, 11, .985);
+  box-shadow: -24px 0 70px rgba(0, 0, 0, .72);
+  backdrop-filter: blur(22px);
+}
+.mapbody .drawer h2 {
+  color: var(--map-text);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text",
+    system-ui, sans-serif;
+  font-size: 20px;
+  font-weight: 650;
+}
+.mapbody .drawer .step { color: var(--map-muted); }
+.mapbody .facts {
+  grid-template-columns: 86px minmax(0, 1fr);
+  gap: 7px 10px;
+  font-size: 14px;
+}
+.mapbody .facts dt {
+  color: var(--map-faint);
+  font-size: 12px;
+  letter-spacing: .02em;
+  text-transform: none;
+}
+.mapbody .facts code {
+  color: var(--map-focus-soft);
+  background: var(--map-surface-2);
+}
+.mapbody .drawer .why {
+  border-left-color: var(--map-amber);
+  background: rgba(230, 168, 95, .045);
+}
+
+/* Read disclosures and timeline ----------------------------------------- */
+.mapbody .readnote { margin: 9px 0 0; }
+.mapbody .readnote > summary,
+.mapbody .plroot .readnote > summary,
+.mapbody .tpcard .readnote > summary,
+.mapbody .ordcard .readnote > summary {
+  min-height: 34px;
+  padding: 7px 9px;
+  border: 1px solid var(--map-line);
+  border-radius: 8px;
+  color: var(--map-faint);
+  background: var(--map-surface-1);
+  font-size: 12px;
+  list-style: none;
+}
+.mapbody .readnote[open] > summary { color: var(--map-text); }
+.mapbody .readnote .body,
+.mapbody .plroot .readnote .body,
+.mapbody .tpcard .readnote .body {
+  padding: 1px 0 1px 10px;
+  border-left: 2px solid var(--map-focus);
+}
+.mapbody .readnote .body p { color: var(--map-muted); font-size: 12px; }
+.mapbody .tlblock .tl { border-left-color: rgba(145, 187, 255, .18); }
+.mapbody .tlblock .tlmark { background: var(--map-surface-0); }
+.mapbody .tlblock .tlrow.t-done .tlmark,
+.mapbody .tlblock .tlrow.t-done .tlkind { color: var(--map-running); }
+.mapbody .tlblock .tlrow.t-wait .tlmark,
+.mapbody .tlblock .tlrow.t-wait .tlkind { color: var(--map-amber); }
+.mapbody .tlblock .tlrow.t-bad .tlmark,
+.mapbody .tlblock .tlrow.t-bad .tlkind { color: var(--map-red); }
+
+/* Responsive Cockpit ----------------------------------------------------- */
+@media (max-width: 720px) {
+  .mapbody .maptabs-help { display: none; }
+  .mapbody #maptabs {
+    inset-block-start: 58px;
+    height: 44px;
+    padding: 4px 10px;
+    scrollbar-gutter: auto;
+  }
+  .mapbody #maptabs button {
+    height: 34px;
+    min-height: 34px;
+    padding: 0 6px;
+  }
+  .mapbody .global-search { padding: 10px 12px 0; }
+  .mapbody main { padding: 10px 12px 40px; }
+  .mapbody :where(.card, .lane, .pl-region) {
+    padding: 12px;
+    border-radius: 10px;
+  }
+  .mapbody .panel.active { gap: 10px; }
+  .mapbody #fleet .matrix th:nth-child(n+4),
+  .mapbody #fleet .matrix td:nth-child(n+4) { display: table-cell; }
+  .mapbody #fleet .matrix { width: max-content; min-width: 100%; }
+  .mapbody #fleet .tablewrap {
+    overflow-x: auto;
+    scrollbar-gutter: stable;
+  }
+  .mapbody #fleet .matrix th.who { min-width: 104px; }
+  .mapbody .ctxgroups { grid-template-columns: 1fr; }
+  .mapbody .pl-cols { grid-template-columns: 1fr; }
+  .mapbody .pl-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .mapbody .stcard .stlease { grid-template-columns: repeat(2, 1fr); }
+  .mapbody .tp-lanes { grid-auto-columns: minmax(190px, 215px); }
+  .mapbody :where(.flowcard .xpair, .ordcard .ord-pair, .tzcard .tz-cross) {
+    grid-template-columns: 1fr;
+  }
+  .mapbody .drawer {
+    width: 100vw;
+    max-width: 100vw;
+    padding: 20px 14px 36px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mapbody .panel.active { animation: none; }
+}
+
+/* Focused contract corrections: controls retain the 14px operational floor,
+   while their compact 34–36px geometry remains unchanged. */
+.mapbody #maptabs button,
+.mapbody .layoutpick button,
+.mapbody .hop-control button { font-size: 14px; }
+
+/* An observed session without a live flag stays hollow. The base .pl-live
+   selector is the recorded-running state; .off is the explicit negation. */
+.mapbody .pl-live.off {
+  border-color: var(--map-line);
+  background: transparent;
+}
+
+/* Dependency nodes print titles, not identifiers. Keep them in the reading
+   face; IDs remain mono in search, drawers, Orbit, and receipts. */
+.mapbody .gnode text {
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui,
+    sans-serif;
+}
+
+/* Semantic color lock: analysis and interaction stay blue; only recorded
+   runtime state uses green/amber/red, regardless of Accent preference. */
+.mapbody .keys .swatch.run { background: var(--map-running); }
+.mapbody .facts .ok { color: var(--map-running); }
+.mapbody .ord-strip .ord-mark.t-done { color: var(--map-running); }
+.mapbody .ob-map .ob-pip.running { fill: var(--map-running); }
+.mapbody .cl-plot .cl-step {
+  stroke: var(--map-focus-soft);
+}
+.mapbody .cl-plot .cl-glowline {
+  stroke: var(--map-focus);
+}
+.mapbody .cl-plot .cl-pt {
+  fill: var(--map-focus-soft);
+}
+.mapbody .clcard .cl-bar > i {
+  background: var(--map-focus);
+}

@@ -1,0 +1,1015 @@
+{
+  "_comment": "Ported files with private source paths and edit text omitted. Every edit retains its reviewed exact cardinality and safe reason.",
+  "files": [
+    {
+      "dest": "src/coordharness/coord/__init__.py",
+      "reason": "import closure of the coordination control plane (coordharness.coord)"
+    },
+    {
+      "dest": "src/coordharness/coord/agent_cli.py",
+      "reason": "import closure of the coordination control plane (coordharness.coord.agent_cli)",
+      "edits": [
+        {
+          "count": 1,
+          "reason": "the original walked above its source checkout to find the repo root; that lands in site-packages once installed"
+        }
+      ]
+    },
+    {
+      "dest": "src/coordharness/coord/board_context.py",
+      "reason": "import closure of the coordination control plane (coordharness.coord.board_context)",
+      "edits": [
+        {
+          "count": 1,
+          "reason": "private report pointer"
+        },
+        {
+          "count": 1,
+          "reason": "private report pointer"
+        },
+        {
+          "count": 1,
+          "reason": "the original walked above its source checkout to find the repo root; that lands in site-packages once installed"
+        },
+        {
+          "count": 1,
+          "reason": "reproduce reviewed standalone board-context roots, documentation, and command recipes"
+        },
+        {
+          "count": 1,
+          "reason": "reproduce reviewed standalone board-context roots, documentation, and command recipes"
+        },
+        {
+          "count": 1,
+          "reason": "reproduce reviewed standalone board-context roots, documentation, and command recipes"
+        },
+        {
+          "count": 1,
+          "reason": "reproduce reviewed standalone board-context roots, documentation, and command recipes"
+        },
+        {
+          "count": 1,
+          "reason": "reproduce reviewed standalone board-context roots, documentation, and command recipes"
+        },
+        {
+          "count": 1,
+          "reason": "reproduce reviewed standalone board-context roots, documentation, and command recipes"
+        },
+        {
+          "count": 1,
+          "reason": "reproduce reviewed standalone board-context roots, documentation, and command recipes"
+        },
+        {
+          "count": 1,
+          "reason": "reproduce reviewed standalone board-context roots, documentation, and command recipes"
+        },
+        {
+          "count": 1,
+          "reason": "reproduce reviewed standalone board-context roots, documentation, and command recipes"
+        },
+        {
+          "count": 1,
+          "reason": "reproduce reviewed standalone board-context roots, documentation, and command recipes"
+        },
+        {
+          "count": 1,
+          "reason": "reproduce reviewed standalone board-context roots, documentation, and command recipes"
+        },
+        {
+          "count": 1,
+          "reason": "reproduce reviewed standalone board-context roots, documentation, and command recipes"
+        },
+        {
+          "count": 1,
+          "reason": "reproduce reviewed standalone board-context roots, documentation, and command recipes"
+        },
+        {
+          "count": 1,
+          "reason": "reproduce reviewed standalone board-context roots, documentation, and command recipes"
+        },
+        {
+          "count": 1,
+          "reason": "reproduce reviewed standalone board-context roots, documentation, and command recipes"
+        },
+        {
+          "count": 1,
+          "reason": "reproduce reviewed standalone board-context roots, documentation, and command recipes"
+        },
+        {
+          "count": 1,
+          "reason": "reproduce reviewed standalone board-context roots, documentation, and command recipes"
+        }
+      ]
+    },
+    {
+      "dest": "src/coordharness/coord/config.py",
+      "reason": "import closure of the coordination control plane (coordharness.coord.config)",
+      "edits": [
+        {
+          "count": 1,
+          "reason": "path resolution by parent-counting breaks for an installed package"
+        },
+        {
+          "count": 1,
+          "reason": "same: resolve through package configuration"
+        },
+        {
+          "count": 1,
+          "reason": "hardcoded name of the private source repository/warehouse layout"
+        }
+      ]
+    },
+    {
+      "dest": "src/coordharness/coord/continuation_contract.py",
+      "reason": "import closure of the coordination control plane (coordharness.coord.continuation_contract)"
+    },
+    {
+      "dest": "src/coordharness/coord/creation_lint.py",
+      "reason": "import closure of the coordination control plane (coordharness.coord.creation_lint)",
+      "edits": [
+        {
+          "count": 1,
+          "reason": "use the neutral operator actor token and remove a private personal alias"
+        },
+        {
+          "count": 1,
+          "reason": "use the neutral operator actor token and remove a private personal alias"
+        },
+        {
+          "count": 1,
+          "reason": "use the neutral operator actor token and remove a private personal alias"
+        }
+      ]
+    },
+    {
+      "dest": "src/coordharness/coord/deferred_tools.py",
+      "reason": "import closure of the coordination control plane (coordharness.coord.deferred_tools)"
+    },
+    {
+      "dest": "src/coordharness/coord/exact_authority.py",
+      "reason": "import closure of the coordination control plane (coordharness.coord.exact_authority)"
+    },
+    {
+      "dest": "src/coordharness/coord/exact_query_core.py",
+      "reason": "import closure of the coordination control plane (coordharness.coord.exact_query_core)",
+      "edits": [
+        {
+          "count": 1,
+          "reason": "the original walked above its source checkout to find the repo root; that lands in site-packages once installed"
+        },
+        {
+          "count": 1,
+          "reason": "keep package configuration imports in the reviewed standalone import group"
+        },
+        {
+          "count": 1,
+          "reason": "keep package configuration imports in the reviewed standalone import group"
+        }
+      ]
+    },
+    {
+      "dest": "src/coordharness/coord/loop_contracts.py",
+      "reason": "import closure of the coordination control plane (coordharness.coord.loop_contracts)"
+    },
+    {
+      "dest": "src/coordharness/coord/native_cockpit.py",
+      "reason": "import closure of the coordination control plane (coordharness.coord.native_cockpit)",
+      "edits": [
+        {
+          "count": 1,
+          "reason": "named third-party data source"
+        },
+        {
+          "count": 1,
+          "reason": "the original walked above its source checkout; that lands in site-packages once installed"
+        },
+        {
+          "count": 1,
+          "reason": "preserve standalone import cleanup and thread the snapshot timestamp through sidecar deduplication"
+        },
+        {
+          "count": 1,
+          "reason": "preserve standalone import cleanup and thread the snapshot timestamp through sidecar deduplication"
+        },
+        {
+          "count": 1,
+          "reason": "preserve standalone import cleanup and thread the snapshot timestamp through sidecar deduplication"
+        },
+        {
+          "count": 1,
+          "reason": "preserve standalone import cleanup and thread the snapshot timestamp through sidecar deduplication"
+        },
+        {
+          "count": 1,
+          "reason": "carry the launching lane in the session label; the owner stays the local runner because _owner reads the actor field first"
+        }
+      ]
+    },
+    {
+      "dest": "src/coordharness/coord/output_budget.py",
+      "reason": "import closure of the coordination control plane (coordharness.coord.output_budget)"
+    },
+    {
+      "dest": "src/coordharness/coord/policy/pipeline.py",
+      "reason": "import closure of the coordination control plane (coordharness.coord.policy.pipeline)"
+    },
+    {
+      "dest": "src/coordharness/coord/process_liveness.py",
+      "reason": "import closure of the coordination control plane (coordharness.coord.process_liveness)",
+      "edits": [
+        {
+          "count": 1,
+          "reason": "remove an unused platform import from the standalone module"
+        }
+      ]
+    },
+    {
+      "dest": "src/coordharness/coord/projection.py",
+      "reason": "import closure of the coordination control plane (coordharness.coord.projection)"
+    },
+    {
+      "dest": "src/coordharness/coord/projection_schema.py",
+      "reason": "import closure of the coordination control plane (coordharness.coord.projection_schema)"
+    },
+    {
+      "dest": "src/coordharness/coord/r4_plane_authority.py",
+      "reason": "import closure of the coordination control plane (coordharness.coord.r4_plane_authority)"
+    },
+    {
+      "dest": "src/coordharness/coord/reaper.py",
+      "reason": "import closure of the coordination control plane (coordharness.coord.reaper)",
+      "edits": [
+        {
+          "count": 1,
+          "reason": "the original walked above its source checkout to find the repo root; that lands in site-packages once installed"
+        }
+      ]
+    },
+    {
+      "dest": "src/coordharness/coord/review_integrity.py",
+      "reason": "import closure of the coordination control plane (coordharness.coord.review_integrity)"
+    },
+    {
+      "dest": "src/coordharness/coord/review_tier.py",
+      "reason": "import closure of the coordination control plane (coordharness.coord.review_tier)",
+      "edits": [
+        {
+          "count": 1,
+          "reason": "private report pointer"
+        },
+        {
+          "count": 1,
+          "reason": "replace a private served-output subsystem label with generic verified-output terminology"
+        },
+        {
+          "count": 1,
+          "reason": "replace a private served-output subsystem label with generic verified-output terminology"
+        }
+      ]
+    },
+    {
+      "dest": "src/coordharness/coord/run_events.py",
+      "reason": "import closure of the coordination control plane (coordharness.coord.run_events)"
+    },
+    {
+      "dest": "src/coordharness/coord/staleness.py",
+      "reason": "import closure of the coordination control plane (coordharness.coord.staleness)"
+    },
+    {
+      "dest": "src/coordharness/coord/supervisor_readonly.py",
+      "reason": "import closure of the coordination control plane (coordharness.coord.supervisor_readonly)"
+    },
+    {
+      "dest": "src/coordharness/coord/token_ledger_rollup.py",
+      "reason": "import closure of the coordination control plane (coordharness.coord.token_ledger_rollup)"
+    },
+    {
+      "dest": "src/coordharness/coord/work_query_v2.py",
+      "reason": "import closure of the coordination control plane (coordharness.coord.work_query_v2)"
+    },
+    {
+      "dest": "src/coordharness/jobs/__init__.py",
+      "reason": "import closure of the coordination control plane (coordharness.jobs)"
+    },
+    {
+      "dest": "src/coordharness/jobs/identity.py",
+      "reason": "import closure of the coordination control plane (coordharness.jobs.identity)"
+    },
+    {
+      "dest": "src/coordharness/knowledge/__init__.py",
+      "reason": "import closure of the coordination control plane (coordharness.knowledge)"
+    },
+    {
+      "dest": "src/coordharness/knowledge/accepted_memory_r4.py",
+      "reason": "import closure of the coordination control plane (coordharness.knowledge.accepted_memory_r4)",
+      "edits": [
+        {
+          "count": 1,
+          "reason": "remove an unused typing import from the standalone module"
+        }
+      ]
+    },
+    {
+      "dest": "src/coordharness/knowledge/facts.py",
+      "reason": "import closure of the coordination control plane (coordharness.knowledge.facts)",
+      "edits": [
+        {
+          "count": 1,
+          "reason": "product vocabulary in an illustrative SQL comment"
+        },
+        {
+          "count": 1,
+          "reason": "product vocabulary in an illustrative SQL comment"
+        },
+        {
+          "count": 1,
+          "reason": "product vocabulary in an illustrative SQL comment"
+        },
+        {
+          "count": 1,
+          "reason": "hardcoded private repository/warehouse layout"
+        },
+        {
+          "count": 1,
+          "reason": "remove an unused private connection helper import"
+        }
+      ]
+    },
+    {
+      "dest": "src/coordharness/knowledge/memory_proposals.py",
+      "reason": "import closure of the coordination control plane (coordharness.knowledge.memory_proposals)",
+      "edits": [
+        {
+          "count": 1,
+          "reason": "hardcoded name of the private source repository/warehouse layout"
+        },
+        {
+          "count": 1,
+          "reason": "enforce the standalone no-self-review rule without a named-human exception"
+        }
+      ]
+    },
+    {
+      "dest": "src/coordharness/knowledge/query_aliases.py",
+      "reason": "import closure of the coordination control plane (coordharness.knowledge.query_aliases)"
+    },
+    {
+      "dest": "src/coordharness/knowledge/query_scoring.py",
+      "reason": "import closure of the coordination control plane (coordharness.knowledge.query_scoring)"
+    },
+    {
+      "dest": "src/coordharness/coord/schema.sql",
+      "reason": "the coord.db base schema - applied idempotently by create_schema",
+      "edits": [
+        {
+          "count": 1,
+          "reason": "replace the stripped design commentary with a pointer to the documentation written for it"
+        }
+      ]
+    },
+    {
+      "dest": "src/coordharness/coord/migrations/002_exact_authority.sql",
+      "reason": "schema migration"
+    },
+    {
+      "dest": "src/coordharness/coord/migrations/003_provenance_causal_trace.sql",
+      "reason": "schema migration"
+    },
+    {
+      "dest": "src/coordharness/coord/mcp_client_compatibility.json",
+      "reason": "minimum-version table the MCP server loads at import; ships inside the package"
+    },
+    {
+      "dest": "src/coordharness/testing/__init__.py",
+      "reason": "package marker for the test-gate support package"
+    },
+    {
+      "dest": "src/coordharness/testing/verified_artifact_skip.py",
+      "reason": "typed verified-artifact pytest skip plugin with strict-mode enforcement and standalone terminology",
+      "edits": [
+        {
+          "count": 2,
+          "reason": "generic env var name (auto-renamed COORD_->COORD_ by the porter)"
+        },
+        {
+          "count": 1,
+          "reason": "generic public function name"
+        },
+        {
+          "count": 1,
+          "reason": "generic internal helper name"
+        },
+        {
+          "count": 1,
+          "reason": "generic directory-convention check"
+        },
+        {
+          "count": 1,
+          "reason": "call site for the renamed helper"
+        },
+        {
+          "count": 1,
+          "reason": "call site for the renamed helper"
+        },
+        {
+          "count": 1,
+          "reason": "generic terminal-summary label"
+        }
+      ]
+    },
+    {
+      "dest": "src/coordharness/runtime/__init__.py",
+      "reason": "package marker for runtime startup helpers"
+    },
+    {
+      "dest": "src/coordharness/runtime/native_thread_guard.py",
+      "reason": "OpenMP/BLAS thread-count guard: sets OMP/OPENBLAS/MKL/VECLIB/NUMEXPR thread env vars from a small named profile (serial/balanced/perf/...) as early as Python startup allows, so multiple native math runtimes loaded by different dependencies don't each grab all cores and thrash. Pure stdlib, no product imports"
+    },
+    {
+      "dest": "src/coordharness/runtime/console_release_retention.py",
+      "reason": "fail-closed retention policy for immutable dashboard/console release builds: distinguishes complete vs. partial (in-progress) release directories by an exact filename-identity regex, enforces a minimum age before a partial can be reclaimed, and keeps at least N unreferenced complete releases so a rollback target always exists. Stdlib + fcntl only"
+    },
+    {
+      "dest": "src/coordharness/runtime/release_inventory_policy.py",
+      "reason": "the single reviewed allowlist (Finder metadata + bytecode cache only) shared by both release construction and startup verification, plus a bounded-parallelism content-hash inventory of a release tree used to prove two builds are byte-identical. Stdlib only"
+    },
+    {
+      "dest": "src/coordharness/runtime/served_build_identity.py",
+      "reason": "captures an immutable boot identity (git commit/tree, captured-at, dirty-at-boot) once at process import time, so a long-running server process keeps naming the code generation it actually booted from even after the on-disk checkout advances underneath it, instead of laundering newer disk state as if it were live. Stdlib + subprocess only",
+      "edits": [
+        {
+          "count": 1,
+          "reason": "path resolution by parent-counting breaks once installed"
+        }
+      ]
+    },
+    {
+      "dest": "src/coordharness/usage/__init__.py",
+      "reason": "public export surface for the usage ledger"
+    },
+    {
+      "dest": "src/coordharness/usage/ledger.py",
+      "reason": "SQLite-backed content-addressed hash-chained agent-cost ledger; standard-library only with no product imports",
+      "edits": [
+        {
+          "count": 1,
+          "reason": "remove an unused typing import from the standalone module"
+        }
+      ]
+    },
+    {
+      "dest": "src/coordharness/usage/fingerprint.py",
+      "reason": "read-only source discovery/fingerprinting: scopes one usage source (path + provider + account + timezone), separates 'where bytes were physically observed' (absolute paths, inode numbers, kept as custody metadata) from a portable root-relative digest used for integrity comparison across machines. Stdlib only, no product imports"
+    },
+    {
+      "dest": "src/coordharness/usage/importers.py",
+      "reason": "two read-only importers that turn legacy high-water JSON envelopes and menu-bar-app cache snapshots into ledger ObservationInput records, always marked non-canonical-eligible until coverage is proven complete. Stdlib only",
+      "edits": [
+        {
+          "count": 1,
+          "reason": "remove an unused typing import from the standalone module"
+        }
+      ]
+    },
+    {
+      "dest": "src/coordharness/usage/replica.py",
+      "reason": "fail-closed external replica/restore-drill primitives for the ledger's disaster-recovery story: verifies a mounted encrypted external volume by diskutil identity before writing, publishes immutable content-addressed generations, and exercises actual restore drills rather than trusting an untested backup. Stdlib + subprocess/plistlib only",
+      "edits": [
+        {
+          "count": 1,
+          "reason": "hardcoded personal name in a directory-name constant"
+        }
+      ]
+    },
+    {
+      "dest": "tests/usage/__init__.py",
+      "reason": "package marker"
+    },
+    {
+      "dest": "tests/usage/test_ledger.py",
+      "reason": "unit tests for the ledger's SQLite schema, digesting, and hash-chain behavior; imports only coordharness.usage(.ledger). Clean of product vocabulary"
+    },
+    {
+      "dest": "tests/usage/test_fingerprint.py",
+      "reason": "unit tests for source-root fingerprinting; imports only coordharness.usage.fingerprint. Clean"
+    },
+    {
+      "dest": "tests/usage/test_importers.py",
+      "reason": "unit tests for the legacy/cache importers; imports only coordharness.usage(.importers). Clean"
+    },
+    {
+      "dest": "tests/usage/test_adversarial.py",
+      "reason": "adversarial/edge-case tests against the ledger's public surface (coordharness.usage). Clean",
+      "edits": [
+        {
+          "count": 1,
+          "reason": "remove an unused test import"
+        }
+      ]
+    },
+    {
+      "dest": "tests/usage/test_replica.py",
+      "reason": "unit tests for the external-replica module; imports only coordharness.usage.replica",
+      "edits": [
+        {
+          "count": 2,
+          "reason": "matches the renamed ARCHIVE_DIRECTORY constant in replica.py (two occurrences, both fixture assertions)"
+        },
+        {
+          "count": 1,
+          "reason": "hardcoded personal name used as a fixture volume label"
+        }
+      ]
+    },
+    {
+      "dest": "tests/jobs/test_status_primitives.py",
+      "reason": "unit tests for the already-ported coordharness.jobs.status module (updated_at parsing, staleness, canonical id / dedup key, ETA/pct formatting). Only import is `from coordharness.jobs import status`",
+      "edits": [
+        {
+          "count": 2,
+          "reason": "genericize a house-style internal work-item-id-shaped fixture value (2 occurrences, same literal)"
+        },
+        {
+          "count": 1,
+          "reason": "retain neutral work identifiers and standalone formatting"
+        },
+        {
+          "count": 1,
+          "reason": "retain neutral work identifiers and standalone formatting"
+        }
+      ]
+    },
+    {
+      "dest": "tests/knowledge/test_accepted_memory_r4.py",
+      "reason": "unit tests for the already-ported coordharness.knowledge.accepted_memory_r4 + context_federator modules. Clean of product vocabulary"
+    },
+    {
+      "dest": "tests/knowledge/test_archive_pointer_aliases.py",
+      "reason": "unit tests for coordharness.knowledge.context_federator's archive-pointer alias resolution. Clean",
+      "edits": [
+        {
+          "count": 1,
+          "reason": "use repository-root-relative standalone archive fixtures"
+        },
+        {
+          "count": 1,
+          "reason": "use repository-root-relative standalone archive fixtures"
+        },
+        {
+          "count": 1,
+          "reason": "use repository-root-relative standalone archive fixtures"
+        },
+        {
+          "count": 1,
+          "reason": "use repository-root-relative standalone archive fixtures"
+        },
+        {
+          "count": 1,
+          "reason": "use repository-root-relative standalone archive fixtures"
+        },
+        {
+          "count": 1,
+          "reason": "use repository-root-relative standalone archive fixtures"
+        },
+        {
+          "count": 1,
+          "reason": "use repository-root-relative standalone archive fixtures"
+        },
+        {
+          "count": 1,
+          "reason": "use repository-root-relative standalone archive fixtures"
+        }
+      ]
+    },
+    {
+      "dest": "tests/knowledge/test_kfts_v2_runtime.py",
+      "reason": "unit tests for coordharness.knowledge.kfts. Clean"
+    },
+    {
+      "dest": "tests/knowledge/test_memory_dedup_gate.py",
+      "reason": "unit tests for coordharness.knowledge.kfts dedup gate. Clean",
+      "edits": [
+        {
+          "count": 1,
+          "reason": "replace private corpus, provider, and report fixtures with synthetic standalone fixtures"
+        },
+        {
+          "count": 1,
+          "reason": "replace private corpus, provider, and report fixtures with synthetic standalone fixtures"
+        },
+        {
+          "count": 1,
+          "reason": "replace private corpus, provider, and report fixtures with synthetic standalone fixtures"
+        },
+        {
+          "count": 1,
+          "reason": "replace private corpus, provider, and report fixtures with synthetic standalone fixtures"
+        }
+      ]
+    },
+    {
+      "dest": "tests/knowledge/test_query_scoring.py",
+      "reason": "unit tests for coordharness.knowledge.query_scoring. Clean"
+    },
+    {
+      "dest": "src/coordharness/jobs/pglaunch.py",
+      "reason": "The process-group launcher: forks a session-leader child that is held on a private pipe until a two-phase release-token handshake proves the sidecar/PGID receipt has converged, then execs the real command as pgid==pid so the whole tree is one killable group; on SIGTERM/SIGINT or parent loss it TERM-polls-KILLs the group before exiting. This is the 'process-group launch + content-addressed job identity' primitive named in the assignment. Renamed from a leading-underscore private script to a proper importable/executable module.",
+      "dropped_symbol_count": 1,
+      "drop_category": "reviewed top-level symbol removal",
+      "edits": [
+        {
+          "count": 1,
+          "reason": "PRIVACY TRANSFORM: the on-disk PGID receipt must never carry the full command line, only opaque sha256 refs over it."
+        },
+        {
+          "count": 1,
+          "reason": "PRIVACY TRANSFORM: drop every absolute host path from the persisted receipt, keep only the file-identity hashes (opaque refs, no host paths)."
+        },
+        {
+          "count": 1,
+          "reason": "drop the last remaining spread of raw absolute control-file paths into the receipt; the control directory is already reachable from job_id, no need to persist its resolved path."
+        },
+        {
+          "count": 1,
+          "reason": "these two locals only fed the now-removed canonical_coord_db_path/canonical_release_path receipt fields; dead after the privacy edits above."
+        }
+      ]
+    },
+    {
+      "dest": "src/coordharness/jobs/gpu_pglaunch.py",
+      "reason": "The simpler process-group launcher used for an exclusive-lane workload (Popen(start_new_session=True) is the macOS-safe way to get a fresh session/group leader without a bare os.setsid() EPERM). TERM-polls-KILL on signal, mirrors the real child's exit code (128+sig if signalled). Complements pglaunch.py as the lighter-weight variant with no two-phase custody handshake.",
+      "edits": [
+        {
+          "count": 1,
+          "reason": "PRIVACY TRANSFORM: drop the absolute progress_file host path from the persisted PGID receipt; job/pgid/pid identity is all a caller needs."
+        }
+      ]
+    },
+    {
+      "dest": "scripts/mem_governor.sh",
+      "reason": "The memory admission gate: 'wait until N GB + a 6 GB safety buffer of headroom exists, polling every 30s' / 'check now' / 'print status'. Delegates its actual headroom read to lib_safety.sh's mem_free_gb so there is one source of truth. This is the 'resource-mode governor' primitive's admission half. Already fully generic \u2014 no product-specific vocabulary anywhere in the file, ported with no content edits."
+    },
+    {
+      "dest": "scripts/lib_safety.sh",
+      "reason": "Single-source-of-truth shared shell primitives: a stable memory_pressure-based free-RAM read (mem_free_gb) with a vm_stat fallback, swap/load reads, and safe process-group teardown for an exclusive-lane lock (gpu_pgid_is_ours proves a pgid is still the live, un-recycled group we launched before anyone signals it; kill_pgid_escalate is TERM->poll->KILL that refuses to ever signal its own process group and only returns success once the group is confirmed empty). This is the fcntl/PID-liveness-adjacent safety layer the assignment asks for, generalized from the specific 'GPU lane' framing to any exclusive lock directory holding a pgid.json sidecar.",
+      "edits": [
+        {
+          "count": 1,
+          "reason": "drop the dated internal-incident narrative and references to unported files (resource_watchdog.sh, resource_governor.sh); replace with a plain description of the mechanism in the porter's own words."
+        },
+        {
+          "count": 1,
+          "reason": "generalize away from the specific 'GPU lane' framing tied to the source product's gpu_job.sh, drop internal test-plan section references (\u00a73.5 Gate-1, Gate-2, a launchd plist not in this port), keep the mechanism description."
+        },
+        {
+          "count": 1,
+          "reason": "drop the internal design-doc section reference; the reasoning on the next line already stands on its own."
+        },
+        {
+          "count": 1,
+          "reason": "drop references to product-specific job categories (mlx_lm|lora fine-tuning jobs, a scripts/embed_ pipeline family) and to overnight_supervisor.sh (not in this port); keep the generic daemon/UI/agent-process protection set as an example default."
+        }
+      ]
+    },
+    {
+      "dest": "src/coordharness/lints/fail_loud_patterns.py",
+      "reason": "AST lint for the five silent-plausible-value defect shapes (P1-P5). Stdlib-only (ast/json/re/argparse), no product imports; every literal that names the source product lives in the module docstring or a code comment, both stripped automatically by the porter. Only the scan-root/allowlist path constants and one closing print message are live strings that need edits.",
+      "edits": [
+        {
+          "count": 1,
+          "reason": "The source hardcoded a scan root nested under a fixed coordharness/src/coordharness tree and an allowlist path under coordharness/config/. The harness scans whatever project it is coordinating, so the scan root becomes the coordinated project's root (config.project_root()) and the allowlist moves into harness state (config.state_dir()), matching the pattern already used by every other ported module that needs a writable sidecar."
+        },
+        {
+          "count": 1,
+          "reason": "The source treated a missing allowlist as a hard operator error because the file was checked into the private repo's config/ directory in advance. In the harness the allowlist lives in generated state (.coordharness/), so first run must self-bootstrap an empty one rather than fail closed, mirroring the existing self-bootstrapping config pattern already used elsewhere in this codebase (docs_hygiene's CONFIG_PATH)."
+        },
+        {
+          "count": 1,
+          "reason": "Live print statement (not a docstring/comment, so the porter's automatic strip does not touch it) that cited an internal work-item-ID'd report and a product-specific gate script by name. Replaced with a generic pointer to the allowlist/ratchet mechanism that ships in this repo instead."
+        }
+      ]
+    },
+    {
+      "dest": "src/coordharness/lints/cwd_relative_paths.py",
+      "reason": "AST lint flagging relative-string-literal path arguments to Path()/open()/pandas-style read_*()/sqlite3.connect()/duckdb.connect() -- the exact class of defect where a path resolves from the test-runner cwd but not the production process cwd. Stdlib-only, no product imports; same two-constant-block-plus-one-message shape as the fail-loud lint above.",
+      "edits": [
+        {
+          "count": 1,
+          "reason": "Same rationale as the fail-loud lint's path block: scan the coordinated project, keep the reviewed-allowlist sidecar in harness state instead of a fixed product config directory."
+        },
+        {
+          "count": 1,
+          "reason": "Same self-bootstrap fix as the fail-loud lint: the allowlist is generated harness state, not a pre-populated checked-in file, so a missing file should seed empty rather than hard-fail."
+        },
+        {
+          "count": 1,
+          "reason": "Live print statement citing an internal work-item-ID'd report by name; replaced with a self-contained instruction that does not depend on the private repo's report archive."
+        }
+      ]
+    },
+    {
+      "dest": "src/coordharness/lints/doc_deletion_guard.py",
+      "reason": "Read-only git-diff auditor: for every deleted or renamed file under a protected doc set, classifies the deletion as a safe archive move/copy, an unpreserved deletion, or a non-archive relocation needing review (byte-hash match, falling back to a line-similarity same-basename match at a 0.85 threshold for near-identical moves). Pure stdlib (subprocess/hashlib/difflib), fully generic mechanism -- only the protected-path convention was hardcoded to this product's doc tree.",
+      "edits": [
+        {
+          "count": 1,
+          "reason": "The protected-doc convention (which root files, which archive prefix) was hardcoded to this product's three root ledgers and its coordharness/docs/ tree. Made configurable via env vars with generic defaults (docs/, docs/archive/, no hardcoded root filenames) so any project can point this at its own doc layout without editing code."
+        },
+        {
+          "count": 1,
+          "reason": "Live f-string-able message hardcoded the coordharness/docs/archive path; now reflects the configured ARCHIVE_PREFIX so the emitted JSON stays accurate for whatever archive convention the caller configured."
+        }
+      ]
+    },
+    {
+      "dest": "src/coordharness/lints/docs_findability_index.py",
+      "reason": "Rewrites two generated, marker-delimited index blocks (a live-docs index and an archive-docs index) so every tracked Markdown file under docs/ is reachable from one of two indexes -- the anti-loss invariant that nothing gets silently orphaned by a move to archive/. Pure stdlib (re/pathlib), no product imports; only the docs-root resolution needs to point at the coordinated project instead of a fixed sibling directory.",
+      "edits": [
+        {
+          "count": 1,
+          "reason": "The source resolved docs/ as a fixed sibling of the script (coordharness/docs), assuming the script always lives inside the tree it scans. The harness runs against an arbitrary coordinated project, so this resolves docs/ under that project's root instead."
+        }
+      ]
+    },
+    {
+      "dest": "src/coordharness/lints/mtime_into_figure_lint.py",
+      "reason": "Intraprocedural AST taint lint: within each function it marks local variables assigned from a named 'unsafe provenance' producer call (fixpoint over three passes so `b = a or fallback` inherits a's taint), then flags any named sink-constructor call whose named keyword argument's expression mentions a tainted name. The taint-propagation mechanism is fully generic; only the specific producer/sink/owner names were this product's own class names (one of which is a business-specific metric name, replaced below). Ported as a working example with clearly-marked example config rather than a hardcoded fixture.",
+      "edits": [
+        {
+          "count": 1,
+          "reason": "UI_ROOT assumed a fixed coordharness/src/coordharness/ui path; pointed at the coordinated project's src/ instead. FIG_OWNERS carried three of this product's own class names, one of which (a share-of-contested-matters metric class) names a business concept rather than a generic mechanism; dropped it and relabeled the remaining two as explicit example config so a reader understands these are meant to be replaced with their own project's class names, not treated as a real default."
+        },
+        {
+          "count": 1,
+          "reason": "The original computed a display path via root.parents[3], a magic index that only worked because UI_ROOT sat exactly four directories below the source repo's root (coordharness/src/coordharness/ui). That assumption breaks under the new UI_ROOT. Since every path came from root.rglob(...), it is always a descendant of root, so relative_to(root) is both correct and simpler -- not a cosmetic rename, a genuine fix for the changed root depth."
+        }
+      ]
+    },
+    {
+      "dest": "src/coordharness/lints/work_item_lint.py",
+      "reason": "Read-only sqlite3 lint over the work_items table: flags OPEN (non-terminal) rows missing required fields (real title, module, display, assignee, parent_id, done_signal, non-empty acceptance rubric; epics exempt from parent_id/done_signal), and separately flags likely-duplicate open items in the same module via normalized-title SequenceMatcher similarity >= 0.86. Opens the DB read-only (file:...?mode=ro). Stdlib-only; the work_items schema it queries already exists verbatim in this repo's coord schema, except one column (note) that this repo's schema does not carry, which is dropped below.",
+      "edits": [
+        {
+          "count": 1,
+          "reason": "Replaced a hand-derived path to a sibling harness-ops/coord.db with the harness's own coord_db_path(), which already handles the COORD_DB override."
+        },
+        {
+          "count": 1,
+          "reason": "Dropped the 'note' requirement: this repo's work_items schema (src/coordharness/coord/schema.sql) has no note column -- narrative context here lives as event rows, not a work_items field -- so checking it would reference a column that does not exist."
+        },
+        {
+          "count": 1,
+          "reason": "Matches the dropped 'note' requirement above -- every other field on this dataclass maps 1:1 to a real column in this repo's work_items table."
+        },
+        {
+          "count": 1,
+          "reason": "Drops 'note' from the SELECT column list and Row construction to match the schema this repo actually has; without this the query raises 'no such column: note' against a fresh coordharness database."
+        },
+        {
+          "count": 1,
+          "reason": "remove an unused path helper import after standalone configuration wiring"
+        }
+      ]
+    },
+    {
+      "dest": "apps/menubar/Sources/App/main.swift",
+      "reason": "the menu-bar cockpit UI: agent status chrome, rings, mode slider, row rendering"
+    },
+    {
+      "dest": "apps/menubar/Sources/App/DesignTokens.swift",
+      "reason": "the menu-bar cockpit UI: agent status chrome, rings, mode slider, row rendering"
+    },
+    {
+      "dest": "apps/menubar/Sources/App/HotkeyManager.swift",
+      "reason": "the menu-bar cockpit UI: agent status chrome, rings, mode slider, row rendering"
+    },
+    {
+      "dest": "apps/menubar/Sources/App/Notifier.swift",
+      "reason": "the menu-bar cockpit UI: agent status chrome, rings, mode slider, row rendering"
+    },
+    {
+      "dest": "apps/menubar/Sources/App/LoginItemManager.swift",
+      "reason": "the menu-bar cockpit UI: agent status chrome, rings, mode slider, row rendering"
+    },
+    {
+      "dest": "apps/menubar/Sources/App/SingleInstanceGuard.swift",
+      "reason": "the menu-bar cockpit UI: agent status chrome, rings, mode slider, row rendering"
+    },
+    {
+      "dest": "apps/menubar/Sources/UI/PanelLayout.swift",
+      "reason": "the menu-bar cockpit UI: agent status chrome, rings, mode slider, row rendering"
+    },
+    {
+      "dest": "apps/menubar/Sources/UI/ModeSlider.swift",
+      "reason": "the menu-bar cockpit UI: agent status chrome, rings, mode slider, row rendering"
+    },
+    {
+      "dest": "apps/menubar/Sources/UI/RowDetailView.swift",
+      "reason": "the menu-bar cockpit UI: agent status chrome, rings, mode slider, row rendering"
+    },
+    {
+      "dest": "apps/menubar/Sources/UI/Rows.swift",
+      "reason": "the menu-bar cockpit UI: agent status chrome, rings, mode slider, row rendering",
+      "edits": [
+        {
+          "count": 1,
+          "reason": "the original loaded third-party artwork from the asset catalogue; marks are drawn in-repo instead"
+        },
+        {
+          "count": 1,
+          "reason": "agent marks come from the drawn set, and a mixed row no longer borrows another lane's mark"
+        },
+        {
+          "count": 1,
+          "reason": "job rows take the hardware mark from the same lookup as every other surface"
+        },
+        {
+          "count": 1,
+          "reason": "badge the panel's job rows with the lane that launched them, as the cockpit does"
+        },
+        {
+          "count": 1,
+          "reason": "assign a stable row identifier for incremental layout and deterministic tests"
+        }
+      ]
+    },
+    {
+      "dest": "apps/menubar/Sources/Data/ETAFormat.swift",
+      "reason": "the menu-bar cockpit UI: agent status chrome, rings, mode slider, row rendering"
+    },
+    {
+      "dest": "apps/menubar/Sources/Data/SnapshotCache.swift",
+      "reason": "the menu-bar cockpit UI: agent status chrome, rings, mode slider, row rendering"
+    },
+    {
+      "dest": "apps/menubar/Sources/Cockpit/Core/CockpitCapabilityInventory.swift",
+      "reason": "cockpit window: agent status table, inspector, tokens, keyboard model"
+    },
+    {
+      "dest": "apps/menubar/Sources/Cockpit/Core/CockpitKeyboardCommand.swift",
+      "reason": "cockpit window: agent status table, inspector, tokens, keyboard model"
+    },
+    {
+      "dest": "apps/menubar/Sources/Cockpit/Core/CockpitModels.swift",
+      "reason": "cockpit window: agent status table, inspector, tokens, keyboard model"
+    },
+    {
+      "dest": "apps/menubar/Sources/Cockpit/Core/CockpitSavedViews.swift",
+      "reason": "cockpit window: agent status table, inspector, tokens, keyboard model"
+    },
+    {
+      "dest": "apps/menubar/Sources/Cockpit/Core/CockpitStatePreference.swift",
+      "reason": "cockpit window: agent status table, inspector, tokens, keyboard model"
+    },
+    {
+      "dest": "apps/menubar/Sources/Cockpit/Core/CockpitViewState.swift",
+      "reason": "cockpit window: agent status table, inspector, tokens, keyboard model"
+    },
+    {
+      "dest": "apps/menubar/Sources/Cockpit/Core/CockpitWindowState.swift",
+      "reason": "cockpit window: agent status table, inspector, tokens, keyboard model"
+    },
+    {
+      "dest": "apps/menubar/Sources/Cockpit/Core/MenuBarPanelPolicy.swift",
+      "reason": "cockpit window: agent status table, inspector, tokens, keyboard model"
+    },
+    {
+      "dest": "apps/menubar/Sources/Cockpit/Core/NativeCockpitActionRequest.swift",
+      "reason": "cockpit window: agent status table, inspector, tokens, keyboard model"
+    },
+    {
+      "dest": "apps/menubar/Sources/Cockpit/Core/NativeCockpitActionResult.swift",
+      "reason": "cockpit window: agent status table, inspector, tokens, keyboard model"
+    },
+    {
+      "dest": "apps/menubar/Sources/Cockpit/Core/NativeContextPaletteModels.swift",
+      "reason": "cockpit window: agent status table, inspector, tokens, keyboard model"
+    },
+    {
+      "dest": "apps/menubar/Sources/Cockpit/Data/CockpitReadModelSource.swift",
+      "reason": "cockpit window: agent status table, inspector, tokens, keyboard model"
+    },
+    {
+      "dest": "apps/menubar/Sources/Cockpit/Data/NativeContextBridgeClient.swift",
+      "reason": "cockpit window: agent status table, inspector, tokens, keyboard model",
+      "edits": [
+        {
+          "count": 1,
+          "reason": "hardcoded path to the source repository"
+        }
+      ]
+    },
+    {
+      "dest": "apps/menubar/Sources/Cockpit/Presentation/CockpitPresentationModel.swift",
+      "reason": "cockpit window: agent status table, inspector, tokens, keyboard model"
+    },
+    {
+      "dest": "apps/menubar/Sources/Cockpit/Presentation/CockpitTableInteractions.swift",
+      "reason": "cockpit window: agent status table, inspector, tokens, keyboard model"
+    },
+    {
+      "dest": "apps/menubar/Sources/Cockpit/UI/CockpitDiagnosticsView.swift",
+      "reason": "cockpit window: agent status table, inspector, tokens, keyboard model"
+    },
+    {
+      "dest": "apps/menubar/Sources/Cockpit/UI/CockpitInspectorView.swift",
+      "reason": "cockpit window: agent status table, inspector, tokens, keyboard model"
+    },
+    {
+      "dest": "apps/menubar/Sources/Cockpit/UI/CockpitScrollChrome.swift",
+      "reason": "cockpit window: agent status table, inspector, tokens, keyboard model"
+    },
+    {
+      "dest": "apps/menubar/Sources/Cockpit/UI/CockpitTableController.swift",
+      "reason": "cockpit window: agent status table, inspector, tokens, keyboard model",
+      "edits": [
+        {
+          "count": 1,
+          "reason": "domain sublines were a map of the source product's subject areas"
+        },
+        {
+          "count": 1,
+          "reason": "domain short-labels were a map of the source product's subject areas"
+        },
+        {
+          "count": 1,
+          "reason": "module short-labels were a map of the source product's subject areas"
+        },
+        {
+          "count": 1,
+          "reason": "the original loaded third-party artwork from the asset catalogue; marks are drawn in-repo instead"
+        }
+      ]
+    },
+    {
+      "dest": "apps/menubar/Sources/Cockpit/UI/CockpitTokens.swift",
+      "reason": "cockpit window: agent status table, inspector, tokens, keyboard model",
+      "edits": [
+        {
+          "count": 1,
+          "reason": "module colours were keyed to the source product's subject areas; derive them from the name instead"
+        }
+      ]
+    },
+    {
+      "dest": "apps/menubar/Sources/Cockpit/UI/NativeCockpitActionBroker.swift",
+      "reason": "cockpit window: agent status table, inspector, tokens, keyboard model",
+      "edits": [
+        {
+          "count": 2,
+          "reason": "hardcoded endpoint of the source product's server; route through one configurable base"
+        }
+      ]
+    },
+    {
+      "dest": "apps/menubar/Sources/Cockpit/UI/NativeContextPaletteView.swift",
+      "reason": "cockpit window: agent status table, inspector, tokens, keyboard model"
+    },
+    {
+      "dest": "apps/menubar/Sources/Cockpit/Core/CockpitMapLifecycle.swift",
+      "reason": "graph/map surface: a generic node-link renderer, with no product vocabulary of its own"
+    },
+    {
+      "dest": "apps/menubar/Sources/Cockpit/Core/CockpitMapModels.swift",
+      "reason": "graph/map surface: a generic node-link renderer, with no product vocabulary of its own"
+    },
+    {
+      "dest": "apps/menubar/Sources/Cockpit/Data/CockpitMapEndpointSource.swift",
+      "reason": "graph/map surface: a generic node-link renderer, with no product vocabulary of its own",
+      "edits": [
+        {
+          "count": 1,
+          "reason": "hardcoded endpoint of the source product's server; route through one configurable base"
+        }
+      ]
+    },
+    {
+      "dest": "apps/menubar/Sources/Cockpit/Data/CockpitMapReadModelSource.swift",
+      "reason": "graph/map surface: a generic node-link renderer, with no product vocabulary of its own",
+      "edits": [
+        {
+          "count": 1,
+          "reason": "absolute paths into the author's source checkout"
+        }
+      ]
+    },
+    {
+      "dest": "apps/menubar/Sources/Cockpit/UI/CockpitMapView.swift",
+      "reason": "graph/map surface: a generic node-link renderer, with no product vocabulary of its own",
+      "edits": [
+        {
+          "count": 1,
+          "reason": "hardcoded endpoint of the source product's server; route through one configurable base"
+        }
+      ]
+    },
+    {
+      "dest": "apps/cockpit/Sources/main.swift",
+      "reason": "standalone launcher that opens the cockpit window as a regular app"
+    },
+    {
+      "dest": "apps/cockpit/Sources/CockpitLauncherAppDelegate.swift",
+      "reason": "standalone launcher that opens the cockpit window as a regular app"
+    }
+  ]
+}

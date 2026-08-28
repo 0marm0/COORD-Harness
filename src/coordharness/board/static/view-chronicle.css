@@ -1,0 +1,88 @@
+/* Styles for view-chronicle.js. Served, not injected: the board sends
+   `style-src 'self'` with no unsafe-inline, so an injected <style> element gets
+   a null sheet and every rule in it is silently dropped.
+
+   Tokens only, including every fallback: --c-card-a and --c-hairline are set by
+   accent.js rather than declared in app.css, so they fall back to tokens that
+   app.css always defines, never to a literal. Amber and red are semantic here
+   (waiting, failed) and must not follow the accent switch, so they are used
+   directly and never mixed with --green. */
+
+.ordcard .ord-tally { margin: .35rem 0 .55rem; font-size: .85rem; color: var(--muted); }
+.ordcard .ord-tally b { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+.ordcard .ord-note,
+.ordcard .ord-gap,
+.ordcard .ord-chipnote,
+.ordcard .ord-free { color: var(--muted); font-size: .78rem; margin: .7rem 0 .35rem; }
+.ordcard .ord-strike { margin: .2rem 0 .7rem; font-size: .82rem; color: var(--ink);
+  padding-left: .8rem; border-left: 2px solid var(--amber); }
+
+/* The strip ------------------------------------------------------------------
+   Horizontal scroll rather than a pitch that shrinks to fit: a spacing that
+   responds to how many instants there are would look like a measurement, and
+   the one thing this card must never suggest is that the gaps mean something. */
+.ord-scroll { overflow-x: auto; margin-top: .8rem; }
+.ord-strip { display: block; }
+.ord-strip .ord-lane { font-size: 11.5px; fill: var(--muted); }
+.ord-strip .ord-stamp { font-size: 11.5px; fill: var(--muted); font-variant-numeric: tabular-nums; }
+.ord-strip .ord-cellbox { fill: var(--c-card-a, var(--panel)); stroke: var(--c-hairline, var(--line)); }
+
+/* `transparent` is a keyword, not a colour, and an SVG group needs a real fill
+   somewhere to be hit-testable at all. */
+.ord-strip .ord-hit { fill: transparent; }
+.ord-strip .ord-mark { color: var(--muted); }
+.ord-strip .ord-mark.t-done { color: var(--green); }
+.ord-strip .ord-mark.t-wait { color: var(--amber); }
+.ord-strip .ord-mark.t-bad { color: var(--red); }
+.ord-strip .ord-mark:hover .ord-hit { fill: var(--c-hover, transparent); }
+/* Safari draws outline on an SVG <g> inconsistently, so the ring is also put on
+   the hit circle: a focus indicator that only shows in one engine is not one. */
+.ord-strip .ord-mark:focus-visible { outline: 2px solid var(--green); outline-offset: 1px; }
+.ord-strip .ord-mark:focus-visible .ord-hit { stroke: var(--green); stroke-width: 2; }
+.ord-strip .ord-mark.current .ord-hit { stroke: var(--green); stroke-width: 2; }
+
+/* The ledger ---------------------------------------------------------------- */
+.ordcard table.ord-reach td:not(:first-child),
+.ordcard table.ord-reach th:not(:first-child) { text-align: right;
+  font-variant-numeric: tabular-nums; }
+
+/* Precedence x stage -------------------------------------------------------- */
+.ordcard .ord-bands { list-style: none; margin: 1rem 0 0; padding: 0; display: grid; gap: 1rem; }
+.ordcard .ord-band h4 { margin: 0 0 .45rem; font-size: .72rem; font-weight: 500;
+  letter-spacing: .09em; text-transform: uppercase; color: var(--muted);
+  display: flex; align-items: baseline; gap: .5em; }
+.ordcard .ord-band h4 .ord-n { color: var(--ink); font-weight: 600;
+  font-variant-numeric: tabular-nums; letter-spacing: 0; }
+.ordcard .ord-empty { margin: 0; font-size: .8rem; color: var(--muted); }
+.ordcard .ord-pair { display: grid; grid-template-columns: 1fr auto 1fr; gap: .45rem;
+  align-items: center; margin: 0 0 .35rem; }
+.ordcard .ord-rel { font-size: .72rem; color: var(--muted); text-align: center; }
+.ordcard .ord-pair .chip { margin: 0; }
+
+@media (max-width: 720px) {
+  .ordcard .ord-pair { grid-template-columns: 1fr; }
+  .ordcard .ord-rel { text-align: left; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ordcard, .ordcard *, .ord-strip * { transition: none; animation: none; }
+}
+
+/* Caveats belong with the picture, not in front of it. Declared under the card
+   so this file cannot restyle the disclosure the other views already ship. */
+.ordcard .readnote { margin: .5rem 0 .9rem; }
+.ordcard .readnote > summary { cursor: pointer; color: var(--muted); font-size: .78rem;
+  list-style: none; display: inline-flex; align-items: center; gap: .4em;
+  padding: .25rem .6rem; border: 1px solid var(--line); border-radius: 999px; }
+.ordcard .readnote > summary::-webkit-details-marker { display: none; }
+.ordcard .readnote > summary::before { content: "?"; font-size: .7rem; opacity: .6;
+  border: 1px solid currentColor; border-radius: 50%; width: 1.1em; height: 1.1em;
+  display: grid; place-items: center; }
+.ordcard .readnote[open] > summary { color: var(--ink); }
+.ordcard .readnote > summary:focus-visible { outline: 2px solid var(--green); outline-offset: 1px; }
+.ordcard .readnote .body { margin-top: .6rem; padding-left: .8rem; border-left: 2px solid var(--line); }
+.ordcard .readnote .body p { margin: .45rem 0; font-size: .8rem; color: var(--muted); }
+
+/* The remainder counter for a cell that holds more marks in one lane than can
+   be drawn without them overlapping into one bigger-looking mark. */
+.ord-strip .ord-more { font-size: 12.1px; fill: var(--muted); font-variant-numeric: tabular-nums; }

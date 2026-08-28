@@ -1,0 +1,161 @@
+name: CoordCockpit
+options:
+  bundleIdPrefix: org.coordharness
+  createIntermediateGroups: true
+  deploymentTarget:
+    macOS: "14.0"
+    iOS: "17.0"
+  xcodeVersion: "26.6"
+  groupSortPosition: top
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "1.0.0"
+    CURRENT_PROJECT_VERSION: "1"
+    CODE_SIGNING_ALLOWED: NO
+    CODE_SIGNING_REQUIRED: NO
+targets:
+  CoordCockpitMac:
+    type: application
+    platform: macOS
+    sources:
+      - path: Shared/Sources
+      - path: macOS/Sources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: org.coordharness.cockpit.mac
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Coord Cockpit
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.developer-tools
+        MACOSX_DEPLOYMENT_TARGET: "14.0"
+    scheme:
+      testTargets:
+        - CoordCockpitTests
+  CoordCockpitIOS:
+    type: application
+    platform: iOS
+    sources:
+      - path: Shared/Sources
+      - path: iOS/Sources
+      - path: brand/Assets
+        type: folder
+        buildPhase: resources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: org.coordharness.cockpit.ios
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Coord Cockpit
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: YES
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        TARGETED_DEVICE_FAMILY: "1,2"
+        IPHONEOS_DEPLOYMENT_TARGET: "17.0"
+  CoordCockpitTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: Tests
+      - path: menubar/Sources/Cockpit/Data/CoordSQLite.swift
+      - path: menubar/Sources/Cockpit/Presentation/CockpitChromeLayout.swift
+      - path: menubar/Sources/App/StatusItemClickRouting.swift
+      - path: menubar/Sources/App/DeferredCoalescedValue.swift
+      - path: menubar/Sources/Data/Models.swift
+      - path: menubar/Sources/Data/ETAFormat.swift
+      - path: menubar/Sources/Data/ConfigPersistence.swift
+      - path: menubar/Sources/Data/SystemTelemetryDisplayPolicy.swift
+      - path: menubar/Sources/App/HarnessEndpoint.swift
+      - path: Shared/Sources/SystemTelemetry.swift
+      - path: Fixtures
+        buildPhase: resources
+    dependencies:
+      - target: CoordCockpitMac
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: org.coordharness.cockpit.tests
+        GENERATE_INFOPLIST_FILE: YES
+        MACOSX_DEPLOYMENT_TARGET: "14.0"
+  CoordMenuBar:
+    type: application
+    platform: macOS
+    sources:
+      - path: menubar/Sources
+      - path: Shared/Sources/UsageIntelligence.swift
+      - path: Shared/Sources/UsageDashboardContent.swift
+      - path: Shared/Sources/UsageAccountActions.swift
+      - path: Shared/Sources/UsageAccountSettingsModel.swift
+      - path: Shared/Sources/UsageAccountSettingsView.swift
+      - path: Shared/Sources/ProviderManagementView.swift
+      - path: Shared/Sources/SystemTelemetry.swift
+      - path: Shared/Sources/SystemTelemetryView.swift
+      - path: brand/Assets
+        type: folder
+        buildPhase: resources
+      - path: brand/Assets.xcassets
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: org.coordharness.menubar
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        INFOPLIST_KEY_CFBundleIconFile: AppIcon
+        INFOPLIST_KEY_CFBundleDisplayName: COORD
+        PRODUCT_NAME: "COORD"
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_LSUIElement: YES
+        INFOPLIST_KEY_NSHumanReadableCopyright: ""
+        MACOSX_DEPLOYMENT_TARGET: "14.0"
+        SWIFT_VERSION: "5.0"
+
+  CoordCockpitWindow:
+    type: application
+    platform: macOS
+    sources:
+      - path: cockpit/Sources
+      - path: menubar/Sources/Cockpit
+      - path: menubar/Sources/App/DesignTokens.swift
+      - path: menubar/Sources/App/HarnessEndpoint.swift
+      - path: menubar/Sources/App/AgentMarks.swift
+      - path: menubar/Sources/App/Diagnostics.swift
+      - path: menubar/Sources/Data
+      - path: menubar/Sources/UI
+      - path: menubar/Sources/Usage
+      - path: Shared/Sources/UsageIntelligence.swift
+      - path: Shared/Sources/UsageDashboardContent.swift
+      - path: Shared/Sources/UsageAccountActions.swift
+      - path: Shared/Sources/UsageAccountSettingsModel.swift
+      - path: Shared/Sources/UsageAccountSettingsView.swift
+      - path: Shared/Sources/ProviderManagementView.swift
+      - path: Shared/Sources/SystemTelemetry.swift
+      - path: Shared/Sources/SystemTelemetryView.swift
+      - path: brand/Assets
+        type: folder
+        buildPhase: resources
+      - path: brand/Assets.xcassets
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: org.coordharness.cockpit.window
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        INFOPLIST_KEY_CFBundleIconFile: AppIcon
+        # Without these the bundle falls back to the target name, so the app
+        # switcher, the menu bar and Get Info all said "CoordCockpitWindow" --
+        # a build-system identifier leaking into the product's name.
+        INFOPLIST_KEY_CFBundleDisplayName: COORD Cockpit
+        PRODUCT_NAME: "COORD Cockpit"
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_NSHumanReadableCopyright: ""
+        MACOSX_DEPLOYMENT_TARGET: "14.0"
+        SWIFT_VERSION: "5.0"
+
+schemes:
+  CoordCockpitIOS:
+    build:
+      targets:
+        CoordCockpitIOS: all
+
+  CoordMenuBar:
+    build:
+      targets:
+        CoordMenuBar: all
+
+  CoordCockpitWindow:
+    build:
+      targets:
+        CoordCockpitWindow: all

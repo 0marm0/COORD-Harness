@@ -1,0 +1,66 @@
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.DS_Store
+.env
+.env.*
+!.env.example
+
+# Provider/account state is machine-private. Runtime code stores these under
+# Operator-local runtime state must stay outside the public harness checkout.
+provider-catalog.json
+provider-profiles.json
+provider-routing.json
+usage-ledger*.json
+usage-ledger*.sqlite*
+*.secrets.json
+
+# Patch/recovery scratch can retain superseded private literals.
+*.orig
+*.rej
+
+# Local state. The harness writes its database and job telemetry here; none of
+# it belongs in version control.
+/.coordharness/
+*.db
+*.db-wal
+*.db-shm
+/var/
+
+# The working extraction manifest quotes the private content its edits remove.
+tools/extract/manifest.private.json
+
+# setuptools build output (the packaging test builds a wheel in-tree)
+/build/
+*.egg-info/
+
+# Source-specific rename/refusal vocabulary: naming what you rename discloses it.
+tools/extract/vocabulary.json
+
+# Generated Xcode project (regenerate with `xcodegen generate` in apps/)
+apps/*.xcodeproj/
+
+# Private review scratch and local browser artifacts never ship.
+/docs/_audit/
+/docs/_review/
+/.playwright-cli/
+/output/playwright/
+
+# Demo state and build output produced by scripts/demo.sh
+/var/
+
+# Xcode derived data from scripts/demo.sh --native. It contains the source
+# identifiers the port removes, and it is not covered by /var/.
+apps/.build/
+/apps/build/
+
+# Licensed brand font, for the local board only. Font EULAs do not permit
+# redistribution, so the files stay out of the repository and the stylesheet
+# falls back to a system stack when they are absent.
+src/coordharness/board/static/brand/*.woff2
+apps/brand/Assets/*.ttf
+apps/brand/Assets/*.otf

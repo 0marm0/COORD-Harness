@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://coordharness.dev/schema/read-status-v1.json",
+  "title": "ReadStatusV1",
+  "description": "Privacy-safe health of the board's coherent read cache.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "generated_at",
+    "source",
+    "read_only",
+    "degraded",
+    "cache_generation",
+    "source_generated_at",
+    "last_refresh_attempt",
+    "last_successful_refresh",
+    "consecutive_refresh_failures",
+    "last_failure_class",
+    "refresh_interval_seconds"
+  ],
+  "properties": {
+    "schema_version": {"const": "ReadStatusV1"},
+    "generated_at": {"type": "string", "minLength": 1},
+    "source": {"const": "board-cache"},
+    "read_only": {"const": true},
+    "degraded": {"type": "boolean"},
+    "cache_generation": {"type": "integer", "minimum": 1},
+    "source_generated_at": {"type": "string"},
+    "last_refresh_attempt": {"type": "string", "minLength": 1},
+    "last_successful_refresh": {"type": "string", "minLength": 1},
+    "consecutive_refresh_failures": {"type": "integer", "minimum": 0},
+    "last_failure_class": {"type": "string"},
+    "refresh_interval_seconds": {"type": "number", "minimum": 0}
+  },
+  "additionalProperties": false
+}

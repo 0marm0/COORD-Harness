@@ -1,0 +1,41 @@
+name: Security and publication safety
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  safety:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install package and audit tools
+        run: |
+          python -m pip install --upgrade pip 'setuptools>=83'
+          python -m pip install -e '.[mcp,dev]' pip-audit
+          go install github.com/zricethezav/gitleaks/v8@v8.30.1
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+      - name: Audit Python environment
+        run: python -m pip_audit
+      - name: Validate docs, JSON, SVG, and image provenance
+        run: |
+          python .github/scripts/validate_docs.py
+          pytest -q tests/test_documentation_validation.py tests/test_public_generalization.py
+      - name: Run publication and extraction gate tests
+        run: pytest -q tests/publication tests/extract
+      - name: Scan exact candidate and complete local history
+        run: |
+          python tools/privacy_hygiene.py --history
+          python tools/publication_gate.py --candidate-ref HEAD --require-gitleaks --local-only --compact
+          python tools/extract/gate.py --history --ref HEAD

@@ -1,0 +1,15 @@
+# Portable project-scoped MCP configuration. The project-local virtual environment
+# avoids reliance on an activated shell or a GUI application's PATH.
+[mcp_servers.coordharness]
+command = "./.venv/bin/python"
+args = ["-m", "coordharness.coord.mcp_coord_server"]
+cwd = "."
+startup_timeout_sec = 20
+tool_timeout_sec = 60
+
+[mcp_servers.coordharness.env]
+COORD_PROJECT_ROOT = "."
+COORD_DB = ".coordharness/coord.db"
+COORD_KNOWLEDGE_DB = ".coordharness/knowledge.db"
+COORD_DEPLOYMENT_PROFILE = "generic"
+COORD_ACTOR = "codex"

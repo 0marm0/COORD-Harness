@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://coordharness.dev/schema/native-snapshot-v1.json",
+  "title": "NativeSnapshotV1",
+  "description": "Read-only runtime snapshot shared by the web and native coordination surfaces.",
+  "type": "object",
+  "required": ["schema_version", "generated_at", "source", "stale", "summary", "rows"],
+  "properties": {
+    "schema_version": {"const": "1"},
+    "generated_at": {"type": "string", "format": "date-time"},
+    "source": {"type": "string", "minLength": 1},
+    "stale": {"type": "boolean"},
+    "summary": {
+      "type": "object",
+      "required": ["running", "attention", "next", "done", "total"],
+      "properties": {
+        "running": {"type": "integer", "minimum": 0},
+        "attention": {"type": "integer", "minimum": 0},
+        "next": {"type": "integer", "minimum": 0},
+        "done": {"type": "integer", "minimum": 0},
+        "total": {"type": "integer", "minimum": 0}
+      },
+      "additionalProperties": false
+    },
+    "rows": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "status",
+          "bucket",
+          "owner",
+          "module",
+          "group",
+          "priority",
+          "progress_fraction",
+          "eta_seconds",
+          "stale",
+          "current_step"
+        ],
+        "properties": {
+          "id": {"type": "string", "minLength": 1},
+          "title": {"type": "string"},
+          "status": {"type": "string"},
+          "bucket": {"type": "string"},
+          "owner": {"type": "string"},
+          "module": {"type": "string"},
+          "group": {"type": "string"},
+          "priority": {"type": "integer", "minimum": 0},
+          "progress_fraction": {
+            "type": ["number", "null"],
+            "minimum": 0,
+            "maximum": 1
+          },
+          "eta_seconds": {
+            "type": ["integer", "null"],
+            "minimum": 0
+          },
+          "stale": {"type": "boolean"},
+          "current_step": {"type": "string"}
+        },
+        "additionalProperties": false
+      }
+    },
+    "sessions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "actor", "label", "live"],
+        "properties": {
+          "id": {"type": "string"},
+          "actor": {"type": "string"},
+          "label": {"type": "string"},
+          "live": {"type": "boolean"}
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

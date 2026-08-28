@@ -1,0 +1,152 @@
+{
+  "schema_version": 1,
+  "as_of": "2026-08-25",
+  "vocabulary": {
+    "Shipped": "Implemented in the repository with a usable local contract.",
+    "Preview": "Implemented or integrating in this branch; public compatibility may still change.",
+    "Planned": "Accepted direction without a complete implementation in this branch.",
+    "Excluded": "Explicitly outside the current product or trust model."
+  },
+  "features": [
+    {
+      "id": "coord-core",
+      "name": "SQLite-WAL lifecycle authority",
+      "status": "Shipped",
+      "source": ["src/coordharness/coord/coord_db.py", "src/coordharness/coord/schema.sql"],
+      "notes": "Claims, leases, events, proof validation, and derived status remain local to one database."
+    },
+    {
+      "id": "coord-cli",
+      "name": "coord CLI",
+      "status": "Shipped",
+      "source": ["src/coordharness/entry.py", "src/coordharness/coord/cli.py"],
+      "notes": "Core lifecycle and board commands."
+    },
+    {
+      "id": "python-api",
+      "name": "Python coordination API",
+      "status": "Shipped",
+      "source": ["src/coordharness/coord/coord_db.py"],
+      "notes": "Typed in-process access to the same authority."
+    },
+    {
+      "id": "mcp-stdio",
+      "name": "MCP stdio server",
+      "status": "Preview",
+      "source": ["src/coordharness/coord/mcp_coord_server.py"],
+      "notes": "The stdio server and up to 30 tools register, but fresh generic and strict-profile board/preflight both fail closed; no standalone MCP deployment profile is accepted end-to-end."
+    },
+    {
+      "id": "coord-mcp-entrypoint",
+      "name": "coord-mcp executable",
+      "status": "Preview",
+      "source": ["pyproject.toml"],
+      "notes": "Branch packaging convenience for the MCP stdio server."
+    },
+    {
+      "id": "local-jobs",
+      "name": "Local job and run telemetry",
+      "status": "Shipped",
+      "source": ["src/coordharness/jobs", "src/coordharness/coord/projection.py"],
+      "notes": "Library primitives are shipped; command-line convenience remains preview."
+    },
+    {
+      "id": "safety-doctor",
+      "name": "Read-only safety doctor",
+      "status": "Shipped",
+      "source": ["src/coordharness/safety", "src/coordharness/entry.py"],
+      "notes": "Stable v1 PASS/BLOCKED report for schema, lifecycle, jobs, paths, Git, and opt-in MCP configuration; it never bootstraps or repairs."
+    },
+    {
+      "id": "agent-skill-packages",
+      "name": "Codex and Claude project skill packages",
+      "status": "Shipped",
+      "source": [".agents/skills/operating-coordharness", ".claude/skills/operating-coordharness"],
+      "notes": "Byte-identical repository packages describe lifecycle, job, and context discipline without granting authority."
+    },
+    {
+      "id": "local-models",
+      "name": "Bounded local-model orchestration",
+      "status": "Preview",
+      "source": ["src/coordharness/coord/model_cli.py", "src/coordharness/coord/modeld_lite.py", "src/coordharness/jobs/resource_lock.py"],
+      "notes": "Explicit neutral catalog, platform/dependency preflight, advisory claims, and process-held MLX resource locking; real inference is not part of the release receipt."
+    },
+    {
+      "id": "usage-ledger",
+      "name": "Local usage and cost ledger",
+      "status": "Shipped",
+      "source": ["src/coordharness/usage"],
+      "notes": "Local hash-chained accounting primitives; no hosted billing or vendor telemetry claim."
+    },
+    {
+      "id": "publication-gate",
+      "name": "Extraction and publication gate",
+      "status": "Shipped",
+      "source": ["tools/extract"],
+      "notes": "Internal release control for explicit inventory, provenance, privacy patterns, fidelity, and reachable-history checks."
+    },
+    {
+      "id": "bounded-context",
+      "name": "Bounded context, facts, and full-text retrieval",
+      "status": "Preview",
+      "source": ["src/coordharness/coord/board_context.py", "src/coordharness/knowledge"],
+      "notes": "The bounded mechanisms ship, but fresh generic and strict-profile board-backed capsule/lens commands both fail closed; no standalone profile is accepted end-to-end."
+    },
+    {
+      "id": "dependency-evidence-graph",
+      "name": "Source-bound dependency and evidence graph views",
+      "status": "Preview",
+      "source": ["src/coordharness/board/graph_envelope.py", "src/coordharness/board/operations.py", "src/coordharness/board/static/swarm-mesh-model.js", "src/coordharness/board/static/swarm-mesh.js"],
+      "notes": "Board, Swarm Mesh, Coordination Map, and Operations Atlas are bounded read models over declared rows and typed relationships. Mesh motion is explicitly live-arrival, stationary replay, or schematic direction; none is a freeform whiteboard, lifecycle writer, or productivity claim."
+    },
+    {
+      "id": "web-board",
+      "name": "Loopback read-only web board",
+      "status": "Preview",
+      "source": ["src/coordharness/board"],
+      "notes": "Local viewer and snapshot API; no writes and no remote exposure."
+    },
+    {
+      "id": "macos-client",
+      "name": "macOS menu-bar and desktop client",
+      "status": "Preview",
+      "source": ["apps/macOS"],
+      "notes": "Clean-room read-only client in branch integration; no distribution claim."
+    },
+    {
+      "id": "ios-client",
+      "name": "iOS read-only client",
+      "status": "Preview",
+      "source": ["apps/iOS"],
+      "notes": "Clean-room read-only client in branch integration; no distribution claim."
+    },
+    {
+      "id": "distributed-coordination",
+      "name": "Distributed or multi-host coordination",
+      "status": "Excluded",
+      "source": ["docs/security-and-privacy.md"],
+      "notes": "The current authority is one local SQLite file."
+    },
+    {
+      "id": "hosted-service",
+      "name": "Hosted or multi-tenant service",
+      "status": "Excluded",
+      "source": ["docs/security-and-privacy.md"],
+      "notes": "No authentication, tenant isolation, or public network service is provided."
+    },
+    {
+      "id": "freeform-whiteboard",
+      "name": "Freeform shared whiteboard",
+      "status": "Planned",
+      "source": ["docs/ideas.md"],
+      "notes": "Not to be confused with the preview source-bound dependency and evidence graph."
+    },
+    {
+      "id": "rich-product-console",
+      "name": "Rich private-product operations console",
+      "status": "Excluded",
+      "source": ["docs/module-coverage.md"],
+      "notes": "Product modules, startup atlas, action broker, branded surfaces, and hosted operations remain outside the standalone repository."
+    }
+  ]
+}

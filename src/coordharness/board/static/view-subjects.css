@@ -1,0 +1,108 @@
+/* Styles for view-subjects.js (Territories).
+   Served, not injected: the board sends style-src 'self' with no unsafe-inline,
+   so an injected <style> element gets a null sheet and every rule is dropped.
+   Tokens only, never a literal -- including the fallbacks, because --c-card-a,
+   --c-card-b, --c-hairline and --c-hover are set by accent.js rather than
+   declared in app.css, so they fall back to tokens app.css always defines.
+   No --amber and no --red appear anywhere in this file: the view makes no
+   status, waiting or failure claim, so it must not borrow that vocabulary.
+   Every class is prefixed tz- / .tzcard; checked clear of dvz-, x*, g*,
+   .matrix, .lane and .wisp. */
+
+/* Own scroller rather than the legacy .tablewrap, whose inherited rules would
+   uppercase and dim every subject-area name and put a border-top on every cell
+   -- which would drown the block hairlines that carry the grouping. */
+.tzcard .tz-wrap { overflow-x: auto; margin-top: .55rem; }
+
+/* min-content, not auto: a table sized by its content hands the leftover
+   pixels to whichever column comes first, and a column drawn wider than its
+   neighbours reads as a quantity that nothing here measures. */
+table.tz { width: min-content; border-collapse: collapse; background: var(--panel);
+  border: 1px solid var(--line); border-radius: 12px; }
+table.tz th, table.tz td { padding: .35rem .45rem; font-size: .8rem; text-align: left;
+  vertical-align: top; }
+
+table.tz th.tz-corner { width: 7.5rem; vertical-align: bottom; white-space: nowrap;
+  font-size: 11.5px; font-weight: 500; color: var(--muted); opacity: .6;
+  padding-bottom: .45rem; }
+table.tz th.tz-corner b { font-weight: 500; }
+
+table.tz th.tz-col { width: 57px; vertical-align: bottom; padding-bottom: .45rem; }
+.tz-vert { display: inline-block; writing-mode: vertical-rl; transform: rotate(180deg);
+  font-size: 12.1px; font-weight: 500; color: var(--muted); white-space: nowrap;
+  max-height: 6.5em; overflow: hidden; text-overflow: ellipsis; }
+
+table.tz th.tz-rowh { white-space: nowrap; padding-right: .7rem; }
+.tz-name { display: block; font-size: .8rem; font-weight: 500; color: var(--ink); }
+.tz-n { display: block; font-size: 0.782rem; color: var(--muted);
+  font-variant-numeric: tabular-nums; }
+
+table.tz td.tz-cell { width: 57px; }
+/* The diagonal is a different claim from everything off it -- structure that
+   never leaves one area -- so it gets a band, not a stronger version of the
+   same ink. */
+table.tz td.tz-diag { background: color-mix(in srgb, var(--muted) 6%, transparent); }
+table.tz td.tz-cell:hover { background: var(--c-hover, color-mix(in srgb, var(--muted) 11%, transparent)); }
+table.tz td.tz-zero:hover { background: none; }
+table.tz td.tz-diag.tz-zero:hover { background: color-mix(in srgb, var(--muted) 6%, transparent); }
+
+/* Block rules: one hairline where a connected group of subject areas starts,
+   and one before the block of areas with no recorded edge at all. */
+table.tz .tz-cb { border-left: 1px solid var(--line); }
+table.tz th.tz-rowh.tz-cb, table.tz th.tz-rowh.tz-cb ~ td { border-top: 1px solid var(--line); }
+table.tz th.tz-rowh.tz-cb { border-left: none; }
+
+table.tz th.tz-marginh { width: 11.5rem; padding-left: .9rem;
+  font-size: 11.5px; font-weight: 500; letter-spacing: .09em; text-transform: uppercase;
+  color: var(--muted); white-space: nowrap; vertical-align: bottom; padding-bottom: .45rem; }
+table.tz td.tz-margin { width: 11.5rem; padding-left: .9rem; white-space: nowrap; }
+
+table.tz td.tz-cell:focus-visible, table.tz th.tz-col:focus-visible,
+table.tz th.tz-rowh:focus-visible {
+  outline: 2px solid var(--green); outline-offset: -2px; }
+table.tz td.tz-cell[tabindex], table.tz th.tz-col[tabindex], table.tz th.tz-rowh[tabindex] {
+  cursor: default; }
+
+/* One mark is one edge. Hollow = filed under; solid = waits on. This reuses the
+   board's existing parent/depends_on distinction rather than minting a new one. */
+svg.tz-marks { display: block; }
+rect.tz-m.tz-par { fill: none; stroke: var(--muted); stroke-width: 1.2; }
+rect.tz-m.tz-dep { fill: var(--green); stroke: none; }
+.tz-over { display: inline-block; font-size: 0.759rem; line-height: 1.35; color: var(--muted); }
+.tz-over b { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* Two margins, two denominators: filing and waiting are never one bar. */
+.tz-mrow { display: flex; align-items: center; gap: .45em; margin-bottom: .2rem; }
+.tz-mrow:last-child { margin-bottom: 0; }
+svg.tz-bar { display: block; flex: none; }
+rect.tz-in { fill: color-mix(in srgb, var(--muted) 58%, transparent); }
+rect.tz-out { fill: color-mix(in srgb, var(--muted) 13%, transparent); }
+.tz-mlab { font-size: 0.782rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.tz-mlab i { font-style: normal; opacity: .65; }
+.tz-none { display: inline-block; width: 60px; flex: none; text-align: center;
+  color: var(--muted); opacity: .6; }
+
+.tzcard .tz-keys { display: flex; flex-wrap: wrap; align-items: center; gap: .35em 1.1em;
+  margin-top: .7rem; font-size: .74rem; }
+svg.tz-key, i.tz-key { display: inline-block; vertical-align: -1px; margin-right: .1em; }
+i.tz-diagkey { width: 9px; height: 9px; border-radius: 2px;
+  background: color-mix(in srgb, var(--muted) 18%, transparent); }
+
+.tzcard .tz-foot { margin-top: .6rem; font-size: .74rem; }
+
+/* Card two: the crossings, one by one. These chips are the only row-naming
+   surface in the view, so they are the only elements carrying data-row. */
+.tzcard .tz-ledger { list-style: none; margin: .9rem 0 0; padding: 0; display: grid; gap: .45rem; }
+.tzcard .tz-cross { display: grid; grid-template-columns: 1fr auto 1fr; gap: .5rem;
+  align-items: center; }
+.tzcard .tz-rel { font-size: .72rem; color: var(--muted); text-align: center; white-space: nowrap; }
+.tzcard .chip { margin: 0; text-align: left; }
+
+@media (max-width: 720px) {
+  .tzcard .tz-cross { grid-template-columns: 1fr; }
+  .tzcard .tz-rel { text-align: left; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tzcard *, table.tz td.tz-cell, .tzcard .chip { transition: none; animation: none; }
+}

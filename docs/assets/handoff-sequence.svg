@@ -1,0 +1,72 @@
+<?xml-stylesheet type="text/css" href="../../src/coordharness/board/static/app.css"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 390" role="img" aria-labelledby="title desc">
+  <title id="title">Typed handoff in five steps</title>
+  <desc id="desc">A Codex-owned row cannot be claimed by Claude. The refused claim prints the exact CLI error. Codex submits a fenced handoff, coord.db compares the expected version, assignee, and event heads, commits the ownership change, and only then may Claude claim the row.</desc>
+  <style>
+    :root{
+      --ink:#22292f; --muted:#5b666d; --line:#7d8a91; --rule:#d7dee1;
+      --panel:#f2f5f6; --c-card-a:#e4edf5; --c-card-b:#dfe6ec;
+      --green:#1F6F63; --amber:#8A6212; --red:#A6392B;
+    }
+    @media (prefers-color-scheme: dark){
+      :root{
+        --ink:#dfe6ec; --muted:#9aa4ad; --line:#8b959c; --rule:#2b3238;
+        --panel:#161c22; --c-card-a:#152a3c; --c-card-b:#12181e;
+        --green:#4FC3AC; --amber:#E0B252; --red:#F0887A;
+      }
+    }
+    text{font-family:ui-sans-serif,system-ui,sans-serif;fill:var(--ink)}
+    .panel{fill:var(--panel);stroke:var(--line);stroke-width:2}
+    .refusal{stroke:var(--red);stroke-width:3}.commit{stroke:var(--green);stroke-width:3}
+    .flow{fill:none;stroke:var(--line);stroke-width:2;marker-end:url(#arrow)}
+    .n{font-size:12px;font-weight:800;fill:var(--green)}.head{font-size:15px;font-weight:700}
+    .body{font-size:12px}.error{font:10.5px ui-monospace,SFMono-Regular,monospace;fill:var(--red)}
+    .caption{font-size:11.5px;fill:var(--muted)}
+  </style>
+  <defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 Z" fill="var(--line)"/></marker></defs>
+  <text class="head" x="26" y="31">Handoff is an ownership transaction, not an assignment message</text>
+
+  <g transform="translate(26 66)">
+    <rect class="panel" width="188" height="250" rx="14"/><text class="n" x="16" y="25">1</text>
+    <text class="head" x="94" y="52" text-anchor="middle">Codex owns the row</text>
+    <text class="body" x="18" y="86">assignee = 'codex'</text><text class="body" x="18" y="108">version = 4</text>
+    <text class="body" x="18" y="130">event heads = [91, 92]</text>
+    <text class="caption" x="18" y="208">The owner and fences are</text><text class="caption" x="18" y="225">stored facts, not a chat promise.</text>
+  </g>
+  <path class="flow" d="M214 191 H232"/>
+  <g transform="translate(232 66)">
+    <rect class="panel refusal" width="188" height="250" rx="14"/><text class="n" x="16" y="25">2</text>
+    <text class="head" x="94" y="52" text-anchor="middle">Claude claim refused</text>
+    <text class="error" x="14" y="84">ValueError: cannot claim</text><text class="error" x="14" y="101">work assigned to 'codex'</text>
+    <text class="error" x="14" y="118">from 'claude' session</text><text class="error" x="14" y="135">'claude:frontend'; use a</text>
+    <text class="error" x="14" y="152">typed handoff/controller</text><text class="error" x="14" y="169">transition</text>
+    <text class="caption" x="14" y="215">Exact final CLI traceback line;</text><text class="caption" x="14" y="232">the row is not mutated.</text>
+  </g>
+  <path class="flow" d="M420 191 H438"/>
+  <g transform="translate(438 66)">
+    <rect class="panel" width="188" height="250" rx="14"/><text class="n" x="16" y="25">3</text>
+    <text class="head" x="94" y="52" text-anchor="middle">Codex requests handoff</text>
+    <text class="body" x="16" y="86">to = claude</text><text class="body" x="16" y="108">expected version = 4</text>
+    <text class="body" x="16" y="130">expected assignee = codex</text><text class="body" x="16" y="152">expected heads = [91, 92]</text>
+    <text class="caption" x="16" y="208">Task, why, acceptance, refs</text><text class="caption" x="16" y="225">and idempotency key travel too.</text>
+  </g>
+  <path class="flow" d="M626 191 H644"/>
+  <g transform="translate(644 66)">
+    <rect class="panel commit" width="188" height="250" rx="14"/><text class="n" x="16" y="25">4</text>
+    <text class="head" x="94" y="52" text-anchor="middle">coord.db compares + commits</text>
+    <text class="body" x="16" y="86">all expected facts match</text><text class="body" x="16" y="108">assignee = 'claude'</text>
+    <text class="body" x="16" y="130">version = 5</text><text class="body" x="16" y="152">handoff event appended</text>
+    <text class="caption" x="16" y="208">Any drift refuses the whole</text><text class="caption" x="16" y="225">transaction; no partial move.</text>
+  </g>
+  <path class="flow" d="M832 191 H850"/>
+  <g transform="translate(850 66)">
+    <rect class="panel" width="188" height="250" rx="14"/><text class="n" x="16" y="25">5</text>
+    <text class="head" x="94" y="52" text-anchor="middle">Claude claims as Claude</text>
+    <text class="body" x="16" y="86">session actor matches owner</text><text class="body" x="16" y="108">one running claim is created</text>
+    <text class="body" x="16" y="130">work can now proceed</text>
+    <text class="caption" x="16" y="208">The claim succeeds because the</text><text class="caption" x="16" y="225">handoff already changed truth.</text>
+  </g>
+
+  <text class="caption" x="26" y="353">Panel order carries transaction sequence. Panel widths and distances do not encode duration, cost, or importance.</text>
+  <text class="caption" x="26" y="372">Source truth: coord_db.claim_work and the fenced handoff path; the refusal line is the exact smoke-test CLI output.</text>
+</svg>

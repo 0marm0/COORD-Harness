@@ -1,0 +1,306 @@
+{
+  "schema": "coordharness.usage-intelligence.v1",
+  "generated_at": "2026-08-26T12:00:00Z",
+  "stale_after": "2026-08-26T12:01:00Z",
+  "refresh": {
+    "state": "fresh",
+    "generated_at": "2026-08-26T12:00:00Z"
+  },
+  "providers": {
+    "claude": {
+      "source": {
+        "kind": "legacy_high_water",
+        "canonical": false,
+        "label": "ever_observed_envelope"
+      },
+      "account": {
+        "status": "active",
+        "plan": "max",
+        "authenticated": true
+      },
+      "windows": [],
+      "reset_credits": [],
+      "runout": {
+        "kind": "current_window_linear",
+        "advisory": true,
+        "basis": "insufficient_countdown_inputs"
+      },
+      "history": {
+        "daily": [
+          {
+            "date": "2026-08-26",
+            "total_tokens": 99,
+            "provider_native_cost_nanos": 1200000000,
+            "api_rate_estimate_nanos": 1500000000
+          }
+        ],
+        "today_total_tokens": 42,
+        "rolling_7d_total_tokens": 142,
+        "calendar_week_total_tokens": 120,
+        "all_time_total_tokens": null,
+        "semantics": "ever_observed_envelope",
+        "ever_observed_envelope": {
+          "total_tokens": 420
+        },
+        "provider_reported_account": {
+          "daily": [
+            {
+              "date": "2026-08-26",
+              "total_tokens": 333,
+              "provider_native_cost_nanos": 2200000000
+            }
+          ],
+          "today_total_tokens": 333,
+          "rolling_7d_total_tokens": 999,
+          "calendar_week_total_tokens": 888,
+          "all_time_total_tokens": 1111,
+          "semantics": "provider_reported_account"
+        }
+      },
+      "costs": {
+        "provider_billed": {
+          "amount_nanos": null,
+          "currency": null,
+          "semantics": "provider_billed"
+        },
+        "provider_native": {
+          "amount_nanos": null,
+          "semantics": "provider_native_cost_nanos"
+        },
+        "api_rate_estimate": {
+          "amount_nanos": 12000000000,
+          "currency": "usd",
+          "semantics": "api_rate_estimate_nanos"
+        }
+      },
+      "active_sessions": {
+        "status": "available",
+        "count": 0,
+        "providers": [
+          "claude"
+        ],
+        "items": []
+      },
+      "errors": []
+    },
+    "codex": {
+      "source": {
+        "kind": "usage_v2_ledger",
+        "canonical": true,
+        "schema": "coordharness.usage-ledger.v2"
+      },
+      "account": {
+        "status": "active",
+        "plan": "pro",
+        "authenticated": true
+      },
+      "windows": [
+        {
+          "kind": "weekly",
+          "name": "primary",
+          "window_minutes": 10080,
+          "used_percent": 19,
+          "remaining_percent": 81,
+          "resets_at": "2026-09-01T00:00:00Z",
+          "countdown_seconds": 475200
+        }
+      ],
+      "quota_groups": [
+        {
+          "key": "quota_account_01",
+          "label": "Account quota",
+          "semantics": "provider_quota_meter",
+          "windows": [
+            {
+              "kind": "weekly",
+              "name": "primary",
+              "window_minutes": 10080,
+              "used_percent": 19,
+              "remaining_percent": 81,
+              "resets_at": "2026-09-01T00:00:00Z",
+              "countdown_seconds": 475200
+            }
+          ],
+          "runout": {
+            "kind": "current_window_linear",
+            "advisory": true,
+            "seconds_to_exhaustion": 7200,
+            "basis": "linear_used_percent_since_window_start"
+          }
+        },
+        {
+          "key": "quota_spark_01",
+          "label": "GPT-5.3-Codex-Spark",
+          "semantics": "provider_quota_meter",
+          "windows": [
+            {
+              "kind": "session",
+              "name": "primary",
+              "window_minutes": 300,
+              "used_percent": 0,
+              "remaining_percent": 100,
+              "resets_at": "2026-08-26T15:00:00Z",
+              "countdown_seconds": 10800
+            },
+            {
+              "kind": "weekly",
+              "name": "secondary",
+              "window_minutes": 10080,
+              "used_percent": 0,
+              "remaining_percent": 100,
+              "resets_at": "2026-09-01T00:00:00Z",
+              "countdown_seconds": 475200
+            }
+          ]
+        }
+      ],
+      "reset_credits": [
+        {
+          "status": "available",
+          "count": 2,
+          "expires_at": "2026-09-01T00:00:00Z"
+        }
+      ],
+      "runout": {
+        "kind": "current_window_linear",
+        "advisory": true,
+        "seconds_to_exhaustion": 3600,
+        "basis": "linear_used_percent_since_window_start"
+      },
+      "history": {
+        "daily": [
+          {
+            "date": "2026-08-25",
+            "total_tokens": 10,
+            "input_tokens": 7,
+            "output_tokens": 3
+          },
+          {
+            "date": "2026-08-26",
+            "total_tokens": 999,
+            "input_tokens": 8,
+            "output_tokens": 7
+          }
+        ],
+        "today_total_tokens": 15,
+        "rolling_7d_total_tokens": 25,
+        "calendar_week_total_tokens": 15,
+        "all_time_total_tokens": 250,
+        "semantics": "canonical_correctable",
+        "provider_reported_account": {
+          "daily": [
+            {
+              "date": "2026-08-26",
+              "total_tokens": 700
+            }
+          ],
+          "today_total_tokens": 700,
+          "rolling_7d_total_tokens": 1000,
+          "calendar_week_total_tokens": 900,
+          "all_time_total_tokens": 5000,
+          "semantics": "provider_reported_account"
+        }
+      },
+      "costs": {
+        "provider_billed": {
+          "amount_nanos": null,
+          "currency": null,
+          "semantics": "provider_billed"
+        },
+        "provider_native": {
+          "amount_nanos": 6000000000,
+          "currency": "usd",
+          "semantics": "provider_native_cost_nanos"
+        },
+        "api_rate_estimate": {
+          "amount_nanos": 9000000000,
+          "currency": "usd",
+          "semantics": "api_rate_estimate_nanos"
+        }
+      },
+      "active_sessions": {
+        "status": "available",
+        "count": 1,
+        "providers": [
+          "codex"
+        ],
+        "items": [
+          {
+            "provider": "codex",
+            "state": "active",
+            "started_at": "2026-08-26T11:00:00Z",
+            "last_activity_at": "2026-08-26T11:59:00Z",
+            "duration_seconds": 3600,
+            "idle_seconds": 60
+          }
+        ]
+      },
+      "errors": [],
+      "breakdowns": {
+        "models": {
+          "status": "available",
+          "semantics": "canonical_ledger_coverage",
+          "canonical": true,
+          "coverage_start": "2026-08-01",
+          "coverage_end": "2026-08-26",
+          "observed_at": "2026-08-26T12:00:00Z",
+          "omitted_count": 1,
+          "items": [
+            {
+              "key": "gpt-5.6-sol",
+              "label": "GPT-5.6 Sol",
+              "total_tokens": 300,
+              "today_total_tokens": 50,
+              "rolling_7d_total_tokens": 220,
+              "calendar_week_total_tokens": 180,
+              "provider_native_cost_nanos": 1500000000,
+              "api_rate_estimate_nanos": 2500000000
+            },
+            {
+              "key": "gpt-5.5",
+              "label": "GPT-5.5",
+              "total_tokens": 700,
+              "today_total_tokens": 90,
+              "rolling_7d_total_tokens": 500,
+              "calendar_week_total_tokens": 420,
+              "provider_native_cost_nanos": null,
+              "api_rate_estimate_nanos": 4000000000
+            }
+          ]
+        },
+        "projects": {
+          "status": "available",
+          "semantics": "sanitized_project_coverage",
+          "canonical": true,
+          "coverage_start": "2026-08-01",
+          "coverage_end": "2026-08-26",
+          "observed_at": "2026-08-26T12:00:00Z",
+          "omitted_count": 0,
+          "items": [
+            {
+              "key": "prj_opaque_02",
+              "label": "Beta",
+              "total_tokens": 100,
+              "today_total_tokens": 10,
+              "rolling_7d_total_tokens": 80,
+              "calendar_week_total_tokens": 60,
+              "top_model": "gpt-5.6-sol",
+              "path": "/must/not/render"
+            },
+            {
+              "key": "prj_opaque_01",
+              "label": "Alpha",
+              "total_tokens": 900,
+              "today_total_tokens": 120,
+              "rolling_7d_total_tokens": 650,
+              "calendar_week_total_tokens": 540,
+              "top_model": "gpt-5.5",
+              "path": "/private/secret"
+            }
+          ]
+        }
+      }
+    }
+  },
+  "errors": []
+}

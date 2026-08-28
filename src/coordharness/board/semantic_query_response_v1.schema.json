@@ -1,0 +1,105 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://coordharness.dev/schema/semantic-query-response-v1.json",
+  "title": "SemanticQueryResponseV1",
+  "description": "Exact matched identity population plus bounded public details and omission receipts.",
+  "type": "object",
+  "required": [
+    "schema_version", "cache_generation", "generated_at", "source", "query", "query_token",
+    "display_state", "display_token", "population", "matched_ids", "results",
+    "omission_receipt", "complete"
+  ],
+  "properties": {
+    "schema_version": {"const": "SemanticQueryResponseV1"},
+    "cache_generation": {"type": "integer", "minimum": 0},
+    "generated_at": {"type": "string"},
+    "source": {
+      "type": "object",
+      "required": [
+        "coherent", "snapshot_generated_at", "snapshot_schema_version", "snapshot_sha256",
+        "graph_generated_at", "graph_schema_version", "graph_sha256",
+        "context_generated_at", "context_schema_version", "context_sha256",
+        "max_generation_skew_ms"
+      ],
+      "properties": {
+        "coherent": {"const": true},
+        "snapshot_generated_at": {"type": "string", "format": "date-time"},
+        "snapshot_schema_version": {"type": "string"},
+        "snapshot_sha256": {"$ref": "#/$defs/sha256"},
+        "graph_generated_at": {"type": "string", "format": "date-time"},
+        "graph_schema_version": {"type": "string"},
+        "graph_sha256": {"$ref": "#/$defs/sha256"},
+        "context_generated_at": {"type": "string", "format": "date-time"},
+        "context_schema_version": {"type": "string"},
+        "context_sha256": {"$ref": "#/$defs/sha256"},
+        "max_generation_skew_ms": {"type": "number", "minimum": 0}
+      },
+      "additionalProperties": false
+    },
+    "query": {"type": "object"},
+    "query_token": {"type": "string", "pattern": "^sq1\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$"},
+    "display_state": {
+      "type": "object",
+      "required": ["schema_version", "view", "sort", "selected_id", "expanded_ids"],
+      "properties": {
+        "schema_version": {"const": "DisplayStateV1"},
+        "view": {"type": "string", "minLength": 1},
+        "sort": {"type": "string", "minLength": 1},
+        "selected_id": {"type": "string"},
+        "expanded_ids": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}}
+      },
+      "additionalProperties": false
+    },
+    "display_token": {"type": "string", "pattern": "^ds1\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$"},
+    "population": {
+      "type": "object",
+      "required": ["rows", "matched", "detailed", "omitted_detail"],
+      "properties": {
+        "rows": {"$ref": "#/$defs/count"},
+        "matched": {"$ref": "#/$defs/count"},
+        "detailed": {"$ref": "#/$defs/count"},
+        "omitted_detail": {"$ref": "#/$defs/count"}
+      },
+      "additionalProperties": false
+    },
+    "matched_ids": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+    "results": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "row", "context", "relation_counts"],
+        "properties": {
+          "id": {"type": "string", "minLength": 1},
+          "row": {"type": "object"},
+          "context": {"type": "object"},
+          "relation_counts": {
+            "type": "object",
+            "required": ["incoming", "outgoing"],
+            "properties": {"incoming": {"$ref": "#/$defs/count"}, "outgoing": {"$ref": "#/$defs/count"}},
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "omission_receipt": {
+      "type": "object",
+      "required": ["detail_cap", "detailed_count", "matched_ids_complete", "omitted_detail_count", "reason"],
+      "properties": {
+        "detail_cap": {"type": "integer", "minimum": 1},
+        "detailed_count": {"$ref": "#/$defs/count"},
+        "matched_ids_complete": {"const": true},
+        "omitted_detail_count": {"$ref": "#/$defs/count"},
+        "reason": {"enum": ["none", "result_cap"]},
+        "operations_graph_envelope": {"type": "object"}
+      },
+      "additionalProperties": false
+    },
+    "complete": {"const": true}
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "count": {"type": "integer", "minimum": 0},
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  }
+}

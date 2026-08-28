@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 620" role="img" aria-labelledby="title desc">
+  <title id="title">CLI, MCP, and Python converge on one authority</title>
+  <desc id="desc">Equivalent lifecycle requests from three client surfaces are normalized, checked by one ordered policy pipeline, transacted by the same core functions, and recorded in one database.</desc>
+  <style>
+    :root{
+      --ink:#22292f; --muted:#5b666d; --line:#7d8a91; --rule:#d7dee1;
+      --surface:#f2f5f6; --bg:transparent;
+      --agent:#2C5F8D;     --agent-fill:#e4edf5;
+      --authority:#1F6F63; --authority-fill:#dcece8;
+      --derived:#6A5A9E;   --derived-fill:#ebe7f4;
+      --refused:#A6392B;   --refused-fill:#f6e5e2;
+      --proof:#3E7A2E;     --proof-fill:#e4f0df;
+    }
+    @media (prefers-color-scheme: dark){
+      :root{
+        --ink:#dfe6ec; --muted:#9aa4ad; --line:#8b959c; --rule:#2b3238;
+        --surface:#161c22; --bg:transparent;
+        --agent:#79AEE6;     --agent-fill:#152a3c;
+        --authority:#4FC3AC; --authority-fill:#0f2c27;
+        --derived:#B0A2E8;   --derived-fill:#221f38;
+        --refused:#F0887A;   --refused-fill:#33191a;
+        --proof:#74BF62;     --proof-fill:#182b14;
+      }
+    }
+    text{ font-family:ui-sans-serif, -apple-system, Segoe UI, Roboto, sans-serif; }
+    .label{ font-size:14px; font-weight:600; fill:var(--ink); text-anchor:middle; }
+    .small{ font-size:12px; fill:var(--muted); text-anchor:middle; }
+    .box{ fill:var(--surface); stroke:var(--line); stroke-width:1.5; }
+    .cli{ fill:var(--agent-fill); stroke:var(--agent); }
+    .mcp{ fill:var(--derived-fill); stroke:var(--derived); }
+    .py{ fill:var(--proof-fill); stroke:var(--proof); }
+    .gate{ fill:var(--refused-fill); stroke:var(--refused); }
+    .db{ fill:var(--authority-fill); stroke:var(--authority); stroke-width:1.75; }
+    .dbtext{ fill:var(--ink); }
+    .tag{ font-size:12px; font-weight:600; fill:var(--muted); letter-spacing:.06em; }
+    .arrow{ fill:none; stroke:var(--line); stroke-width:1.5; marker-end:url(#a); }
+  </style>
+  <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 10 5 0 10z" fill="var(--line)"/></marker></defs>
+  <text class="tag" x="55" y="50">THREE REQUEST SHAPES</text>
+  <rect class="box cli" x="55" y="78" width="330" height="100" rx="16"/><text class="label" x="220" y="112">CLI</text><text class="small" x="220" y="142">coord claim api-migration-214 --step …</text>
+  <rect class="box mcp" x="435" y="78" width="330" height="100" rx="16"/><text class="label" x="600" y="112">MCP</text><text class="small" x="600" y="142">claim_work(work_id="api-migration-214")</text>
+  <rect class="box py" x="815" y="78" width="330" height="100" rx="16"/><text class="label" x="980" y="112">Python</text><text class="small" x="980" y="142">coord_db.claim_work(...)</text>
+  <rect class="box" x="265" y="250" width="670" height="82" rx="16"/><text class="label" x="600" y="282">Normalize identity + lifecycle intent</text><text class="small" x="600" y="307">same work ID · same claim rules · same proof contract</text>
+  <path class="arrow" d="M220 178V214H600V248"/><path class="arrow" d="M600 178V248"/><path class="arrow" d="M980 178V214H600V248"/>
+  <rect class="box gate" x="265" y="380" width="670" height="82" rx="16"/><text class="label" x="600" y="412">Ordered policy checks + one transaction layer</text><text class="small" x="600" y="437">report · warn · enforce · atomic receipt</text>
+  <path class="arrow" d="M600 332V378"/>
+  <rect class="db" x="385" y="520" width="430" height="70" rx="35"/><text class="label dbtext" x="600" y="549">coord.db</text><text class="small dbtext" x="600" y="573">one lifecycle history</text>
+  <path class="arrow" d="M600 462V518"/>
+  <text class="small" x="1040" y="405">No client-to-client sync</text><text class="small" x="1040" y="428">No mirrored status store</text>
+</svg>

@@ -1,0 +1,164 @@
+/* Topology — the fleet as an org in motion. Inherits the board's palette and
+   the shipped chip from app.css/cockpit.css; nothing here restates a token.
+   Tokens only, no literals. The stylesheet is served, never injected: this
+   board's CSP (style-src 'self') silently drops injected <style> elements. */
+
+.tp { display: grid; gap: 14px; max-width: 1180px; }
+
+/* Instrument band ---------------------------------------------------------- */
+/* Live counters. Values change on refresh; the frame does not. Tabular
+   numerals so a changed digit moves nothing around it. */
+.tp-stats { display: flex; flex-wrap: wrap; gap: 10px; }
+.tp-stat { border: 1px solid var(--line); background: var(--c-card-a);
+  border-radius: 10px; padding: .5rem .9rem; min-width: 7.5rem;
+  display: grid; gap: .15rem; align-content: start;
+  animation: tp-enter .24s ease-out backwards; }
+.tp-stat:nth-child(2) { animation-delay: .04s; }
+.tp-stat:nth-child(3) { animation-delay: .08s; }
+.tp-stat:nth-child(4) { animation-delay: .12s; }
+.tp-stat:nth-child(5) { animation-delay: .16s; }
+.tp-statlab { font-size: 0.713rem; letter-spacing: .14em; text-transform: uppercase;
+  color: var(--muted); white-space: nowrap; }
+.tp-statnum { font-size: 1.3rem; line-height: 1.1; color: var(--ink);
+  font-variant-numeric: tabular-nums; }
+.tp-statnum span { font-size: .8rem; color: var(--muted); }
+
+/* Lane columns (the org) --------------------------------------------------- */
+.tp-lanes { display: grid; grid-auto-flow: column;
+  grid-auto-columns: minmax(200px, 228px); gap: 12px; overflow-x: auto;
+  align-items: start; padding-bottom: .4rem; }
+.tp-lane { border: 1px solid var(--line); background: var(--c-card-a);
+  border-radius: 12px; padding: .7rem .75rem; display: grid; gap: .55rem;
+  align-content: start; animation: tp-enter .28s ease-out backwards; }
+.tp-lane:nth-child(2) { animation-delay: .05s; }
+.tp-lane:nth-child(3) { animation-delay: .1s; }
+.tp-lane:nth-child(4) { animation-delay: .15s; }
+.tp-lane:nth-child(5) { animation-delay: .2s; }
+.tp-lane:nth-child(6) { animation-delay: .25s; }
+.tp-lane:nth-child(7) { animation-delay: .3s; }
+.tp-lane:nth-child(8) { animation-delay: .35s; }
+.tp-lane:hover { border-color: var(--c-hairline); }
+/* The unowned rail recedes: real work, but no lane and no roster. */
+.tp-lane.tp-unowned { background: var(--c-bg);
+  border-left: 1px dashed var(--c-hairline); color: var(--muted); }
+
+.tp-lanehead { border-bottom: 1px solid var(--c-hairline); padding-bottom: .5rem;
+  display: grid; gap: .3rem; color: var(--ink); }
+.tp-lanename { font-size: .72rem; letter-spacing: .12em; text-transform: uppercase; }
+.tp-count { color: var(--muted); font-size: .72rem; font-variant-numeric: tabular-nums; }
+
+.tp-roster { display: grid; gap: .18rem; color: var(--muted); font-size: 0.782rem; margin: 0; }
+.tp-nosess { color: var(--muted); font-size: 0.782rem; margin: 0; }
+.tp-sess { display: flex; align-items: center; gap: .35em; min-width: 0;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tp-dot { flex: none; display: inline-block; width: 7px; height: 7px;
+  border-radius: 50%; background: transparent; border: 1px solid var(--line); }
+.tp-dot.live { background: var(--green); border-color: transparent; }
+.tp-livecount { font-variant-numeric: tabular-nums; margin-top: .1rem; }
+
+.tp-chips { display: grid; gap: .3rem; }
+.tp-chips .chip { padding: .4rem .55rem; font-size: .76rem; }
+.tp-step { display: block; color: var(--muted); font-size: .7rem; max-width: 100%;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tp-stale { font-style: normal; color: var(--muted); font-size: 0.782rem; }
+
+.tp-more summary { cursor: pointer; color: var(--muted); font-size: .72rem;
+  padding: .3rem .35rem; border-radius: 6px; list-style: none; }
+.tp-more summary::-webkit-details-marker { display: none; }
+.tp-more summary:hover { background: var(--c-hover); }
+.tp-more summary:focus-visible { outline: 2px solid var(--green); outline-offset: 1px; }
+.tp-more[open] summary { color: var(--ink); }
+.tp-more { display: grid; gap: .3rem; }
+
+.tp-strip { border-top: 1px solid var(--c-hairline); padding-top: .45rem;
+  display: flex; flex-wrap: wrap; gap: .2rem .7rem; color: var(--muted);
+  font-size: .7rem; margin: 0; }
+.tp-nostrip { color: var(--muted); font-size: .7rem; margin: 0; }
+.tp-kindline b { font-weight: 500; color: var(--ink); font-variant-numeric: tabular-nums; }
+
+/* Honesty copy ------------------------------------------------------------- */
+.tp-caption, .tp-honest { color: var(--muted); font-size: .74rem; margin: .2rem 0; }
+.tp-honest code { font-family: ui-monospace, monospace; font-size: .7rem; }
+.tp-foot { color: var(--muted); font-size: .74rem; border-top: 1px solid var(--c-hairline);
+  padding-top: .5rem; margin: .6rem 0 0; font-variant-numeric: tabular-nums; }
+
+/* Traffic band ------------------------------------------------------------- */
+/* Arcs are records, not statuses: every stroke is ink, width is constant, and
+   the printed numeral is the only quantity. Dash pattern carries the kind;
+   handoff takes the shared m-flow march, whose direction is the drawn (and
+   recorded) direction. Amber and red never appear here. */
+.tp-arcwrap { overflow-x: auto; }
+.tp-arcs { display: block; width: 100%; height: auto; max-width: 56rem;
+  background: var(--c-bg); border: 1px solid var(--line); border-radius: 12px; }
+.tp-lat { stroke: var(--c-hairline); stroke-width: 1; }
+.tp-base { stroke: var(--line); stroke-width: 1; }
+.tp-anchor { fill: var(--ink); }
+.tp-anchorglow { fill: var(--ink); opacity: .3; }
+.tp-lanetag { fill: var(--muted); font-size: 11.5px; letter-spacing: .1em;
+  text-transform: uppercase; }
+.tp-arcline { fill: none; stroke: var(--ink); stroke-width: 1.5; opacity: .7; }
+.tp-arcline:hover { opacity: 1; }
+/* .tp-k-handoff carries NO rule here, deliberately. Handoff's dash is the
+   shared .m-flow march from motion.css; a stroke-dasharray rule on this class
+   would have equal specificity and later source order, silently overriding it
+   — and would survive prefers-reduced-motion, which only motion.css knows how
+   to switch off. The class stays as a hook for markup, nothing more. */
+.tp-k-audit_request { stroke-dasharray: 4 3; }
+.tp-k-audit_verdict { stroke-dasharray: 1.5 3; }
+.tp-arcs marker path, .tp-legend marker path { fill: var(--ink); }
+.tp-arcnum { fill: var(--ink); font-size: 12.1px; font-variant-numeric: tabular-nums; }
+
+.tp-legend { display: flex; flex-wrap: wrap; gap: .4rem 1.1rem; align-items: center;
+  color: var(--muted); font-size: .72rem; margin-top: .5rem; }
+.tp-legend .key { display: inline-flex; align-items: center; gap: .4em; }
+
+/* Counts mode: the same three kinds without direction, and a sentence says
+   why no arrow is drawn. */
+.tp-trafficcounts { border-collapse: collapse; color: var(--ink); font-size: .76rem;
+  border: 1px solid var(--line); }
+.tp-trafficcounts th, .tp-trafficcounts td { border: 1px solid var(--line);
+  padding: .3rem .6rem; }
+.tp-trafficcounts td { text-align: right; font-variant-numeric: tabular-nums; }
+.tp-trafficcounts thead th { color: var(--muted); font-weight: 500; text-align: left;
+  font-size: 0.782rem; letter-spacing: .08em; text-transform: uppercase; }
+.tp-trafficcounts tbody th { color: var(--ink); font-weight: 500; text-align: left; }
+
+/* Readnote (same disclosure pattern as the other views) -------------------- */
+.tpcard .readnote { margin: .5rem 0 .4rem; }
+.tpcard .readnote > summary { cursor: pointer; color: var(--muted); font-size: .78rem;
+  list-style: none; padding: .3rem .35rem; border-radius: 6px; }
+.tpcard .readnote > summary::-webkit-details-marker { display: none; }
+.tpcard .readnote > summary:hover { background: var(--c-hover); }
+.tpcard .readnote > summary:focus-visible { outline: 2px solid var(--green); outline-offset: 1px; }
+.tpcard .readnote[open] > summary { color: var(--ink); }
+.tpcard .readnote .body { margin-top: .6rem; padding-left: .8rem;
+  border-left: 2px solid var(--line); }
+.tpcard .readnote .body p { margin: .45rem 0; font-size: .8rem; color: var(--muted); }
+
+/* Entrance: a staged settle on paint. Transform and opacity only, under
+   400ms, and it carries nothing — the readnote says so. */
+@keyframes tp-enter {
+  from { opacity: 0; transform: translateY(5px); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (max-width: 720px) {
+  .tp-lanes { grid-auto-columns: minmax(170px, 200px); }
+  .tp-stat { min-width: 6rem; }
+}
+
+/* One switch kills every animation this view defines; every fact remains
+   visible standing still. The shared m-* claims are killed by motion.css. */
+@media (prefers-reduced-motion: reduce) {
+  .tpcard *, .tp-arcs * { transition: none; animation: none; }
+}
+
+/* A grid item's implicit min-width is min-content, so a chip carrying one long
+   unbreakable id blows past its 228px lane track and lies over the neighbour.
+   Zeroing min-width at every nesting level keeps every card inside its lane,
+   and long ids wrap instead of escaping. */
+.tp-lane, .tp-chips { min-width: 0; }
+/* In a 228px lane the chip's two-column grid starves: stack id above title
+   and break at word boundaries only, so an id never sheds one letter per line. */
+.tp-chips .chip { min-width: 0; grid-template-columns: 1fr; white-space: normal;
+  overflow-wrap: break-word; }

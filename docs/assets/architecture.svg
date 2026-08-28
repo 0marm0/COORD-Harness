@@ -1,0 +1,134 @@
+<svg viewBox="0 0 960 680" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="arch-title arch-desc">
+  <title id="arch-title">System architecture</title>
+  <desc id="arch-desc">Agents of several kinds write lifecycle verbs through a shared policy pipeline to one SQLite board. CLI and MCP reads use derived views. A separate read-only snapshot projection serves the browser and native clients without giving them SQL or lifecycle write access.</desc>
+  <defs>
+    <marker id="a-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" style="fill:var(--line)"/>
+    </marker>
+    <marker id="a-arrow-bad" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" style="fill:var(--bad)"/>
+    </marker>
+  </defs>
+  <style>
+    :root{
+      --ink:#1b1f24; --ink-soft:#57606a; --line:#6e7781; --line-soft:#c9d1d9;
+      --panel:#f7f9fa; --panel-2:#eef2f4; --bg:transparent;
+      --accent:#0969da; --accent-soft:#dbe9fd;
+      --good:#1a7f37; --good-soft:#dafbe1;
+      --warn:#9a6700; --warn-soft:#fff1c2;
+      --bad:#cf222e; --bad-soft:#ffebe9;
+    }
+    @media (prefers-color-scheme: dark){
+      :root{
+        --ink:#e6edf3; --ink-soft:#9198a1; --line:#8b949e; --line-soft:#30363d;
+        --panel:#1a2027; --panel-2:#222a31; --bg:transparent;
+        --accent:#4493f8; --accent-soft:#132f4c;
+        --good:#3fb950; --good-soft:#0f2b18;
+        --warn:#d29922; --warn-soft:#3c2e05;
+        --bad:#f85149; --bad-soft:#3c1618;
+      }
+    }
+    svg{ color:var(--ink); }
+    text{ fill:currentColor; font-family:ui-sans-serif, -apple-system, Segoe UI, Roboto, sans-serif; }
+    .ttl{ font-size:13px; font-weight:600; }
+    .cap{ font-size:12px; fill:var(--ink-soft); }
+    .lbl{ font-size:12px; }
+    .grp-lbl{ font-size:12px; fill:var(--ink-soft); font-weight:600; letter-spacing:.02em; }
+    .box{ fill:var(--panel-2); stroke:var(--line); stroke-width:1.25; }
+    .box-accent{ fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.25; }
+    .box-good{ fill:var(--good-soft); stroke:var(--good); stroke-width:1.25; }
+    .box-warn{ fill:var(--warn-soft); stroke:var(--warn); stroke-width:1.25; }
+    .box-bad{ fill:var(--bad-soft); stroke:var(--bad); stroke-width:1.25; }
+    .grp{ fill:none; stroke:var(--line-soft); stroke-width:1; stroke-dasharray:4 3; }
+    .edge{ fill:none; stroke:var(--line); stroke-width:1.25; }
+    .edge-bad{ fill:none; stroke:var(--bad); stroke-width:1.25; stroke-dasharray:4 3; }
+  </style>
+
+  <!-- Agents group -->
+  <rect class="grp" x="40" y="36" width="880" height="118" rx="10"/>
+  <text class="grp-lbl" x="56" y="54">AGENTS OF SEVERAL KINDS — ONE INTERFACE</text>
+
+  <g>
+    <rect class="box" x="70" y="66" width="190" height="60" rx="8"/>
+    <text class="ttl" x="165" y="92" text-anchor="middle">Claude session</text>
+    <text class="cap" x="165" y="110" text-anchor="middle">runner_type: claude_chat</text>
+  </g>
+  <g>
+    <rect class="box" x="280" y="66" width="190" height="60" rx="8"/>
+    <text class="ttl" x="375" y="92" text-anchor="middle">Codex session</text>
+    <text class="cap" x="375" y="110" text-anchor="middle">runner_type: codex</text>
+  </g>
+  <g>
+    <rect class="box" x="490" y="66" width="190" height="60" rx="8"/>
+    <text class="ttl" x="585" y="92" text-anchor="middle">local GPU job</text>
+    <text class="cap" x="585" y="110" text-anchor="middle">runner_type: local_gpu</text>
+  </g>
+  <g>
+    <rect class="box" x="700" y="66" width="190" height="60" rx="8"/>
+    <text class="ttl" x="795" y="92" text-anchor="middle">background service</text>
+    <text class="cap" x="795" y="110" text-anchor="middle">runner_type: background</text>
+  </g>
+
+  <!-- converging edges into policy pipeline -->
+  <path class="edge" d="M165,126 L470,206" marker-end="url(#a-arrow)"/>
+  <path class="edge" d="M375,126 L455,206" marker-end="url(#a-arrow)"/>
+  <path class="edge" d="M585,126 L505,206" marker-end="url(#a-arrow)"/>
+  <path class="edge" d="M795,126 L495,206" marker-end="url(#a-arrow)"/>
+  <text class="lbl" x="480" y="196" text-anchor="middle">claim · heartbeat · done · block · handoff</text>
+
+  <!-- policy pipeline -->
+  <rect class="box-accent" x="330" y="210" width="300" height="70" rx="8"/>
+  <text class="ttl" x="480" y="238" text-anchor="middle">policy pipeline</text>
+  <text class="cap" x="480" y="256" text-anchor="middle">7 checks, pass order — first block wins</text>
+
+  <!-- blocked outcome -->
+  <path class="edge-bad" d="M630,245 L658,245" marker-end="url(#a-arrow-bad)"/>
+  <rect class="box-bad" x="660" y="210" width="210" height="70" rx="8"/>
+  <text class="ttl" x="765" y="234" text-anchor="middle">blocked</text>
+  <text class="cap" x="765" y="250" text-anchor="middle">write refused; caller told</text>
+  <text class="cap" x="765" y="264" text-anchor="middle">which check — nothing lands</text>
+
+  <!-- ok -> board -->
+  <path class="edge" d="M480,280 L480,338" marker-end="url(#a-arrow)"/>
+  <text class="lbl" x="480" y="312" text-anchor="middle">ok: write lands</text>
+
+  <!-- board -->
+  <rect class="box" x="230" y="340" width="500" height="80" rx="8"/>
+  <text class="ttl" x="480" y="368" text-anchor="middle">coord.db — SQLite, WAL mode</text>
+  <text class="cap" x="480" y="386" text-anchor="middle">agent_sessions · work_items · claims · runs · events</text>
+  <text class="cap" x="480" y="402" text-anchor="middle">the only place state actually lives</text>
+
+  <!-- two branches -->
+  <path class="edge" d="M330,420 L255,468" marker-end="url(#a-arrow)"/>
+  <text class="lbl" x="270" y="448" text-anchor="middle">derived read model</text>
+
+  <path class="edge" d="M630,420 L725,468" marker-end="url(#a-arrow)"/>
+  <text class="lbl" x="712" y="448" text-anchor="middle">read-only projection</text>
+
+  <!-- v_work_owner -->
+  <rect class="box-good" x="90" y="470" width="330" height="70" rx="8"/>
+  <text class="ttl" x="255" y="496" text-anchor="middle">v_work_owner / v_session_rollup</text>
+  <text class="cap" x="255" y="514" text-anchor="middle">live join — recomputed on every read</text>
+
+  <!-- snapshot projection -->
+  <rect class="box" x="560" y="470" width="330" height="70" rx="8"/>
+  <text class="ttl" x="725" y="496" text-anchor="middle">snapshot API</text>
+  <text class="cap" x="725" y="514" text-anchor="middle">GET-only · loopback by default</text>
+
+  <!-- clients -->
+  <path class="edge" d="M165,540 L165,588" marker-end="url(#a-arrow)"/>
+  <path class="edge" d="M370,540 L370,588" marker-end="url(#a-arrow)"/>
+  <path class="edge" d="M725,540 L725,588" marker-end="url(#a-arrow)"/>
+
+  <rect class="box" x="90" y="590" width="150" height="56" rx="8"/>
+  <text class="ttl" x="165" y="614" text-anchor="middle">CLI</text>
+  <text class="cap" x="165" y="630" text-anchor="middle">coord board</text>
+
+  <rect class="box" x="260" y="590" width="220" height="56" rx="8"/>
+  <text class="ttl" x="370" y="614" text-anchor="middle">MCP server</text>
+  <text class="cap" x="370" y="630" text-anchor="middle">typed tools over stdio</text>
+
+  <rect class="box" x="560" y="590" width="330" height="56" rx="8"/>
+  <text class="ttl" x="725" y="614" text-anchor="middle">web + native viewers</text>
+  <text class="cap" x="725" y="630" text-anchor="middle">snapshot consumers — no SQL or lifecycle writes</text>
+</svg>

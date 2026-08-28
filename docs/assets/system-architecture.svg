@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 650" role="img" aria-labelledby="title desc">
+  <title id="title">coordharness system architecture</title>
+  <desc id="desc">Four kinds of local actors use CLI, Python, or MCP control surfaces. All writes pass through typed lifecycle and policy functions to one SQLite database. Read-only projections feed browser and native viewers.</desc>
+  <style>
+    :root{
+      --ink:#22292f; --muted:#5b666d; --line:#7d8a91; --rule:#d7dee1;
+      --surface:#f2f5f6; --bg:transparent;
+      --agent:#2C5F8D;     --agent-fill:#e4edf5;
+      --authority:#1F6F63; --authority-fill:#dcece8;
+      --derived:#6A5A9E;   --derived-fill:#ebe7f4;
+      --refused:#A6392B;   --refused-fill:#f6e5e2;
+      --proof:#3E7A2E;     --proof-fill:#e4f0df;
+    }
+    @media (prefers-color-scheme: dark){
+      :root{
+        --ink:#dfe6ec; --muted:#9aa4ad; --line:#8b959c; --rule:#2b3238;
+        --surface:#161c22; --bg:transparent;
+        --agent:#79AEE6;     --agent-fill:#152a3c;
+        --authority:#4FC3AC; --authority-fill:#0f2c27;
+        --derived:#B0A2E8;   --derived-fill:#221f38;
+        --refused:#F0887A;   --refused-fill:#33191a;
+        --proof:#74BF62;     --proof-fill:#182b14;
+      }
+    }
+    text{ font-family:ui-sans-serif, -apple-system, Segoe UI, Roboto, sans-serif; }
+    .label{ font-size:14px; font-weight:600; fill:var(--ink); text-anchor:middle; }
+    .small{ font-size:12px; fill:var(--muted); text-anchor:middle; }
+    .panel{ fill:var(--surface); stroke:var(--line); stroke-width:1.5; }
+    .actor{ fill:var(--agent-fill); stroke:var(--agent); stroke-width:1.5; }
+    .surface{ fill:var(--derived-fill); stroke:var(--derived); stroke-width:1.5; }
+    .core{ fill:var(--proof-fill); stroke:var(--proof); stroke-width:1.5; }
+    .authority{ fill:var(--authority-fill); stroke:var(--authority); stroke-width:1.75; }
+    .viewer{ fill:var(--surface); stroke:var(--line); stroke-width:1.5; }
+    .eyebrow{ font-size:12px; font-weight:600; fill:var(--muted); letter-spacing:.06em; }
+    .arrow{ fill:none; stroke:var(--line); stroke-width:1.5; marker-end:url(#arrow); }
+    .readonly{ fill:none; stroke:var(--line); stroke-width:1.25; stroke-dasharray:5 3; marker-end:url(#arrow); }
+  </style>
+  <defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 10 5 0 10z" fill="var(--line)"/></marker></defs>
+  <text class="eyebrow" x="50" y="42">LOCAL ACTORS</text>
+  <rect class="actor" x="50" y="62" width="245" height="78" rx="14"/><text class="label" x="172" y="94">Claude Code</text><text class="small" x="172" y="119">interactive agent</text>
+  <rect class="actor" x="335" y="62" width="245" height="78" rx="14"/><text class="label" x="458" y="94">Codex</text><text class="small" x="458" y="119">interactive agent</text>
+  <rect class="actor" x="620" y="62" width="245" height="78" rx="14"/><text class="label" x="742" y="94">Generic MCP client</text><text class="small" x="742" y="119">tool-capable host</text>
+  <rect class="actor" x="905" y="62" width="245" height="78" rx="14"/><text class="label" x="1028" y="94">Scripts + local jobs</text><text class="small" x="1028" y="119">CPU, GPU, and CI</text>
+  <text class="eyebrow" x="50" y="190">CONTROL SURFACES</text>
+  <rect class="surface" x="110" y="210" width="270" height="80" rx="14"/><text class="label" x="245" y="243">coord CLI</text><text class="small" x="245" y="269">shell and automation</text>
+  <rect class="surface" x="465" y="210" width="270" height="80" rx="14"/><text class="label" x="600" y="243">Python API</text><text class="small" x="600" y="269">in-process calls</text>
+  <rect class="surface" x="820" y="210" width="270" height="80" rx="14"/><text class="label" x="955" y="243">MCP stdio server</text><text class="small" x="955" y="269">agent tools</text>
+  <path class="arrow" d="M172 140V175H245V208"/><path class="arrow" d="M458 140V176H955V208"/><path class="arrow" d="M742 140V176H955V208"/><path class="arrow" d="M1028 140V176H600V208"/>
+  <rect class="core" x="185" y="345" width="830" height="86" rx="16"/><text class="label" x="600" y="379">Typed lifecycle + policy pipeline</text><text class="small" x="600" y="405">identity · claim · lease · proof · event · transaction</text>
+  <path class="arrow" d="M245 290V320H600V343"/><path class="arrow" d="M600 290V343"/><path class="arrow" d="M955 290V320H600V343"/>
+  <rect class="authority" x="405" y="475" width="390" height="94" rx="47"/><text class="label" x="600" y="513">coord.db</text><text class="small" x="600" y="540">single SQLite-WAL lifecycle authority</text>
+  <path class="arrow" d="M600 431V473"/>
+  <text class="eyebrow" x="835" y="468">READ-ONLY PROJECTIONS</text>
+  <rect class="viewer" x="850" y="490" width="140" height="70" rx="12"/><text class="label" x="920" y="518">Web</text><text class="small" x="920" y="542">localhost</text>
+  <rect class="viewer" x="1010" y="490" width="140" height="70" rx="12"/><text class="label" x="1080" y="518">Native</text><text class="small" x="1080" y="542">read-only</text>
+  <path class="readonly" d="M795 522H848"/><path class="readonly" d="M990 525H1008"/>
+  <text class="small" x="972" y="605">Dashed path = projection; viewers never become lifecycle writers</text>
+</svg>

@@ -1,0 +1,21 @@
+{
+  "schema_version": "coordharness.mcp-client-compatibility.v1",
+  "authority_effect": "observability_only",
+  "patch_equality_required": false,
+  "clients": [
+    {
+      "client_id": "claude-code",
+      "name_contains": [
+        "claude"
+      ],
+      "minimum_version": "2.1.207"
+    },
+    {
+      "client_id": "codex",
+      "name_contains": [
+        "codex"
+      ],
+      "minimum_version": "0.144.2"
+    }
+  ]
+}

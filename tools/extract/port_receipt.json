@@ -1,0 +1,1199 @@
+[
+  {
+    "docstrings_removed": 1,
+    "comments_removed": 1,
+    "renames_applied": 0,
+    "lines_in": 22,
+    "lines_out": 4,
+    "violations": 0,
+    "dest": "src/coordharness/coord/__init__.py"
+  },
+  {
+    "docstrings_removed": 2,
+    "comments_removed": 0,
+    "renames_applied": 3,
+    "lines_in": 251,
+    "lines_out": 242,
+    "violations": 0,
+    "dest": "src/coordharness/coord/agent_cli.py"
+  },
+  {
+    "docstrings_removed": 27,
+    "comments_removed": 37,
+    "renames_applied": 7,
+    "lines_in": 2296,
+    "lines_out": 2158,
+    "violations": 0,
+    "dest": "src/coordharness/coord/board_context.py"
+  },
+  {
+    "docstrings_removed": 6,
+    "comments_removed": 7,
+    "renames_applied": 3,
+    "lines_in": 228,
+    "lines_out": 206,
+    "violations": 0,
+    "dest": "src/coordharness/coord/config.py"
+  },
+  {
+    "docstrings_removed": 5,
+    "comments_removed": 0,
+    "renames_applied": 0,
+    "lines_in": 196,
+    "lines_out": 179,
+    "violations": 0,
+    "dest": "src/coordharness/coord/continuation_contract.py"
+  },
+  {
+    "docstrings_removed": 15,
+    "comments_removed": 15,
+    "renames_applied": 0,
+    "lines_in": 770,
+    "lines_out": 671,
+    "violations": 0,
+    "dest": "src/coordharness/coord/creation_lint.py"
+  },
+  {
+    "docstrings_removed": 2,
+    "comments_removed": 14,
+    "renames_applied": 4,
+    "lines_in": 156,
+    "lines_out": 135,
+    "violations": 0,
+    "dest": "src/coordharness/coord/deferred_tools.py"
+  },
+  {
+    "docstrings_removed": 10,
+    "comments_removed": 3,
+    "renames_applied": 0,
+    "lines_in": 887,
+    "lines_out": 868,
+    "violations": 0,
+    "dest": "src/coordharness/coord/exact_authority.py"
+  },
+  {
+    "docstrings_removed": 11,
+    "comments_removed": 4,
+    "renames_applied": 5,
+    "lines_in": 833,
+    "lines_out": 811,
+    "violations": 0,
+    "dest": "src/coordharness/coord/exact_query_core.py"
+  },
+  {
+    "docstrings_removed": 2,
+    "comments_removed": 1,
+    "renames_applied": 1,
+    "lines_in": 187,
+    "lines_out": 180,
+    "violations": 0,
+    "dest": "src/coordharness/coord/locked_paths.py"
+  },
+  {
+    "docstrings_removed": 9,
+    "comments_removed": 2,
+    "renames_applied": 17,
+    "lines_in": 1269,
+    "lines_out": 1243,
+    "violations": 0,
+    "dest": "src/coordharness/coord/loop_contracts.py"
+  },
+  {
+    "docstrings_removed": 9,
+    "comments_removed": 7,
+    "renames_applied": 0,
+    "lines_in": 1064,
+    "lines_out": 1008,
+    "violations": 0,
+    "dest": "src/coordharness/coord/native_cockpit.py"
+  },
+  {
+    "docstrings_removed": 1,
+    "comments_removed": 0,
+    "renames_applied": 1,
+    "lines_in": 58,
+    "lines_out": 57,
+    "violations": 0,
+    "dest": "src/coordharness/coord/output_budget.py"
+  },
+  {
+    "docstrings_removed": 1,
+    "comments_removed": 3,
+    "renames_applied": 10,
+    "lines_in": 634,
+    "lines_out": 629,
+    "violations": 0,
+    "dest": "src/coordharness/coord/policy/pipeline.py"
+  },
+  {
+    "docstrings_removed": 1,
+    "comments_removed": 0,
+    "renames_applied": 0,
+    "lines_in": 58,
+    "lines_out": 52,
+    "violations": 0,
+    "dest": "src/coordharness/coord/process_liveness.py"
+  },
+  {
+    "docstrings_removed": 8,
+    "comments_removed": 23,
+    "renames_applied": 1,
+    "lines_in": 463,
+    "lines_out": 397,
+    "violations": 0,
+    "dest": "src/coordharness/coord/projection.py"
+  },
+  {
+    "docstrings_removed": 4,
+    "comments_removed": 12,
+    "renames_applied": 0,
+    "lines_in": 158,
+    "lines_out": 138,
+    "violations": 0,
+    "dest": "src/coordharness/coord/projection_schema.py"
+  },
+  {
+    "docstrings_removed": 3,
+    "comments_removed": 2,
+    "renames_applied": 0,
+    "lines_in": 256,
+    "lines_out": 245,
+    "violations": 0,
+    "dest": "src/coordharness/coord/r4_plane_authority.py"
+  },
+  {
+    "docstrings_removed": 8,
+    "comments_removed": 18,
+    "renames_applied": 3,
+    "lines_in": 587,
+    "lines_out": 556,
+    "violations": 0,
+    "dest": "src/coordharness/coord/reaper.py"
+  },
+  {
+    "docstrings_removed": 10,
+    "comments_removed": 2,
+    "renames_applied": 0,
+    "lines_in": 557,
+    "lines_out": 477,
+    "violations": 0,
+    "dest": "src/coordharness/coord/review_integrity.py"
+  },
+  {
+    "docstrings_removed": 3,
+    "comments_removed": 13,
+    "renames_applied": 0,
+    "lines_in": 256,
+    "lines_out": 230,
+    "violations": 0,
+    "dest": "src/coordharness/coord/review_tier.py"
+  },
+  {
+    "docstrings_removed": 13,
+    "comments_removed": 1,
+    "renames_applied": 6,
+    "lines_in": 1022,
+    "lines_out": 982,
+    "violations": 0,
+    "dest": "src/coordharness/coord/run_events.py"
+  },
+  {
+    "docstrings_removed": 1,
+    "comments_removed": 0,
+    "renames_applied": 0,
+    "lines_in": 14,
+    "lines_out": 8,
+    "violations": 0,
+    "dest": "src/coordharness/coord/staleness.py"
+  },
+  {
+    "docstrings_removed": 1,
+    "comments_removed": 1,
+    "renames_applied": 5,
+    "lines_in": 448,
+    "lines_out": 442,
+    "violations": 0,
+    "dest": "src/coordharness/coord/supervisor_readonly.py"
+  },
+  {
+    "docstrings_removed": 3,
+    "comments_removed": 1,
+    "renames_applied": 2,
+    "lines_in": 517,
+    "lines_out": 505,
+    "violations": 0,
+    "dest": "src/coordharness/coord/token_ledger_rollup.py"
+  },
+  {
+    "docstrings_removed": 25,
+    "comments_removed": 24,
+    "renames_applied": 6,
+    "lines_in": 900,
+    "lines_out": 726,
+    "violations": 0,
+    "dest": "src/coordharness/coord/work_contracts.py"
+  },
+  {
+    "docstrings_removed": 14,
+    "comments_removed": 7,
+    "renames_applied": 2,
+    "lines_in": 1110,
+    "lines_out": 1074,
+    "violations": 0,
+    "dest": "src/coordharness/coord/work_query_v2.py"
+  },
+  {
+    "docstrings_removed": 1,
+    "comments_removed": 0,
+    "renames_applied": 0,
+    "lines_in": 2,
+    "lines_out": 1,
+    "violations": 0,
+    "dest": "src/coordharness/jobs/__init__.py"
+  },
+  {
+    "docstrings_removed": 7,
+    "comments_removed": 14,
+    "renames_applied": 1,
+    "lines_in": 192,
+    "lines_out": 132,
+    "violations": 0,
+    "dest": "src/coordharness/jobs/identity.py"
+  },
+  {
+    "docstrings_removed": 1,
+    "comments_removed": 1,
+    "renames_applied": 0,
+    "lines_in": 15,
+    "lines_out": 4,
+    "violations": 0,
+    "dest": "src/coordharness/knowledge/__init__.py"
+  },
+  {
+    "docstrings_removed": 10,
+    "comments_removed": 1,
+    "renames_applied": 11,
+    "lines_in": 936,
+    "lines_out": 910,
+    "violations": 0,
+    "dest": "src/coordharness/knowledge/accepted_memory_r4.py"
+  },
+  {
+    "docstrings_removed": 19,
+    "comments_removed": 51,
+    "renames_applied": 0,
+    "lines_in": 992,
+    "lines_out": 813,
+    "violations": 0,
+    "dest": "src/coordharness/knowledge/facts.py"
+  },
+  {
+    "docstrings_removed": 2,
+    "comments_removed": 4,
+    "renames_applied": 2,
+    "lines_in": 442,
+    "lines_out": 427,
+    "violations": 0,
+    "dest": "src/coordharness/knowledge/memory_proposals.py"
+  },
+  {
+    "docstrings_removed": 1,
+    "comments_removed": 0,
+    "renames_applied": 0,
+    "lines_in": 134,
+    "lines_out": 129,
+    "violations": 0,
+    "dest": "src/coordharness/knowledge/query_aliases.py"
+  },
+  {
+    "docstrings_removed": 1,
+    "comments_removed": 0,
+    "renames_applied": 1,
+    "lines_in": 73,
+    "lines_out": 67,
+    "violations": 0,
+    "dest": "src/coordharness/knowledge/query_scoring.py"
+  },
+  {
+    "docstrings_removed": 0,
+    "comments_removed": 107,
+    "renames_applied": 0,
+    "lines_in": 299,
+    "lines_out": 247,
+    "violations": 0,
+    "dest": "src/coordharness/coord/schema.sql"
+  },
+  {
+    "docstrings_removed": 0,
+    "comments_removed": 12,
+    "renames_applied": 4,
+    "lines_in": 448,
+    "lines_out": 436,
+    "violations": 0,
+    "dest": "src/coordharness/coord/migrations/002_exact_authority.sql"
+  },
+  {
+    "docstrings_removed": 0,
+    "comments_removed": 8,
+    "renames_applied": 0,
+    "lines_in": 228,
+    "lines_out": 220,
+    "violations": 0,
+    "dest": "src/coordharness/coord/migrations/003_provenance_causal_trace.sql"
+  },
+  {
+    "docstrings_removed": 0,
+    "comments_removed": 0,
+    "renames_applied": 1,
+    "lines_in": 21,
+    "lines_out": 21,
+    "violations": 0,
+    "dest": "src/coordharness/coord/mcp_client_compatibility.json"
+  },
+  {
+    "docstrings_removed": 1,
+    "comments_removed": 0,
+    "renames_applied": 0,
+    "lines_in": 1,
+    "lines_out": 1,
+    "violations": 0,
+    "dest": "src/coordharness/testing/__init__.py"
+  },
+  {
+    "docstrings_removed": 19,
+    "comments_removed": 4,
+    "renames_applied": 14,
+    "lines_in": 1586,
+    "lines_out": 1540,
+    "violations": 0,
+    "dest": "src/coordharness/testing/apfs_cow_cleanroom.py"
+  },
+  {
+    "docstrings_removed": 4,
+    "comments_removed": 2,
+    "renames_applied": 2,
+    "lines_in": 196,
+    "lines_out": 177,
+    "violations": 0,
+    "dest": "src/coordharness/testing/verified_artifact_skip.py"
+  },
+  {
+    "docstrings_removed": 1,
+    "comments_removed": 0,
+    "renames_applied": 0,
+    "lines_in": 1,
+    "lines_out": 1,
+    "violations": 0,
+    "dest": "src/coordharness/runtime/__init__.py"
+  },
+  {
+    "docstrings_removed": 1,
+    "comments_removed": 0,
+    "renames_applied": 6,
+    "lines_in": 81,
+    "lines_out": 80,
+    "violations": 0,
+    "dest": "src/coordharness/runtime/native_thread_guard.py"
+  },
+  {
+    "docstrings_removed": 5,
+    "comments_removed": 0,
+    "renames_applied": 2,
+    "lines_in": 363,
+    "lines_out": 359,
+    "violations": 0,
+    "dest": "src/coordharness/runtime/console_release_retention.py"
+  },
+  {
+    "docstrings_removed": 4,
+    "comments_removed": 0,
+    "renames_applied": 0,
+    "lines_in": 102,
+    "lines_out": 88,
+    "violations": 0,
+    "dest": "src/coordharness/runtime/release_inventory_policy.py"
+  },
+  {
+    "docstrings_removed": 3,
+    "comments_removed": 2,
+    "renames_applied": 4,
+    "lines_in": 168,
+    "lines_out": 159,
+    "violations": 0,
+    "dest": "src/coordharness/runtime/served_build_identity.py"
+  },
+  {
+    "docstrings_removed": 1,
+    "comments_removed": 0,
+    "renames_applied": 0,
+    "lines_in": 19,
+    "lines_out": 18,
+    "violations": 0,
+    "dest": "src/coordharness/usage/__init__.py"
+  },
+  {
+    "docstrings_removed": 9,
+    "comments_removed": 2,
+    "renames_applied": 2,
+    "lines_in": 1840,
+    "lines_out": 1804,
+    "violations": 0,
+    "dest": "src/coordharness/usage/ledger.py"
+  },
+  {
+    "docstrings_removed": 6,
+    "comments_removed": 9,
+    "renames_applied": 0,
+    "lines_in": 557,
+    "lines_out": 525,
+    "violations": 0,
+    "dest": "src/coordharness/usage/fingerprint.py"
+  },
+  {
+    "docstrings_removed": 3,
+    "comments_removed": 0,
+    "renames_applied": 3,
+    "lines_in": 234,
+    "lines_out": 226,
+    "violations": 0,
+    "dest": "src/coordharness/usage/importers.py"
+  },
+  {
+    "docstrings_removed": 7,
+    "comments_removed": 0,
+    "renames_applied": 5,
+    "lines_in": 696,
+    "lines_out": 683,
+    "violations": 0,
+    "dest": "src/coordharness/usage/replica.py"
+  },
+  {
+    "docstrings_removed": 1,
+    "comments_removed": 0,
+    "renames_applied": 0,
+    "lines_in": 1,
+    "lines_out": 1,
+    "violations": 0,
+    "dest": "tests/usage/__init__.py"
+  },
+  {
+    "docstrings_removed": 0,
+    "comments_removed": 0,
+    "renames_applied": 3,
+    "lines_in": 411,
+    "lines_out": 411,
+    "violations": 0,
+    "dest": "tests/usage/test_ledger.py"
+  },
+  {
+    "docstrings_removed": 0,
+    "comments_removed": 0,
+    "renames_applied": 2,
+    "lines_in": 184,
+    "lines_out": 184,
+    "violations": 0,
+    "dest": "tests/usage/test_fingerprint.py"
+  },
+  {
+    "docstrings_removed": 0,
+    "comments_removed": 0,
+    "renames_applied": 5,
+    "lines_in": 73,
+    "lines_out": 73,
+    "violations": 0,
+    "dest": "tests/usage/test_importers.py"
+  },
+  {
+    "docstrings_removed": 0,
+    "comments_removed": 0,
+    "renames_applied": 1,
+    "lines_in": 320,
+    "lines_out": 319,
+    "violations": 0,
+    "dest": "tests/usage/test_adversarial.py"
+  },
+  {
+    "docstrings_removed": 0,
+    "comments_removed": 0,
+    "renames_applied": 2,
+    "lines_in": 189,
+    "lines_out": 189,
+    "violations": 0,
+    "dest": "tests/usage/test_replica.py"
+  },
+  {
+    "docstrings_removed": 1,
+    "comments_removed": 29,
+    "renames_applied": 1,
+    "lines_in": 298,
+    "lines_out": 267,
+    "violations": 0,
+    "dest": "tests/jobs/test_status_primitives.py"
+  },
+  {
+    "docstrings_removed": 0,
+    "comments_removed": 0,
+    "renames_applied": 4,
+    "lines_in": 471,
+    "lines_out": 471,
+    "violations": 0,
+    "dest": "tests/knowledge/test_accepted_memory_r4.py"
+  },
+  {
+    "docstrings_removed": 0,
+    "comments_removed": 0,
+    "renames_applied": 1,
+    "lines_in": 106,
+    "lines_out": 106,
+    "violations": 0,
+    "dest": "tests/knowledge/test_archive_pointer_aliases.py"
+  },
+  {
+    "docstrings_removed": 0,
+    "comments_removed": 0,
+    "renames_applied": 1,
+    "lines_in": 42,
+    "lines_out": 42,
+    "violations": 0,
+    "dest": "tests/knowledge/test_kfts_v2_runtime.py"
+  },
+  {
+    "docstrings_removed": 1,
+    "comments_removed": 5,
+    "renames_applied": 1,
+    "lines_in": 74,
+    "lines_out": 61,
+    "violations": 0,
+    "dest": "tests/knowledge/test_memory_dedup_gate.py"
+  },
+  {
+    "docstrings_removed": 0,
+    "comments_removed": 0,
+    "renames_applied": 1,
+    "lines_in": 21,
+    "lines_out": 21,
+    "violations": 0,
+    "dest": "tests/knowledge/test_query_scoring.py"
+  },
+  {
+    "docstrings_removed": 8,
+    "comments_removed": 6,
+    "renames_applied": 2,
+    "lines_in": 727,
+    "lines_out": 687,
+    "violations": 0,
+    "dest": "src/coordharness/jobs/pglaunch.py"
+  },
+  {
+    "docstrings_removed": 2,
+    "comments_removed": 1,
+    "renames_applied": 0,
+    "lines_in": 145,
+    "lines_out": 119,
+    "violations": 0,
+    "dest": "src/coordharness/jobs/gpu_pglaunch.py"
+  },
+  {
+    "docstrings_removed": 0,
+    "comments_removed": 10,
+    "renames_applied": 0,
+    "lines_in": 35,
+    "lines_out": 25,
+    "violations": 0,
+    "dest": "scripts/mem_governor.sh"
+  },
+  {
+    "docstrings_removed": 0,
+    "comments_removed": 53,
+    "renames_applied": 6,
+    "lines_in": 249,
+    "lines_out": 202,
+    "violations": 0,
+    "dest": "scripts/lib_safety.sh"
+  },
+  {
+    "docstrings_removed": 5,
+    "comments_removed": 47,
+    "renames_applied": 1,
+    "lines_in": 847,
+    "lines_out": 661,
+    "violations": 0,
+    "dest": "src/coordharness/lints/fail_loud_patterns.py"
+  },
+  {
+    "docstrings_removed": 4,
+    "comments_removed": 6,
+    "renames_applied": 1,
+    "lines_in": 291,
+    "lines_out": 195,
+    "violations": 0,
+    "dest": "src/coordharness/lints/cwd_relative_paths.py"
+  },
+  {
+    "docstrings_removed": 4,
+    "comments_removed": 0,
+    "renames_applied": 1,
+    "lines_in": 271,
+    "lines_out": 254,
+    "violations": 0,
+    "dest": "src/coordharness/lints/doc_deletion_guard.py"
+  },
+  {
+    "docstrings_removed": 1,
+    "comments_removed": 0,
+    "renames_applied": 0,
+    "lines_in": 107,
+    "lines_out": 103,
+    "violations": 0,
+    "dest": "src/coordharness/lints/docs_findability_index.py"
+  },
+  {
+    "docstrings_removed": 1,
+    "comments_removed": 6,
+    "renames_applied": 0,
+    "lines_in": 136,
+    "lines_out": 105,
+    "violations": 0,
+    "dest": "src/coordharness/lints/mtime_into_figure_lint.py"
+  },
+  {
+    "docstrings_removed": 2,
+    "comments_removed": 3,
+    "renames_applied": 0,
+    "lines_in": 175,
+    "lines_out": 155,
+    "violations": 0,
+    "dest": "src/coordharness/lints/work_item_lint.py"
+  },
+  {
+    "docstrings_removed": 0,
+    "comments_removed": 8,
+    "renames_applied": 0,
+    "lines_in": 14,
+    "lines_out": 8,
+    "violations": 0,
+    "dest": "apps/menubar/Sources/App/main.swift"
+  },
+  {
+    "docstrings_removed": 0,
+    "comments_removed": 37,
+    "renames_applied": 0,
+    "lines_in": 101,
+    "lines_out": 96,
+    "violations": 0,
+    "dest": "apps/menubar/Sources/App/DesignTokens.swift"
+  },
+  {
+    "docstrings_removed": 0,
+    "comments_removed": 0,
+    "renames_applied": 1,
+    "lines_in": 7,
+    "lines_out": 7,
+    "violations": 0,
+    "dest": "apps/menubar/Sources/App/Diagnostics.swift"
+  },
+  {
+    "docstrings_removed": 0,
+    "comments_removed": 7,
+    "renames_applied": 0,
+    "lines_in": 66,
+    "lines_out": 64,
+    "violations": 0,
+    "dest": "apps/menubar/Sources/App/HotkeyManager.swift"
+  },
+  {
+    "docstrings_removed": 0,
+    "comments_removed": 6,
+    "renames_applied": 1,
+    "lines_in": 133,
+    "lines_out": 130,
+    "violations": 0,
+    "dest": "apps/menubar/Sources/App/Notifier.swift"
+  },
+  {
+    "docstrings_removed": 0,
+    "comments_removed": 9,
+    "renames_applied": 4,
+    "lines_in": 124,
+    "lines_out": 119,
+    "violations": 0,
+    "dest": "apps/menubar/Sources/App/StatusItemController.swift"
+  },
+  {
+    "docstrings_removed": 0,
+    "comments_removed": 4,
+    "renames_applied": 1,
+    "lines_in": 29,
+    "lines_out": 27,
+    "violations": 0,
+    "dest": "apps/menubar/Sources/App/LoginItemManager.swift"
+  },
+  {
+    "docstrings_removed": 0,
+    "comments_removed": 6,
+    "renames_applied": 1,
+    "lines_in": 22,
+    "lines_out": 20,
+    "violations": 0,
+    "dest": "apps/menubar/Sources/App/SingleInstanceGuard.swift"
+  },
+  {
+    "docstrings_removed": 0,
+    "comments_removed": 14,
+    "renames_applied": 0,
+    "lines_in": 47,
+    "lines_out": 42,
+    "violations": 0,
+    "dest": "apps/menubar/Sources/UI/PanelLayout.swift"
+  },
+  {
+    "docstrings_removed": 0,
+    "comments_removed": 29,
+    "renames_applied": 0,
+    "lines_in": 102,
+    "lines_out": 96,
+    "violations": 0,
+    "dest": "apps/menubar/Sources/UI/ModeSlider.swift"
+  },
+  {
+    "docstrings_removed": 0,
+    "comments_removed": 17,
+    "renames_applied": 0,
+    "lines_in": 102,
+    "lines_out": 95,
+    "violations": 0,
+    "dest": "apps/menubar/Sources/UI/RingRenderer.swift"
+  },
+  {
+    "docstrings_removed": 0,
+    "comments_removed": 7,
+    "renames_applied": 1,
+    "lines_in": 133,
+    "lines_out": 130,
+    "violations": 0,
+    "dest": "apps/menubar/Sources/UI/SettingsView.swift"
+  },
+  {
+    "docstrings_removed": 0,
+    "comments_removed": 13,
+    "renames_applied": 0,
+    "lines_in": 221,
+    "lines_out": 217,
+    "violations": 0,
+    "dest": "apps/menubar/Sources/UI/RowDetailView.swift"
+  },
+  {
+    "docstrings_removed": 0,
+    "comments_removed": 85,
+    "renames_applied": 0,
+    "lines_in": 472,
+    "lines_out": 459,
+    "violations": 0,
+    "dest": "apps/menubar/Sources/UI/Rows.swift"
+  },
+  {
+    "docstrings_removed": 0,
+    "comments_removed": 106,
+    "renames_applied": 0,
+    "lines_in": 539,
+    "lines_out": 509,
+    "violations": 0,
+    "dest": "apps/menubar/Sources/UI/ContentStackAndRows.swift"
+  },
+  {
+    "docstrings_removed": 0,
+    "comments_removed": 31,
+    "renames_applied": 14,
+    "lines_in": 295,
+    "lines_out": 286,
+    "violations": 0,
+    "dest": "apps/menubar/Sources/App/AppDelegate.swift"
+  },
+  {
+    "docstrings_removed": 0,
+    "comments_removed": 38,
+    "renames_applied": 7,
+    "lines_in": 391,
+    "lines_out": 377,
+    "violations": 0,
+    "dest": "apps/menubar/Sources/App/PopoverController.swift"
+  },
+  {
+    "docstrings_removed": 0,
+    "comments_removed": 10,
+    "renames_applied": 0,
+    "lines_in": 46,
+    "lines_out": 41,
+    "violations": 0,
+    "dest": "apps/menubar/Sources/Data/ETAFormat.swift"
+  },
+  {
+    "docstrings_removed": 0,
+    "comments_removed": 8,
+    "renames_applied": 1,
+    "lines_in": 34,
+    "lines_out": 29,
+    "violations": 0,
+    "dest": "apps/menubar/Sources/Data/SnapshotCache.swift"
+  },
+  {
+    "docstrings_removed": 0,
+    "comments_removed": 143,
+    "renames_applied": 0,
+    "lines_in": 609,
+    "lines_out": 559,
+    "violations": 0,
+    "dest": "apps/menubar/Sources/Data/Models.swift"
+  },
+  {
+    "docstrings_removed": 0,
+    "comments_removed": 22,
+    "renames_applied": 0,
+    "lines_in": 100,
+    "lines_out": 101,
+    "violations": 0,
+    "dest": "apps/menubar/Sources/Data/Config.swift"
+  },
+  {
+    "docstrings_removed": 0,
+    "comments_removed": 72,
+    "renames_applied": 2,
+    "lines_in": 832,
+    "lines_out": 800,
+    "violations": 0,
+    "dest": "apps/menubar/Sources/Data/HarnessClient.swift"
+  },
+  {
+    "docstrings_removed": 0,
+    "comments_removed": 0,
+    "renames_applied": 0,
+    "lines_in": 101,
+    "lines_out": 101,
+    "violations": 0,
+    "dest": "apps/menubar/Sources/Cockpit/Core/CockpitCapabilityInventory.swift"
+  },
+  {
+    "docstrings_removed": 0,
+    "comments_removed": 0,
+    "renames_applied": 0,
+    "lines_in": 49,
+    "lines_out": 49,
+    "violations": 0,
+    "dest": "apps/menubar/Sources/Cockpit/Core/CockpitKeyboardCommand.swift"
+  },
+  {
+    "docstrings_removed": 0,
+    "comments_removed": 0,
+    "renames_applied": 0,
+    "lines_in": 215,
+    "lines_out": 215,
+    "violations": 0,
+    "dest": "apps/menubar/Sources/Cockpit/Core/CockpitModels.swift"
+  },
+  {
+    "docstrings_removed": 0,
+    "comments_removed": 0,
+    "renames_applied": 2,
+    "lines_in": 176,
+    "lines_out": 176,
+    "violations": 0,
+    "dest": "apps/menubar/Sources/Cockpit/Core/CockpitSavedViews.swift"
+  },
+  {
+    "docstrings_removed": 0,
+    "comments_removed": 0,
+    "renames_applied": 0,
+    "lines_in": 48,
+    "lines_out": 48,
+    "violations": 0,
+    "dest": "apps/menubar/Sources/Cockpit/Core/CockpitStatePreference.swift"
+  },
+  {
+    "docstrings_removed": 0,
+    "comments_removed": 0,
+    "renames_applied": 0,
+    "lines_in": 63,
+    "lines_out": 63,
+    "violations": 0,
+    "dest": "apps/menubar/Sources/Cockpit/Core/CockpitViewState.swift"
+  },
+  {
+    "docstrings_removed": 0,
+    "comments_removed": 0,
+    "renames_applied": 1,
+    "lines_in": 80,
+    "lines_out": 80,
+    "violations": 0,
+    "dest": "apps/menubar/Sources/Cockpit/Core/CockpitWindowState.swift"
+  },
+  {
+    "docstrings_removed": 0,
+    "comments_removed": 0,
+    "renames_applied": 0,
+    "lines_in": 17,
+    "lines_out": 17,
+    "violations": 0,
+    "dest": "apps/menubar/Sources/Cockpit/Core/MenuBarPanelPolicy.swift"
+  },
+  {
+    "docstrings_removed": 0,
+    "comments_removed": 0,
+    "renames_applied": 0,
+    "lines_in": 41,
+    "lines_out": 41,
+    "violations": 0,
+    "dest": "apps/menubar/Sources/Cockpit/Core/NativeCockpitActionRequest.swift"
+  },
+  {
+    "docstrings_removed": 0,
+    "comments_removed": 0,
+    "renames_applied": 0,
+    "lines_in": 161,
+    "lines_out": 161,
+    "violations": 0,
+    "dest": "apps/menubar/Sources/Cockpit/Core/NativeCockpitActionResult.swift"
+  },
+  {
+    "docstrings_removed": 0,
+    "comments_removed": 0,
+    "renames_applied": 0,
+    "lines_in": 367,
+    "lines_out": 367,
+    "violations": 0,
+    "dest": "apps/menubar/Sources/Cockpit/Core/NativeContextPaletteModels.swift"
+  },
+  {
+    "docstrings_removed": 0,
+    "comments_removed": 0,
+    "renames_applied": 0,
+    "lines_in": 27,
+    "lines_out": 27,
+    "violations": 0,
+    "dest": "apps/menubar/Sources/Cockpit/Data/CockpitCapabilityInventorySource.swift"
+  },
+  {
+    "docstrings_removed": 0,
+    "comments_removed": 0,
+    "renames_applied": 0,
+    "lines_in": 432,
+    "lines_out": 432,
+    "violations": 0,
+    "dest": "apps/menubar/Sources/Cockpit/Data/CockpitHTTPFallbackSource.swift"
+  },
+  {
+    "docstrings_removed": 0,
+    "comments_removed": 0,
+    "renames_applied": 0,
+    "lines_in": 48,
+    "lines_out": 48,
+    "violations": 0,
+    "dest": "apps/menubar/Sources/Cockpit/Data/CockpitProjectionRefresher.swift"
+  },
+  {
+    "docstrings_removed": 0,
+    "comments_removed": 0,
+    "renames_applied": 0,
+    "lines_in": 491,
+    "lines_out": 491,
+    "violations": 0,
+    "dest": "apps/menubar/Sources/Cockpit/Data/CockpitReadModelSource.swift"
+  },
+  {
+    "docstrings_removed": 0,
+    "comments_removed": 0,
+    "renames_applied": 0,
+    "lines_in": 242,
+    "lines_out": 243,
+    "violations": 0,
+    "dest": "apps/menubar/Sources/Cockpit/Data/CoordSQLite.swift"
+  },
+  {
+    "docstrings_removed": 0,
+    "comments_removed": 0,
+    "renames_applied": 2,
+    "lines_in": 146,
+    "lines_out": 147,
+    "violations": 0,
+    "dest": "apps/menubar/Sources/Cockpit/Data/NativeContextBridgeClient.swift"
+  },
+  {
+    "docstrings_removed": 0,
+    "comments_removed": 0,
+    "renames_applied": 0,
+    "lines_in": 51,
+    "lines_out": 51,
+    "violations": 0,
+    "dest": "apps/menubar/Sources/Cockpit/Presentation/CockpitChromeLayout.swift"
+  },
+  {
+    "docstrings_removed": 0,
+    "comments_removed": 0,
+    "renames_applied": 0,
+    "lines_in": 891,
+    "lines_out": 891,
+    "violations": 0,
+    "dest": "apps/menubar/Sources/Cockpit/Presentation/CockpitPresentationModel.swift"
+  },
+  {
+    "docstrings_removed": 0,
+    "comments_removed": 0,
+    "renames_applied": 0,
+    "lines_in": 33,
+    "lines_out": 33,
+    "violations": 0,
+    "dest": "apps/menubar/Sources/Cockpit/Presentation/CockpitTableInteractions.swift"
+  },
+  {
+    "docstrings_removed": 0,
+    "comments_removed": 0,
+    "renames_applied": 0,
+    "lines_in": 256,
+    "lines_out": 256,
+    "violations": 0,
+    "dest": "apps/menubar/Sources/Cockpit/UI/CockpitDiagnosticsView.swift"
+  },
+  {
+    "docstrings_removed": 0,
+    "comments_removed": 0,
+    "renames_applied": 0,
+    "lines_in": 159,
+    "lines_out": 159,
+    "violations": 0,
+    "dest": "apps/menubar/Sources/Cockpit/UI/CockpitInspectorView.swift"
+  },
+  {
+    "docstrings_removed": 0,
+    "comments_removed": 6,
+    "renames_applied": 10,
+    "lines_in": 3183,
+    "lines_out": 3196,
+    "violations": 0,
+    "dest": "apps/menubar/Sources/Cockpit/UI/CockpitRootView.swift"
+  },
+  {
+    "docstrings_removed": 0,
+    "comments_removed": 0,
+    "renames_applied": 0,
+    "lines_in": 91,
+    "lines_out": 91,
+    "violations": 0,
+    "dest": "apps/menubar/Sources/Cockpit/UI/CockpitScrollChrome.swift"
+  },
+  {
+    "docstrings_removed": 0,
+    "comments_removed": 6,
+    "renames_applied": 2,
+    "lines_in": 1757,
+    "lines_out": 1732,
+    "violations": 0,
+    "dest": "apps/menubar/Sources/Cockpit/UI/CockpitTableController.swift"
+  },
+  {
+    "docstrings_removed": 0,
+    "comments_removed": 0,
+    "renames_applied": 0,
+    "lines_in": 61,
+    "lines_out": 67,
+    "violations": 0,
+    "dest": "apps/menubar/Sources/Cockpit/UI/CockpitTokens.swift"
+  },
+  {
+    "docstrings_removed": 0,
+    "comments_removed": 0,
+    "renames_applied": 2,
+    "lines_in": 378,
+    "lines_out": 378,
+    "violations": 0,
+    "dest": "apps/menubar/Sources/Cockpit/UI/CockpitWindowController.swift"
+  },
+  {
+    "docstrings_removed": 0,
+    "comments_removed": 0,
+    "renames_applied": 0,
+    "lines_in": 67,
+    "lines_out": 67,
+    "violations": 0,
+    "dest": "apps/menubar/Sources/Cockpit/UI/NativeCockpitActionBroker.swift"
+  },
+  {
+    "docstrings_removed": 0,
+    "comments_removed": 0,
+    "renames_applied": 0,
+    "lines_in": 876,
+    "lines_out": 876,
+    "violations": 0,
+    "dest": "apps/menubar/Sources/Cockpit/UI/NativeContextPaletteView.swift"
+  },
+  {
+    "docstrings_removed": 0,
+    "comments_removed": 0,
+    "renames_applied": 0,
+    "lines_in": 30,
+    "lines_out": 30,
+    "violations": 0,
+    "dest": "apps/menubar/Sources/Cockpit/Core/CockpitMapLifecycle.swift"
+  },
+  {
+    "docstrings_removed": 0,
+    "comments_removed": 0,
+    "renames_applied": 0,
+    "lines_in": 417,
+    "lines_out": 417,
+    "violations": 0,
+    "dest": "apps/menubar/Sources/Cockpit/Core/CockpitMapModels.swift"
+  },
+  {
+    "docstrings_removed": 0,
+    "comments_removed": 0,
+    "renames_applied": 0,
+    "lines_in": 63,
+    "lines_out": 63,
+    "violations": 0,
+    "dest": "apps/menubar/Sources/Cockpit/Data/CockpitMapEndpointSource.swift"
+  },
+  {
+    "docstrings_removed": 0,
+    "comments_removed": 0,
+    "renames_applied": 1,
+    "lines_in": 448,
+    "lines_out": 450,
+    "violations": 0,
+    "dest": "apps/menubar/Sources/Cockpit/Data/CockpitMapReadModelSource.swift"
+  },
+  {
+    "docstrings_removed": 0,
+    "comments_removed": 0,
+    "renames_applied": 0,
+    "lines_in": 1925,
+    "lines_out": 1925,
+    "violations": 0,
+    "dest": "apps/menubar/Sources/Cockpit/UI/CockpitMapView.swift"
+  },
+  {
+    "docstrings_removed": 0,
+    "comments_removed": 0,
+    "renames_applied": 2,
+    "lines_in": 200,
+    "lines_out": 200,
+    "violations": 0,
+    "dest": "apps/menubar/Sources/Cockpit/UI/CockpitMapWebView.swift"
+  },
+  {
+    "docstrings_removed": 0,
+    "comments_removed": 0,
+    "renames_applied": 0,
+    "lines_in": 7,
+    "lines_out": 7,
+    "violations": 0,
+    "dest": "apps/cockpit/Sources/main.swift"
+  },
+  {
+    "docstrings_removed": 0,
+    "comments_removed": 0,
+    "renames_applied": 0,
+    "lines_in": 25,
+    "lines_out": 25,
+    "violations": 0,
+    "dest": "apps/cockpit/Sources/CockpitLauncherAppDelegate.swift"
+  }
+]

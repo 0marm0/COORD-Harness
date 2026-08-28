@@ -1,0 +1,695 @@
+:root{color-scheme:dark;--c-bg:#000;--c-panel:#07080b;--c-card-a:#0b0d12;--c-card-b:#10131a;--c-hover:#151923;--c-ink:#f4f6fb;--c-muted:#a5abb7;--c-line:rgba(255,255,255,.07);--c-hairline:rgba(255,255,255,.045);--ink:#f4f6fb;--muted:#a5abb7;--faint:#6f7683;--line:rgba(255,255,255,.07);--panel:#07080b;--accent:#5e9dff;--accent-strong:#91bbff;--green:#59d499;--amber:#f2b84b;--red:#ff6b6b;--blue:#5e9dff;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",Arial,sans-serif}
+*{box-sizing:border-box}body{margin:0;background:#000;color:var(--ink);min-height:100vh;background-image:none;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+.mast{display:flex;justify-content:space-between;align-items:end;padding:2.4rem clamp(1rem,5vw,5rem) 1.5rem;border-bottom:1px solid var(--line)}h1{font:650 clamp(2rem,5vw,4.4rem)/.95 -apple-system,BlinkMacSystemFont,"SF Pro Display","Helvetica Neue",Arial,sans-serif;margin:.2rem 0}.eyebrow{letter-spacing:.14em;color:var(--muted);font-size:.7rem;margin:0}.pulse{display:flex;align-items:center;gap:.6rem;color:var(--muted);font-size:.8rem}.pulse span{width:.5rem;height:.5rem;border-radius:50%;background:var(--amber)}
+nav{display:flex;gap:.35rem;padding:1rem clamp(1rem,5vw,5rem);position:sticky;top:0;background:color-mix(in srgb,var(--c-bg,#080a09) 91%,transparent);backdrop-filter:blur(14px);z-index:2;border-bottom:1px solid var(--line);overflow:auto}button{font:inherit;color:var(--muted);background:transparent;border:1px solid transparent;border-radius:999px;padding:.55rem 1rem;cursor:pointer}button:hover,button.active{color:var(--ink);border-color:var(--c-hairline,#3d4643);background:var(--c-hover,#1a201e)}
+main{padding:1.7rem clamp(1rem,5vw,5rem) 5rem}.panel{display:none}.panel.active{display:block}.metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(10rem,1fr));gap:.8rem}.metric,.card{background:var(--c-card-a);border:1px solid var(--line);border-radius:10px;padding:1rem}.metric b{display:block;font:650 2rem/1.05 -apple-system,BlinkMacSystemFont,"SF Pro Display","Helvetica Neue",Arial,sans-serif}.metric small,.meta{color:var(--muted)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(18rem,1fr));gap:.8rem;margin-top:1.2rem}.card h3{margin:.1rem 0 .7rem;font-size:1rem}.badge{display:inline-block;border:1px solid var(--c-hairline,#3d4643);border-radius:99px;padding:.2rem .5rem;font-size:.7rem;color:var(--green);text-transform:uppercase;letter-spacing:.08em}.badge.blocked,.badge.failed{color:var(--red)}.badge.queued,.badge.planned{color:var(--amber)}
+table{width:100%;border-collapse:collapse;background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden}th,td{text-align:left;padding:.75rem;border-bottom:1px solid var(--line);font-size:.82rem}th{color:var(--muted);font-weight:500}.empty{border:1px dashed var(--c-hairline,#3d4643);border-radius:14px;padding:3rem;text-align:center;color:var(--muted)}
+.graph-list{display:grid;grid-template-columns:1fr 1.2fr;gap:1rem}.edge{font-family:ui-monospace,monospace;font-size:.76rem;padding:.55rem;border-bottom:1px solid var(--line)}.missing{color:var(--amber)}@media(max-width:720px){.mast{align-items:start}.graph-list{grid-template-columns:1fr}th:nth-child(n+4),td:nth-child(n+4){display:none}}
+
+/* Graph view -------------------------------------------------------------- */
+.gwrap { overflow-x: auto; margin-top: 12px; }
+.gwrap svg { width: 100%; min-width: 620px; height: auto; display: block; }
+.gedge { fill: none; stroke: currentColor; stroke-width: 1.2; opacity: .38; }
+.gedge.missing { stroke-dasharray: 4 3; opacity: .8; }
+#gtip path { fill: currentColor; opacity: .38; }
+.gnode circle { fill: var(--green); stroke: none; }
+.gnode.missing circle { fill: none; stroke: currentColor; stroke-width: 1.5; stroke-dasharray: 3 2; }
+.gnode text { font-size: 11px; fill: currentColor; }
+.gnode .gkind { font-size: 11.0px; opacity: .55; letter-spacing: .06em; text-transform: uppercase; }
+.tablewrap { overflow-x: auto; margin-top: 10px; }
+.tablewrap table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+.tablewrap th { text-align: left; font-weight: 500; opacity: .6; font-size: 12.1px;
+  letter-spacing: .08em; text-transform: uppercase; padding: 6px 10px; }
+.tablewrap td { padding: 6px 10px; border-top: 1px solid currentColor; border-color: color-mix(in srgb, currentColor 12%, transparent); }
+.tablewrap td.missing { color: #d98670; }
+.ghead rect { fill: color-mix(in srgb, currentColor 8%, transparent); stroke: color-mix(in srgb, currentColor 22%, transparent); }
+.ghead text { font-size: 12.5px; font-weight: 600; fill: currentColor; }
+.ghead .gkind { font-size: 11.0px; font-weight: 400; opacity: .5; letter-spacing: .07em; text-transform: uppercase; }
+.gnode text { font-size: 11px; }
+
+/* Owner marks sit on the text baseline they label, not above it. */
+.owner{display:inline-flex;align-items:center;gap:.4em;}
+.mark{width:1.15em;height:1.15em;flex:0 0 auto;shape-rendering:crispEdges;}
+.mark rect[rx],.mark circle,.mark path{shape-rendering:geometricPrecision;}
+
+/* The wordmark replaces the h1's text, so it inherits the heading's box and
+   nothing else moves. Height is set from the type scale rather than a pixel
+   value so it tracks the heading it stands in for. */
+
+
+/* Accent switch and cross-page links ------------------------------------- */
+/* Both sit in the nav strip, pushed to the far end so the view tabs keep the
+   reading position they had. */
+nav .navlink { margin-left: auto; align-self: center; color: var(--muted);
+  text-decoration: none; font-size: .82rem; padding: .55rem .9rem;
+  border: 1px solid transparent; border-radius: 999px; white-space: nowrap; }
+nav .navlink:hover { color: var(--ink); border-color: #46504c; background: #1a201e; }
+nav .accent { display: flex; align-items: center; gap: .3rem; margin-left: .6rem; }
+nav .accent:first-of-type { margin-left: auto; }
+nav .accent .meta { font-size: .7rem; letter-spacing: .1em; text-transform: uppercase;
+  margin-right: .1rem; }
+nav .accent button { display: inline-flex; align-items: center; gap: .4em;
+  font-size: .78rem; padding: .4rem .7rem; }
+nav .accent button i { width: .6em; height: .6em; border-radius: 50%; display: block;
+  background: var(--green); opacity: .4; }
+nav .accent button.active i { opacity: 1; box-shadow: 0 0 .5rem var(--green); }
+
+/* Text wordmarks use the same SF display stack as the Cockpit shell. */
+h1.wordmark{
+  font-family:-apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", Arial, sans-serif;
+  font-weight:720;
+  font-size:clamp(2.1rem,4.6vw,3.6rem);
+  letter-spacing:.34em;
+  text-indent:.34em;          /* the trailing letterspace would otherwise sit the mark off-centre */
+  line-height:1;
+  margin:.25rem 0 0;
+  color:var(--ink);
+}
+
+/* Overview: what is happening, before what contract it speaks. */
+.twoup{display:grid;grid-template-columns:repeat(auto-fit,minmax(21rem,1fr));gap:.8rem;margin-top:.8rem}
+.livecard h3 .of{color:var(--muted);font-weight:400;font-size:.78rem;letter-spacing:.02em}
+.livelist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.livelist .live{padding:.6rem 0;border-top:1px solid var(--line)}
+.livelist .live:first-child{border-top:0;padding-top:0}
+.live .lt{display:flex;align-items:center;gap:.45em;flex-wrap:wrap;font-size:.9rem}
+.live .lt b{font-variant-numeric:tabular-nums;letter-spacing:.02em}
+.live .ls,.live .lm{margin:.25rem 0 0;color:var(--muted);font-size:.8rem}
+.live .lm{font-variant-numeric:tabular-nums}
+.live .staleflag{color:var(--amber);font-size:.72rem;text-transform:uppercase;letter-spacing:.06em}
+.live .lbar{margin-top:.4rem;height:4px;border-radius:99px;background:var(--c-hairline,#3d4643);overflow:hidden}
+.live .lbar i{display:block;height:100%;background:var(--green);border-radius:99px}
+.live .lbar.neg i{background:var(--red)}
+.live .lbar.warn i{background:var(--amber)}
+.prov{margin-top:1rem;color:var(--muted);font-size:.78rem}
+
+/* Work tab: the macOS Cockpit's table, on the web. Same columns in the same
+   order, so the board reads identically whichever client you open. */
+.tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; margin-top: .9rem; }
+.worktable { border-collapse: collapse; width: 100%; min-width: 60rem; font-size: .84rem }
+.worktable th, .worktable td { padding: .5rem .7rem; text-align: left; vertical-align: middle }
+.worktable thead th {
+  position: sticky; top: 0; z-index: 2;
+  background: var(--c-card-a, var(--panel)); color: var(--muted);
+  font-size: .69rem; font-weight: 600; letter-spacing: .1em; text-transform: uppercase;
+  border-bottom: 1px solid var(--line); white-space: nowrap;
+}
+.worktable tbody tr { border-bottom: 1px solid var(--c-hairline, var(--line)) }
+.worktable tbody tr[data-row]:hover { background: var(--c-hover, rgba(255,255,255,.035)); cursor: pointer }
+.worktable tbody tr[data-row]:focus-visible { outline: 2px solid var(--green); outline-offset: -2px }
+.worktable tr.grouphead th {
+  position: static; background: transparent; color: var(--ink);
+  font-size: .69rem; letter-spacing: .12em; padding-top: 1.1rem; border-bottom: 0;
+}
+.worktable tr.grouphead.running th { color: var(--green) }
+.worktable tr.grouphead.attention th, .worktable tr.grouphead.other th { color: var(--amber) }
+.worktable tr.grouphead th span { color: var(--muted); font-weight: 400; margin-left: .35rem }
+.worktable .c-state { width: 14px; padding-right: 0 }
+.worktable .c-owner { width: 26px; padding-left: .35rem; padding-right: .35rem }
+.worktable .c-work { color: var(--ink); font-weight: 500; min-width: 15rem }
+.worktable .c-note { color: var(--muted); max-width: 22rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+.worktable .c-eta, .worktable .c-prio { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap }
+.worktable .c-prio { text-align: center; color: var(--amber) }
+.worktable .c-id { color: var(--faint, var(--muted)); font-family: ui-monospace, monospace; font-size: .74rem; white-space: nowrap }
+.worktable .c-res { color: var(--muted); white-space: nowrap }
+.statedot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--muted) }
+.statedot.run { background: var(--green) } .statedot.neg { background: var(--red) }
+.statedot.warn { background: var(--amber) } .statedot.ok { background: var(--green); opacity: .5 }
+.modpill {
+  display: inline-block; padding: .12rem .42rem; border-radius: 4px; font-size: .69rem;
+  letter-spacing: .06em; text-transform: uppercase; color: var(--muted);
+  background: var(--c-card-a, var(--panel)); border: 1px solid var(--c-hairline, var(--line));
+}
+.tbar { display: inline-block; width: 7rem; height: 4px; border-radius: 99px; background: var(--c-hairline, var(--line)); overflow: hidden; vertical-align: middle }
+.tbar i { display: block; height: 100%; background: var(--green); border-radius: 99px }
+.tbar.neg i { background: var(--red) } .tbar.warn i { background: var(--amber) }
+.tpct { margin-left: .45rem; font-size: .74rem; color: var(--muted); font-variant-numeric: tabular-nums }
+
+/* ==========================================================================
+   Workspace shell — rail, location bar, split list/detail
+   --------------------------------------------------------------------------
+   The board used to be one horizontal tab strip over a full-width panel: no
+   persistent destination list, no location, no detail, and Attention reduced
+   to "8 of 370" on a card. The rail carries destinations, the bar carries
+   location, and selecting a row opens one canonical detail plane beside the
+   list rather than navigating away from it.
+   ========================================================================== */
+.visually-hidden{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+
+/* The document never scrolls: the panes do. A shell whose chrome rides away
+   under scroll is a page, not a product -- and an 8,600-row table made the
+   document 22,000px tall, which is nothing a window scrollbar should be asked
+   to represent. The rail and location bar hold still; the list and the detail
+   plane each scroll alone, exactly like the native cockpit. */
+body.appshell{overflow:hidden;height:100vh;height:100dvh;width:100%;max-width:100vw;display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,1fr)}
+.workspace{display:grid;grid-template-columns:15rem minmax(0,1fr);align-items:stretch;height:auto;min-height:0;overflow:hidden}
+.rail{display:flex;flex-direction:column;gap:.1rem;padding:1rem .7rem;border-right:1px solid var(--line);border-bottom:0;overflow-y:auto;background:transparent;backdrop-filter:none}
+.rail .railgroup{margin:.9rem 0 .3rem;padding:0 .55rem;font-size:.68rem;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+.rail button{display:flex;align-items:center;gap:.55rem;width:100%;text-align:left;border-radius:8px;padding:.42rem .55rem;font-size:.88rem;border:1px solid transparent}
+.rail button .rlabel{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rail button .rcount{font-variant-numeric:tabular-nums;font-size:.78rem;color:var(--muted)}
+.rail button.active{background:var(--c-card-a,#151a18);border-color:var(--c-hairline,#3d4643);color:var(--ink)}
+.rail button.active .rcount{color:var(--ink)}
+.rail .rdot{width:.5rem;height:.5rem;border-radius:50%;flex:none;background:currentColor;opacity:.5}
+.rail button.urgent .rdot{background:var(--amber);opacity:1}
+
+.stage{position:relative;min-width:0;display:flex;flex-direction:column;min-height:0}
+.locbar{display:flex;align-items:center;gap:.9rem;padding:.7rem clamp(.8rem,2.4vw,1.6rem);border-bottom:1px solid var(--line);flex-wrap:wrap}
+.crumbs{font-size:.86rem;color:var(--muted);min-width:0}
+.crumbs b{color:var(--ink);font-weight:600}
+.crumbs .sep{opacity:.45;padding:0 .35rem}
+.findwrap{flex:1 1 14rem;min-width:0;display:flex}
+#find{flex:1 1 auto;min-width:0;font:inherit;font-size:.86rem;color:var(--ink);background:var(--c-card-b,#0f1312);border:1px solid var(--line);border-radius:8px;padding:.38rem .6rem}
+#find:focus{outline:2px solid var(--green);outline-offset:1px}
+.popcount{font-size:.78rem;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+.board-read-alert{margin:0;padding:.55rem clamp(.8rem,2.4vw,1.6rem);border-bottom:1px solid color-mix(in srgb,var(--amber) 48%,var(--line));background:color-mix(in srgb,var(--amber) 8%,transparent);color:var(--muted);font-size:.75rem;line-height:1.4}
+.board-read-alert[hidden]{display:none}
+
+.split{display:grid;grid-template-columns:minmax(0,1fr);min-width:0;flex:1 1 auto;min-height:0}
+.split.showdetail{grid-template-columns:minmax(0,1fr) minmax(0,22rem)}
+.panes{padding:1.1rem clamp(.8rem,2.4vw,1.6rem) 4rem;min-width:0;overflow-y:auto;min-height:0}
+
+/* Selection is a first-class state: the row an operator is reading stays
+   visibly the row they are reading while they move through the list. */
+.worktable tr[data-row]{cursor:pointer}
+.worktable tr[data-row]:hover{background:var(--c-hover,#1a201e)}
+.worktable tr[data-row].sel{background:var(--c-card-a,#151a18);box-shadow:inset 2px 0 0 var(--green)}
+.worktable tr[data-row]:focus-visible{outline:2px solid var(--green);outline-offset:-2px}
+/* Linear's discipline: the title is the only thing at full contrast, so a
+   dense list can be scanned by title alone. */
+.worktable td.c-work{color:var(--ink);font-weight:500}
+.worktable td.c-module,.worktable td.c-note,.worktable td.c-eta,
+.worktable td.c-prio,.worktable td.c-res,.worktable td.c-id{color:var(--muted)}
+.worktable td.c-id{font-family:ui-monospace,monospace;font-size:11.4px}
+
+/* Detail plane ------------------------------------------------------------ */
+.detail{overflow-y:auto;min-height:0;border-left:1px solid var(--line);padding:1.1rem 1.1rem 3rem;min-width:0;position:relative}
+.detail h2{font-size:1.02rem;margin:.15rem 0 .2rem;line-height:1.3}
+.detail .did{font-family:ui-monospace,monospace;font-size:11.6px;color:var(--muted);word-break:break-all}
+.detail .dclose{position:absolute;right:.7rem;top:.7rem;padding:.2rem .5rem;font-size:.78rem}
+.dplane{margin-top:1.15rem;border-top:1px solid var(--line);padding-top:.7rem}
+.dplane > h3{margin:0 0 .5rem;font-size:.68rem;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.dfields{display:grid;grid-template-columns:auto minmax(0,1fr);gap:.28rem .8rem;font-size:.84rem;margin:0}
+.dfields dt{color:var(--muted)}
+.dfields dd{margin:0;min-width:0;overflow-wrap:anywhere}
+.dnote{font-size:.83rem;color:var(--muted);margin:.15rem 0 0;line-height:1.5}
+.drel{font-family:ui-monospace,monospace;font-size:11.6px;padding:.28rem 0;border-bottom:1px solid var(--line);overflow-wrap:anywhere}
+.drel:last-child{border-bottom:0}
+.drel .rkind{color:var(--muted);text-transform:uppercase;letter-spacing:.07em;font-size:10.6px;margin-right:.5em}
+.dplane.absent .dfields dd{color:var(--muted)}
+.dplane.absent h3{color:var(--amber)}
+
+/* Attention workspace ----------------------------------------------------- */
+.attn-plane{margin-bottom:1.4rem}
+.attn-plane h3{display:flex;align-items:baseline;gap:.6rem;margin:0 0 .1rem;font-size:.92rem}
+.attn-plane h3 .n{font-size:.78rem;color:var(--muted);font-variant-numeric:tabular-nums}
+.attn-plane .why{margin:0 0 .55rem;font-size:.81rem;color:var(--muted)}
+.attn-list{list-style:none;margin:0;padding:0;border:1px solid var(--line);border-radius:11px;overflow:hidden}
+.attn-list li{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:.6rem;align-items:baseline;padding:.5rem .75rem;border-bottom:1px solid var(--line);cursor:pointer}
+.attn-list li:last-child{border-bottom:0}
+.attn-list li:hover{background:var(--c-hover,#1a201e)}
+.attn-list li.sel{background:var(--c-card-a,#151a18);box-shadow:inset 2px 0 0 var(--amber)}
+.attn-list li:focus-visible{outline:2px solid var(--green);outline-offset:-2px}
+.attn-list .at{color:var(--ink);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.attn-list .ai{font-family:ui-monospace,monospace;font-size:11px;color:var(--muted);white-space:nowrap}
+.statedot{display:inline-block;width:.52rem;height:.52rem;border-radius:50%;background:var(--muted)}
+.statedot.run{background:var(--green)}.statedot.warn{background:var(--amber)}
+.statedot.neg{background:var(--red)}.statedot.ok{background:var(--blue)}
+
+.keyhint{margin:1.6rem 0 0;font-size:.78rem;color:var(--muted)}
+.keyhint kbd{font-family:ui-monospace,monospace;font-size:.74rem;border:1px solid var(--line);border-radius:4px;padding:.05rem .3rem;margin:0 .12rem}
+
+@media(max-width:900px){
+  .workspace{grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,1fr)}
+  .rail{flex-direction:row;flex-wrap:wrap;border-right:0;border-bottom:1px solid var(--line);position:static}
+  .rail .railgroup{width:100%;margin:.35rem 0 .1rem}
+  .rail button{width:auto}
+  .split.showdetail{grid-template-columns:minmax(0,1fr)}
+  .detail{position:static;max-height:none;border-left:0;border-top:1px solid var(--line)}
+}
+
+/* Semantic filter builder ---------------------------------------------------
+   The population is a server-evaluated predicate; the box beside it is
+   free-text navigation over rows already drawn. They look different because
+   they ARE different: one is shareable authority, the other is personal. */
+#filterbtn{font-size:.84rem;padding:.36rem .8rem;border:1px solid var(--line);border-radius:8px;white-space:nowrap}
+#filterbtn[aria-expanded="true"],#filterbtn.on{color:var(--ink);border-color:var(--green);background:var(--c-card-a,#151a18)}
+#filterbtn .fcount{font-variant-numeric:tabular-nums;color:var(--green);margin-left:.4em}
+
+.filterpanel{border-bottom:1px solid var(--line);padding:.9rem clamp(.8rem,2.4vw,1.6rem);background:var(--c-card-b,#0f1312);display:flex;flex-direction:column;gap:.8rem}
+.filterpanel[hidden]{display:none}
+.fgroup{display:flex;flex-wrap:wrap;align-items:baseline;gap:.4rem}
+.fgroup > .flabel{font-size:.68rem;letter-spacing:.13em;text-transform:uppercase;color:var(--muted);flex:0 0 6.5rem}
+.fchip{font-size:.78rem;padding:.22rem .6rem;border:1px solid var(--line);border-radius:999px;color:var(--muted);background:transparent}
+.fchip[aria-pressed="true"]{color:var(--ink);border-color:var(--green);background:color-mix(in srgb,var(--green) 14%,transparent)}
+.frow{display:flex;flex-wrap:wrap;align-items:center;gap:.6rem;border-top:1px solid var(--line);padding-top:.7rem}
+.frow .receipt{font-size:.79rem;color:var(--muted);font-variant-numeric:tabular-nums}
+.frow .receipt b{color:var(--ink)}
+.frow .warn{color:var(--amber)}
+.fsave{font-size:.8rem;padding:.3rem .7rem;border:1px solid var(--line);border-radius:8px}
+.fviews{display:flex;flex-wrap:wrap;gap:.35rem;align-items:center}
+.fview{font-size:.78rem;padding:.22rem .55rem;border:1px solid var(--line);border-radius:999px;color:var(--muted)}
+.fview:hover{color:var(--ink)}
+.fview .x{margin-left:.45em;opacity:.55}
+.ftoken{font-family:ui-monospace,monospace;font-size:10.8px;color:var(--muted);overflow-wrap:anywhere;max-width:100%}
+
+/* Typed action previews in the detail plane -------------------------------- */
+.dact{display:flex;flex-direction:column;gap:.3rem;margin-top:.1rem}
+.dact-row{display:grid;grid-template-columns:auto minmax(0,1fr);gap:.5rem;align-items:baseline;padding:.32rem 0;border-bottom:1px solid var(--line)}
+.dact-row:last-child{border-bottom:0}
+.dact-row .aname{font-size:.85rem;color:var(--ink)}
+.dact-row.off .aname{color:var(--muted)}
+.dact-row .areason{grid-column:1 / -1;font-size:.78rem;color:var(--muted);line-height:1.45}
+.dact-row .amark{font-family:ui-monospace,monospace;font-size:10.6px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);white-space:nowrap}
+.dact-row.on .amark{color:var(--green)}
+.dact-row.off .amark{color:var(--amber)}
+.actbtn{font-size:.8rem;padding:.16rem .55rem;border:1px solid var(--line);border-radius:6px}
+.actbtn:hover{border-color:var(--green);color:var(--ink)}
+.fchip .fn{margin-left:.45em;font-variant-numeric:tabular-nums;opacity:.55;font-size:.9em}
+.fchip.fmore{border-style:dashed;color:var(--muted)}
+
+/* Command palette ---------------------------------------------------------- */
+/* An author display beats the UA's [hidden]{display:none}, so without this
+   the closed palette kept covering the page -- intercepting clicks and, at
+   deep scroll offsets, compositing the whole viewport to black. */
+.cmdk[hidden]{display:none}
+.cmdk{position:fixed;inset:0;z-index:60;display:flex;align-items:flex-start;justify-content:center;
+  padding:10vh 1rem 0;background:color-mix(in srgb,var(--c-bg,#080a09) 55%,transparent);backdrop-filter:blur(3px)}
+.cmdk-card{width:min(38rem,100%);background:var(--c-card-a,#151a18);border:1px solid var(--c-hairline,#3d4643);
+  border-radius:14px;overflow:hidden;box-shadow:0 22px 60px -22px rgba(0,0,0,.75)}
+.cmdk-head{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;border-bottom:1px solid var(--line)}
+#cmdk-input{width:100%;font:inherit;font-size:1rem;color:var(--ink);background:transparent;border:0;
+  border-bottom:1px solid var(--line);padding:.9rem 1.05rem}
+#cmdk-input:focus{outline:none}
+.cmdk-list{max-height:46vh;overflow:auto;padding:.35rem}
+#cmdk-close{margin-right:.55rem;padding:.35rem .65rem;border-radius:8px;font-size:1.15rem;line-height:1}
+#cmdk-close:focus-visible{outline:2px solid var(--green);outline-offset:1px}
+.cmdk-sec{padding:.5rem .8rem .2rem;font-size:.66rem;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+.cmdk-item{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:.7rem;align-items:baseline;
+  padding:.5rem .8rem;border-radius:8px;cursor:pointer}
+.cmdk-item .ct{color:var(--ink);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cmdk-item .cm{font-family:ui-monospace,monospace;font-size:10.8px;color:var(--muted);white-space:nowrap}
+.cmdk-item.sel{background:var(--c-hover,#1a201e);box-shadow:inset 2px 0 0 var(--green)}
+.cmdk-item[aria-selected="true"]{background:var(--c-hover,#1a201e);box-shadow:inset 2px 0 0 var(--green)}
+.cmdk-item.refused .ct{color:var(--muted)}
+.cmdk-item.refused .cm{color:var(--amber)}
+.cmdk-item .creason{grid-column:1 / -1;font-size:.76rem;color:var(--muted);line-height:1.4;display:none}
+.cmdk-item.sel .creason{display:block}
+.cmdk-empty{padding:1rem .8rem;color:var(--muted);font-size:.9rem}
+.cmdk-hint{margin:0;padding:.5rem .9rem;border-top:1px solid var(--line);font-size:.74rem;color:var(--muted)}
+.cmdk-hint kbd{font-family:ui-monospace,monospace;font-size:.72rem;border:1px solid var(--line);border-radius:4px;padding:.03rem .28rem;margin-right:.15rem}
+
+#displaybtn{font-size:.84rem;padding:.36rem .8rem;border:1px solid var(--line);border-radius:8px;white-space:nowrap}
+#displaybtn[aria-expanded="true"]{color:var(--ink);border-color:var(--c-hairline,#3d4643);background:var(--c-card-a,#151a18)}
+
+/* Honest render cap: the expander names exactly what is withheld. */
+.groupmore td{padding:.3rem .75rem;border-bottom:1px solid var(--line)}
+.groupmore button{font-size:.8rem;color:var(--muted);border:1px dashed var(--line);border-radius:7px;padding:.3rem .7rem;width:100%;text-align:center}
+.groupmore button:hover{color:var(--ink);border-color:var(--c-hairline,#3d4643)}
+
+/* Density is personal display state; compact tightens the table only. */
+:root[data-density="compact"] .worktable th,
+:root[data-density="compact"] .worktable td{padding:.4rem .6rem;font-size:.78rem}
+:root[data-density="compact"] .worktable .modpill{font-size:.64rem}
+
+/* ==========================================================================
+   Design pass -- quiet, dense, product-grade.
+   --------------------------------------------------------------------------
+   Every colour here is a token or a mix of tokens: the accent switch and the
+   palette sweeps depend on no literal ever landing beside them. The moves are
+   Linear's, the authority semantics are ours: the title is the only thing at
+   full contrast, chrome holds still, and state is a dot plus a word, never a
+   coloured shout.
+   ========================================================================== */
+
+/* Panels breathe; scrollbars whisper. */
+.panes,.detail,.rail,.cmdk-list{scrollbar-width:thin;scrollbar-color:var(--c-hairline,#3d4643) transparent}
+.panes::-webkit-scrollbar,.detail::-webkit-scrollbar,.rail::-webkit-scrollbar,.cmdk-list::-webkit-scrollbar{width:8px}
+.panes::-webkit-scrollbar-thumb,.detail::-webkit-scrollbar-thumb,.rail::-webkit-scrollbar-thumb,.cmdk-list::-webkit-scrollbar-thumb{background:var(--c-hairline,#3d4643);border-radius:99px}
+.panes::-webkit-scrollbar-track,.detail::-webkit-scrollbar-track{background:transparent}
+
+/* The location bar is one quiet line. */
+.locbar{gap:.7rem;padding:.6rem clamp(.8rem,2.4vw,1.6rem)}
+.crumbs{font-size:.85rem;letter-spacing:.01em}
+.crumbs b{font-weight:600}
+.crumbs .sep{opacity:.35;padding:0 .3rem}
+.popcount{letter-spacing:.02em}
+
+/* Rail: section labels quieter, active row calmer, counts aligned. */
+.rail .railgroup{font-size:.64rem;letter-spacing:.16em;margin:1rem 0 .35rem}
+.rail button{font-size:.86rem;padding:.4rem .6rem}
+.rail button .rcount{font-size:.74rem;letter-spacing:.02em}
+.rail .rdot{width:.44rem;height:.44rem;opacity:.4}
+.rail button.active .rdot{opacity:.9;background:var(--green)}
+
+/* The table is the product. Sticky header, banded group heads, one-contrast
+   titles, numerals that line up. */
+.tablewrap{border:1px solid var(--line);border-radius:12px;overflow:hidden;overflow-x:auto}
+.tablewrap table{border:0;border-radius:0}
+.worktable thead th{position:sticky;top:0;z-index:3;background:var(--c-card-a,#151a18);
+  font-size:.64rem;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);
+  border-bottom:1px solid var(--c-hairline,#3d4643);padding:.5rem .75rem}
+.worktable .grouphead th{position:sticky;top:1.72rem;z-index:2;
+  background:color-mix(in srgb,var(--c-card-a,#151a18) 88%,var(--c-bg,#080a09));
+  font-size:.7rem;letter-spacing:.13em;text-transform:uppercase;color:var(--ink);
+  border-bottom:1px solid var(--line);padding:.45rem .75rem}
+.worktable .grouphead th span{color:var(--muted);font-weight:500;margin-left:.5em;font-variant-numeric:tabular-nums}
+.worktable td{border-bottom:1px solid color-mix(in srgb,var(--line) 55%,transparent)}
+.worktable td.c-eta,.worktable td.c-prio,.worktable .tpct{font-variant-numeric:tabular-nums}
+.worktable tr[data-row]:hover td{background:color-mix(in srgb,var(--c-hover,#1a201e) 70%,transparent)}
+.worktable tr[data-row].sel td{background:var(--c-card-a,#151a18)}
+.worktable td.c-id{opacity:.85}
+
+/* A running dot breathes; nothing else moves. */
+@media (prefers-reduced-motion: no-preference){
+  .statedot.run{animation:dotbreathe 2.6s ease-in-out infinite}
+  @keyframes dotbreathe{0%,100%{box-shadow:0 0 0 0 color-mix(in srgb,var(--green) 45%,transparent)}50%{box-shadow:0 0 0 4px transparent}}
+}
+
+/* Detail plane: plane titles as quiet rules, values legible. */
+.detail h2{font-size:1.05rem;letter-spacing:-.01em}
+.dplane{padding-top:.8rem}
+.dplane > h3{font-size:.63rem;letter-spacing:.16em}
+.dfields{font-size:.85rem;row-gap:.3rem}
+.dfields dt{font-size:.8rem}
+
+/* Overview metrics: numerals carry it. */
+.metric b{font:600 2.1rem/1.1 ui-sans-serif,system-ui,sans-serif;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.metric small{font-size:.72rem;letter-spacing:.12em;text-transform:uppercase}
+
+/* Panels that open downward feel attached, not stacked. */
+.filterpanel{box-shadow:inset 0 6px 8px -8px rgba(0,0,0,.5)}
+
+/* Empty states explain, they do not apologise. */
+.empty{font-size:.92rem;line-height:1.55}
+
+/* Operational readability floor. Dense does not mean sub-legible: controls and
+   state-bearing copy stay at 14px; tertiary labels, ids, and source receipts
+   may step down once, to 12px. */
+nav .accent .meta,
+.rail .railgroup,
+.rail button .rcount,
+.popcount,
+.metric small,
+.live .staleflag,
+.worktable thead th,
+.worktable .grouphead th,
+.worktable .c-id,
+.worktable td.c-id,
+.worktable .modpill,
+.worktable .tpct,
+.detail .did,
+.dplane > h3,
+.drel,
+.drel .rkind,
+.attn-list .ai,
+.keyhint,
+.keyhint kbd,
+.fgroup > .flabel,
+.frow .receipt,
+.ftoken,
+.dact-row .amark,
+.cmdk-sec,
+.cmdk-item .cm,
+.cmdk-hint,
+.cmdk-hint kbd { font-size: .75rem; }
+
+nav .accent button,
+.rail button,
+.crumbs,
+#find,
+.board-read-alert,
+#filterbtn,
+#displaybtn,
+.live .ls,
+.live .lm,
+.prov,
+.worktable,
+.worktable td,
+.dfields,
+.dnote,
+.attn-plane .why,
+.fchip,
+.fsave,
+.fview,
+.dact-row .aname,
+.dact-row .areason,
+.actbtn,
+.cmdk-item,
+.cmdk-item .creason,
+.cmdk-empty,
+.groupmore button { font-size: .875rem; }
+
+.gnode text,
+.ghead text { font-size: 14px; }
+.gnode .gkind,
+.ghead .gkind { font-size: 12px; }
+
+.worktable tr.grouphead th,
+.worktable tr.grouphead th span { font-size: .75rem; }
+
+:root[data-density="compact"] .worktable td { font-size: .875rem; }
+:root[data-density="compact"] .worktable .modpill { font-size: .75rem; }
+
+/* COORD Cockpit visual contract -------------------------------------------
+   Geometry is intentionally quiet: black ground, layered graphite surfaces,
+   hairline separation, blue interaction, and state colour only where state is
+   actually being communicated. */
+button,input{font-family:inherit}
+button{min-height:34px;padding:0 11px;border-radius:8px;font-size:13px;font-weight:540}
+button:hover{border-color:rgba(255,255,255,.13);background:#10131a}
+button:focus-visible,
+input:focus-visible,
+.worktable tr[data-row]:focus-visible,
+.attn-list li:focus-visible{outline:2px solid var(--accent-strong);outline-offset:1px}
+
+.workspace{grid-template-columns:216px minmax(0,1fr);background:#000}
+.rail{gap:2px;padding:12px 9px;background:#07080b;border-color:rgba(255,255,255,.07)}
+.rail .railgroup{margin:13px 8px 5px;padding:0;color:var(--faint);font-size:12px;letter-spacing:.09em;font-weight:650}
+.rail button{min-height:36px;padding:0 10px;border:0;border-radius:7px;color:var(--muted);font-size:14px}
+.rail button:hover{background:#10131a;color:var(--ink)}
+.rail button.active{border:0;background:#10131a;color:var(--ink);box-shadow:inset 2px 0 0 var(--accent)}
+.rail button.active .rdot{background:var(--accent)}
+.rail button .rcount{color:var(--faint);font-size:12px}
+.rail button.active .rcount{color:var(--muted)}
+.rail .rdot{width:5px;height:5px}
+
+.stage{background:#000}
+.locbar{min-height:52px;gap:8px;padding:8px 16px;background:#07080b;border-color:rgba(255,255,255,.07);flex-wrap:nowrap}
+.crumbs{flex:0 1 auto;color:var(--faint);font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.crumbs b{color:var(--ink);font-weight:590}
+.findwrap{flex:1 1 260px;max-width:560px;margin-left:auto}
+#find{height:34px;padding:0 11px;border-color:rgba(255,255,255,.07);border-radius:8px;background:#0b0d12;color:var(--ink);font-size:13px}
+#find::placeholder{color:var(--faint)}
+#find:focus{border-color:rgba(94,157,255,.62);outline:2px solid rgba(94,157,255,.2);outline-offset:0}
+#filterbtn,#displaybtn{height:34px;min-height:34px;padding:0 11px;border-color:rgba(255,255,255,.07);background:#0b0d12;color:var(--muted);font-size:14px}
+#filterbtn:hover,#displaybtn:hover{border-color:rgba(255,255,255,.13);color:var(--ink)}
+#filterbtn[aria-expanded="true"],#filterbtn.on,#displaybtn[aria-expanded="true"]{border-color:rgba(94,157,255,.48);background:#10131a;color:var(--ink)}
+#filterbtn .fcount{color:var(--accent-strong)}
+.popcount{color:var(--faint);font-size:11px}
+.board-read-alert{padding:9px 16px;background:rgba(242,184,75,.06);border-color:rgba(242,184,75,.26);font-size:14px}
+
+.filterpanel{gap:10px;padding:12px 16px;background:#0b0d12;border-color:rgba(255,255,255,.07);box-shadow:0 16px 40px rgba(0,0,0,.28)}
+.fgroup{gap:6px}
+.fgroup>.flabel{flex-basis:82px;color:var(--faint);font-size:11px;letter-spacing:.08em}
+.fchip,.fview{min-height:32px;padding:0 10px;border-color:rgba(255,255,255,.07);border-radius:7px;background:#07080b;color:var(--muted)}
+.fchip:hover,.fview:hover{border-color:rgba(255,255,255,.13);color:var(--ink)}
+.fchip[aria-pressed="true"]{border-color:rgba(94,157,255,.48);background:rgba(94,157,255,.1);color:var(--ink)}
+.frow{border-color:rgba(255,255,255,.07)}
+.fsave{min-height:32px;border-color:rgba(255,255,255,.07);border-radius:7px;background:#07080b}
+
+.panes{padding:16px clamp(12px,2.4vw,24px) 48px}
+.metrics{grid-template-columns:repeat(5,minmax(120px,1fr));gap:8px}
+.metric,.card{background:#0b0d12;border-color:rgba(255,255,255,.07);border-radius:10px;box-shadow:0 12px 32px rgba(0,0,0,.16)}
+.metric{min-height:96px;padding:15px 16px}
+.metric b{color:var(--ink);font-size:28px;font-weight:680;font-variant-numeric:tabular-nums;letter-spacing:-.025em}
+.metric small{display:block;margin-top:9px;color:var(--faint);font-size:12px;letter-spacing:.07em;font-weight:620}
+.grid,.twoup{gap:8px;margin-top:8px}
+.grid{grid-template-columns:repeat(auto-fill,minmax(280px,1fr))}
+.card{padding:15px 16px}
+.card h3{margin:0 0 10px;color:var(--ink);font-size:14px;font-weight:620;letter-spacing:-.005em}
+.meta{color:var(--faint)}.prov{color:var(--faint);font-size:12px}
+.livelist .live{min-height:48px;padding:10px 0;border-color:rgba(255,255,255,.045)}
+.live .lt{font-size:14px}.live .ls,.live .lm{font-size:14px;line-height:1.35}
+.live .lbar,.tbar{background:rgba(255,255,255,.07)}
+
+.tablewrap{margin-top:8px;border-color:rgba(255,255,255,.07);border-radius:9px;background:#07080b}
+.worktable{background:#07080b;font-size:14px}
+.worktable th,.worktable td{height:48px;padding:0 11px;border-color:rgba(255,255,255,.045)}
+.worktable thead th{height:34px;padding:0 11px;background:#0b0d12;border-color:rgba(255,255,255,.07);color:var(--faint);font-size:12px;letter-spacing:.075em}
+.worktable .grouphead th{top:34px;height:32px;padding:0 11px;background:#10131a;border-color:rgba(255,255,255,.07);color:var(--muted);font-size:12px;letter-spacing:.075em}
+.worktable tr.grouphead.running th{color:var(--green)}
+.worktable tr.grouphead.attention th,.worktable tr.grouphead.other th{color:var(--amber)}
+.worktable tr[data-row]:hover td{background:#10131a}
+.worktable tr[data-row].sel{box-shadow:inset 2px 0 0 var(--accent)}
+.worktable tr[data-row].sel td{background:rgba(94,157,255,.08)}
+.worktable td.c-work{font-weight:560}
+.worktable td.c-module,.worktable td.c-note,.worktable td.c-eta,.worktable td.c-res{color:var(--muted)}
+.worktable td.c-id{color:var(--faint)}
+.modpill{padding:2px 6px;border-color:rgba(255,255,255,.07);background:#10131a;color:var(--muted);font-size:12px;letter-spacing:.04em}
+.worktable td.c-id{font-size:12px}
+.tbar i{background:var(--accent)}
+.tbar.neg i{background:var(--red)}.tbar.warn i{background:var(--amber)}
+.statedot.ok{background:var(--green)}
+:root[data-density="compact"] .worktable th,:root[data-density="compact"] .worktable td{height:40px;padding:0 9px}
+
+.detail{width:100%;padding:18px 18px 40px;background:#0b0d12;border-color:rgba(255,255,255,.07)}
+.split.showdetail{grid-template-columns:minmax(0,1fr) minmax(320px,380px)}
+.detail h2{padding-right:44px;color:var(--ink);font-size:17px;font-weight:640;line-height:1.3}
+.detail .did{color:var(--faint)}
+.detail .dclose{top:12px;right:12px;min-height:32px;padding:0 9px;border:1px solid rgba(255,255,255,.07);background:#10131a;color:var(--muted)}
+.dplane{margin-top:16px;padding-top:14px;border-color:rgba(255,255,255,.07)}
+.dplane>h3{color:var(--faint);font-size:11px;letter-spacing:.08em}
+.dfields{font-size:13px}.dfields dt{color:var(--faint);font-size:12px}.dnote{font-size:13px}
+.drel{border-color:rgba(255,255,255,.045)}
+.dact-row{min-height:44px;border-color:rgba(255,255,255,.045)}
+.dact-row.on .amark{color:var(--accent-strong)}
+.actbtn:hover{border-color:var(--accent);color:var(--ink)}
+
+.attn-plane{margin-bottom:18px}
+.attn-list{border-color:rgba(255,255,255,.07);border-radius:9px;background:#07080b}
+.attn-list li{min-height:48px;padding:0 11px;border-color:rgba(255,255,255,.045)}
+.attn-list li:hover{background:#10131a}
+.attn-list li.sel{background:rgba(94,157,255,.08);box-shadow:inset 2px 0 0 var(--accent)}
+
+.badge{border-color:rgba(255,255,255,.07);background:#10131a;font-size:11px;letter-spacing:.06em}
+.gnode circle{fill:var(--accent)}
+.ghead rect{fill:#10131a;stroke:rgba(255,255,255,.12)}
+.gedge{color:var(--muted)}
+.gwrap{padding:8px;border:1px solid rgba(255,255,255,.045);border-radius:8px;background:#07080b}
+.empty{border-color:rgba(255,255,255,.07);border-radius:9px;background:#07080b;color:var(--muted)}
+
+.cmdk{padding-top:min(14vh,112px);background:rgba(0,0,0,.68);backdrop-filter:blur(12px)}
+.cmdk-card{width:min(620px,calc(100% - 24px));border-color:rgba(255,255,255,.1);border-radius:12px;background:#0b0d12;box-shadow:0 28px 100px rgba(0,0,0,.7)}
+.cmdk-head{min-height:54px;border-color:rgba(255,255,255,.07)}
+#cmdk-input{height:54px;padding:0 16px;border:0;background:#0b0d12;font-size:15px}
+#cmdk-close{width:34px;height:34px;min-height:34px;margin-right:10px;padding:0;border:1px solid rgba(255,255,255,.07);background:#10131a;color:var(--muted)}
+#cmdk-close:focus-visible{outline-color:var(--accent-strong)}
+.cmdk-list{padding:6px;max-height:min(52vh,440px)}
+.cmdk-sec{padding:9px 10px 5px;color:var(--faint);font-size:11px;letter-spacing:.08em}
+.cmdk-item{min-height:44px;padding:8px 10px;border-radius:7px;font-size:13px}
+.cmdk-item.sel,.cmdk-item[aria-selected="true"]{background:#10131a;box-shadow:inset 2px 0 0 var(--accent)}
+.cmdk-hint{padding:9px 12px;border-color:rgba(255,255,255,.07);color:var(--faint)}
+.cmdk-hint kbd,.keyhint kbd{border-color:rgba(255,255,255,.1);background:#10131a;color:var(--muted)}
+.dact-row .amark,.cmdk-item .cm,.cmdk-hint kbd,.keyhint kbd{font-family:inherit}
+
+.panes,.detail,.rail,.cmdk-list{scrollbar-color:rgba(255,255,255,.13) transparent}
+.panes::-webkit-scrollbar-thumb,.detail::-webkit-scrollbar-thumb,.rail::-webkit-scrollbar-thumb,.cmdk-list::-webkit-scrollbar-thumb{background:rgba(255,255,255,.13)}
+
+@media(max-width:1100px){
+  .metrics{grid-template-columns:repeat(3,minmax(120px,1fr))}
+  .split.showdetail{grid-template-columns:minmax(0,1fr) minmax(300px,340px)}
+}
+
+@media(max-width:900px){
+  .workspace{grid-template-columns:minmax(0,1fr);grid-template-rows:44px minmax(0,1fr)}
+  .rail{display:flex;flex-direction:row;flex-wrap:nowrap;gap:3px;padding:5px 8px;overflow-x:auto;overflow-y:hidden;border:0;border-bottom:1px solid rgba(255,255,255,.07)}
+  .rail .railgroup{display:none}
+  .rail button{flex:0 0 auto;min-height:33px;padding:0 10px}
+  .rail button.active{box-shadow:inset 0 -2px 0 var(--accent)}
+  .rail button .rcount{margin-left:3px}
+  .locbar{min-height:52px}
+  .split.showdetail{grid-template-columns:minmax(0,1fr)}
+  .detail{position:absolute;z-index:35;inset:52px 0 0 auto;width:min(420px,100%);max-height:none;border-top:1px solid rgba(255,255,255,.07);border-left:1px solid rgba(255,255,255,.07);box-shadow:-24px 0 70px rgba(0,0,0,.55)}
+}
+
+@media(max-width:620px){
+  .workspace{grid-template-rows:44px minmax(0,1fr)}
+  .workspace,.stage,.split,.panes{width:100%;max-width:100vw;min-width:0}
+  .rail button .rcount,.rail .rdot{display:none}
+  .locbar{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:7px;min-height:91px;padding:8px 10px}
+  .crumbs{grid-column:1/2}
+  .popcount{grid-column:2/4;grid-row:1;text-align:right}
+  .findwrap{grid-column:1;grid-row:2;max-width:none;margin:0}
+  #filterbtn{grid-column:2;grid-row:2}
+  #displaybtn{grid-column:3;grid-row:2}
+  .locbar:has(#filterbtn){padding-bottom:8px}
+  .panes{padding:12px 10px 36px}
+  .metrics{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
+  .metric{min-height:82px;padding:12px}.metric b{font-size:24px}
+  .metric small{margin-top:7px}
+  .twoup,.grid{grid-template-columns:minmax(0,1fr)}
+  .card{padding:13px}
+  .detail{inset:91px 0 0;width:100%;padding:16px 14px 32px}
+  .filterpanel{position:absolute;z-index:32;top:91px;right:0;left:0;max-height:calc(100dvh - 193px);overflow:auto}
+  .fgroup{align-items:flex-start}.fgroup>.flabel{flex:0 0 100%;margin-top:3px}
+  .cmdk{padding:68px 0 0;align-items:stretch}
+  .cmdk-card{width:100%;max-height:calc(100dvh - 68px);border-right:0;border-left:0;border-radius:12px 12px 0 0}
+  .cmdk-list{max-height:calc(100dvh - 176px)}
+}
+
+/* Work layout parity: every mode renders the same visibleWorkRows() set. The
+   Board is the default and owns its scroll planes, so the document never grows
+   sideways and the lane scrollbar is reachable even when one lane is long. */
+body[data-view="work"][data-work-layout="board"] .panes{display:grid;overflow:hidden;padding-bottom:16px}
+body[data-view="work"][data-work-layout="board"] #work.active{height:100%;min-width:0;min-height:0}
+.work-board-shell{display:flex;flex-direction:column;gap:8px;width:100%;max-width:100%;height:100%;min-width:0;min-height:0}
+.work-contract{flex:0 0 auto;border:1px solid rgba(255,255,255,.07);border-radius:8px;background:#07080b;color:var(--muted)}
+.work-contract summary{display:flex;align-items:center;gap:8px;min-height:34px;padding:0 10px;list-style:none;cursor:pointer;color:var(--muted);font-size:12px}
+.work-contract summary::-webkit-details-marker{display:none}
+.work-contract summary::before{content:"+";width:13px;color:var(--faint);font:14px ui-monospace,monospace}
+.work-contract[open] summary::before{content:"−"}
+.work-contract summary>span:first-of-type{color:var(--ink);font-weight:590}
+.work-contract-receipt{min-width:0;margin-left:auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--faint)}
+.work-contract-copy{padding:9px 32px 10px;border-top:1px solid rgba(255,255,255,.07)}
+.work-contract-copy p{max-width:78ch;margin:0;color:var(--muted);font-size:12px;line-height:1.5}
+
+.kanban{display:flex;flex:1 1 auto;gap:10px;align-items:stretch;width:100%;max-width:100%;min-width:0;min-height:0;overflow-x:auto;overflow-y:hidden;padding:0 0 8px;overscroll-behavior-inline:contain;scrollbar-color:rgba(255,255,255,.16) transparent}
+.kanban-lane{display:flex;flex:0 0 clamp(266px,21vw,292px);flex-direction:column;min-width:266px;min-height:0;height:100%;padding:9px;border:1px solid rgba(255,255,255,.07);border-radius:9px;background:#07080b;overflow:hidden}
+.kanban-lane>h3{display:flex;flex:0 0 auto;align-items:center;justify-content:space-between;gap:8px;min-height:28px;margin:0 1px 7px;color:var(--muted);font-size:11px;font-weight:620;letter-spacing:.07em;text-transform:uppercase}
+.kanban-lane>h3 span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.kanban-lane>h3 b{color:var(--faint);font-size:11px;font-weight:560;font-variant-numeric:tabular-nums}
+.kanban-lane[data-lane="running"]>h3 b{color:var(--green)}
+.kanban-lane[data-lane="blocked"]>h3 b,.kanban-lane[data-lane="attention"]>h3 b{color:var(--red)}
+.kanban-lane[data-lane="next"]>h3 b{color:var(--amber)}
+.kanban-cards{display:flex;flex:1 1 auto;flex-direction:column;gap:6px;min-height:0;overflow-y:auto;padding-right:3px;scrollbar-color:rgba(255,255,255,.13) transparent}
+.workcard{display:grid;grid-template-rows:auto auto auto;gap:7px;flex:0 0 auto;width:100%;height:auto;min-height:76px;padding:9px 10px;text-align:left;border:1px solid rgba(255,255,255,.07);border-radius:8px;background:#0b0d12;color:var(--ink);overflow:hidden}
+.workcard:hover{border-color:rgba(94,157,255,.34);background:#10131a}
+.workcard.sel{border-color:var(--accent);box-shadow:inset 2px 0 0 var(--accent);background:rgba(94,157,255,.08)}
+.workcard:focus-visible{outline:2px solid var(--accent-strong);outline-offset:-2px}
+.workcard-title{display:-webkit-box;overflow:hidden;color:var(--ink);font-size:13px;font-weight:590;line-height:1.3;-webkit-box-orient:vertical;-webkit-line-clamp:2}
+.workcard-byline{display:flex;align-items:center;gap:8px;min-width:0;color:var(--faint);font-size:11px}
+.workcard-byline code{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--faint);font:11px ui-monospace,monospace}
+.workcard-owner{display:flex;align-items:center;gap:4px;min-width:0;max-width:48%;margin-left:auto;color:var(--muted)}
+.workcard-owner>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.workcard-owner .mark{width:12px;height:12px}
+.workcard-signals{display:flex;align-items:center;gap:7px;min-height:11px;color:var(--faint)}
+.workcard-signals .statedot{width:6px;height:6px}
+.workcard-priority{padding:1px 4px;border:1px solid rgba(255,255,255,.07);border-radius:4px;color:var(--amber);font:10px ui-monospace,monospace;line-height:1.2}
+.workcard progress{appearance:none;-webkit-appearance:none;width:42px;height:3px;border:0;border-radius:99px;background:rgba(255,255,255,.07);overflow:hidden}
+.workcard progress::-webkit-progress-bar{background:rgba(255,255,255,.07)}
+.workcard progress::-webkit-progress-value{background:var(--accent)}
+.workcard progress::-moz-progress-bar{background:var(--accent)}
+.workcard-freshness{position:relative;width:11px;height:11px;margin-left:auto;border:1px solid var(--faint);border-radius:50%;opacity:.8}
+.workcard-freshness::after{content:"";position:absolute;top:2px;left:4px;width:1px;height:4px;background:var(--faint);transform-origin:bottom;transform:rotate(-35deg)}
+.workcard-freshness.stale{border-color:var(--red)}.workcard-freshness.stale::after{background:var(--red)}
+.kanban-more{flex:0 0 auto;width:100%;margin-top:7px;color:var(--muted);border:1px dashed rgba(255,255,255,.1);background:transparent}
+:root[data-density="compact"] .workcard{min-height:68px;padding:7px 9px;gap:5px}
+
+/* Persistent Work modes: semantic population stays outside this switch. */
+.workmodes{display:inline-flex;align-items:center;border:1px solid rgba(255,255,255,.08);border-radius:8px;background:#07080b;overflow:hidden;flex:0 0 auto}
+.workmodes[hidden]{display:none}.workmodes button{min-height:32px;border:0;border-radius:0;padding:0 10px;color:var(--muted);background:transparent}
+.workmodes button+button{border-left:1px solid rgba(255,255,255,.07)}.workmodes button[aria-pressed="true"]{color:var(--ink);background:#10131a;box-shadow:inset 0 -2px 0 var(--accent)}
+.workmodes kbd{margin-left:5px;color:var(--faint);font:11px ui-monospace,monospace}
+.timeline-receipt{margin-bottom:10px;padding:9px 11px;border:1px solid rgba(255,255,255,.07);border-radius:8px;background:#07080b;color:var(--muted);font-size:12px;line-height:1.45}
+.timeline-day{margin-bottom:14px}.timeline-day>h3{display:flex;justify-content:space-between;margin:0;padding:8px 10px;color:var(--muted);font-size:12px;letter-spacing:.06em;border-bottom:1px solid rgba(255,255,255,.07)}
+.timeline-day>div{display:grid}.timeline-event{display:grid;grid-template-columns:76px minmax(130px,.8fr) minmax(110px,.7fr) minmax(180px,1.4fr);gap:10px;align-items:center;width:100%;min-height:42px;padding:7px 10px;text-align:left;border:0;border-bottom:1px solid rgba(255,255,255,.045);border-radius:0;background:#07080b;color:var(--ink)}
+.timeline-event:hover{background:#10131a}.timeline-event.sel{background:rgba(94,157,255,.08);box-shadow:inset 2px 0 0 var(--accent)}.timeline-event time,.timeline-event span,.timeline-event code{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--faint);font-size:12px}.timeline-event b{font-size:13px;font-weight:590}
+.gnode.selectable{cursor:pointer}.gnode.selectable:focus-visible{outline:none}.gnode.selectable:focus-visible circle,.gnode.selectable.sel circle{stroke:var(--accent);stroke-width:3}.gnode.graph-only{opacity:.58}.gnode.graph-only .gkind{fill:var(--faint)}
+@media(max-width:600px){
+  .locbar{flex-wrap:wrap;padding:8px 10px}.crumbs{order:1;max-width:calc(100% - 90px)}.findwrap{order:2;flex:1 1 100%;max-width:none}.workmodes{order:3;width:100%}.workmodes button{flex:1 1 0;padding:0 6px}#filterbtn,#displaybtn{order:4}.popcount{order:5;margin-left:auto}
+  body[data-view="work"] .locbar{grid-template-rows:auto auto auto;min-height:132px}
+  body[data-view="work"] .workmodes{grid-column:1/-1;grid-row:3}
+  body[data-view="work"] .filterpanel{top:132px;max-height:calc(100dvh - 234px)}
+  body[data-view="work"][data-work-layout="board"] .panes{padding:10px 10px 8px}
+  .work-contract summary{padding:0 8px}.work-contract-copy{padding:8px 22px 9px}.work-contract-receipt{max-width:52%}
+  .kanban{gap:8px}.kanban-lane{flex-basis:min(82vw,280px);min-width:min(82vw,280px);padding:8px}.workcard{min-height:72px}
+  .timeline-event{grid-template-columns:62px minmax(0,1fr);gap:4px 8px}.timeline-event span,.timeline-event code{grid-column:2}.timeline-day{overflow:hidden}
+}
+@media(max-width:600px){.stage:has(#workmodes:not([hidden])) .detail{inset:132px 0 0}}
+
+
+/* R4 shared shell owns visible Work navigation; legacy views remain URL and command-palette compatible. */
+.workspace{grid-template-columns:minmax(0,1fr)!important;grid-template-rows:minmax(0,1fr)!important}
+.rail[hidden]{display:none!important}

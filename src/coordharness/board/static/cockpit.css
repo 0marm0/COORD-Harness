@@ -1,0 +1,252 @@
+/* The coordination map. Inherits the board's palette from app.css and adds only
+   what the three views need: a density matrix, a wider graph, and a context
+   reader. Nothing here restates a token app.css already defines. */
+
+.mapbody.continuous-comms .shellbar,
+.mapbody.continuous-comms .shell-subnav,
+.mapbody.continuous-comms #maptabs,
+.mapbody.continuous-comms #global-search { display: none !important; }
+.mapbody.continuous-comms main {
+  display: grid;
+  gap: 1rem;
+  padding: .25rem 0 1rem;
+}
+.mapbody.continuous-comms main > .panel.active { display: grid; }
+.mapbody.continuous-comms #pulse { margin-top: .25rem; }
+.mapbody.continuous-comms.continuous-section-fleet #pulse,
+.mapbody.continuous-comms.continuous-section-pulse #fleet {
+  display: none !important;
+}
+.mapbody.continuous-comms.continuous-section-pulse #pulse { margin-top: 0; }
+.mapbody.continuous-comms .projection-receipt-compact {
+  width: fit-content;
+  max-width: 100%;
+  justify-self: start;
+  background: transparent;
+  box-shadow: none;
+}
+.mapbody.continuous-comms .projection-receipt-compact > summary {
+  min-height: 0;
+  padding: 4px 7px;
+  gap: 7px;
+  font-size: 10.5px;
+  line-height: 1.25;
+}
+.mapbody.continuous-comms .projection-receipt-compact .projection-disclosure {
+  font-size: 10px;
+}
+.mapbody.continuous-comms .projection-receipt-compact .projection-detail {
+  max-width: min(760px, calc(100vw - 2rem));
+}
+.mapbody.continuous-comms .continuous-fleet-label {
+  display: flex;
+  align-items: baseline;
+  gap: .6rem;
+  margin-bottom: .35rem;
+}
+.mapbody.continuous-comms .continuous-fleet-label span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.mapbody .mast { align-items: center; }
+.mapbody .maphead .meta { margin: 0; font-size: .8rem; }
+
+/* Global row navigation --------------------------------------------------- */
+.global-search { position: relative; padding: .75rem clamp(1rem,5vw,5rem) 0; }
+
+/* The twelve lenses stay a native tablist. On narrow screens it is an
+   intentionally scrollable rail, with an explicit cue rather than clipped
+   tabs that look like the complete set. */
+.maptabs-help { display: none; }
+.mapbody #maptabs {
+  max-width: 100%; overscroll-behavior-inline: contain;
+  scroll-snap-type: x proximity; -webkit-overflow-scrolling: touch;
+}
+.mapbody #maptabs button { flex: 0 0 auto; scroll-snap-align: start; }
+
+/* Embedded in the native cockpit, the window supplies its own chrome. Dropping
+   the masthead stops the page stacking a second header inside it. */
+:root[data-embedded="1"] .mapbody .shellbar, :root[data-embedded="1"] .mapbody .maphead { display: none; }
+:root[data-embedded="1"] .mapbody nav { padding-top: .6rem; }
+:root[data-embedded="1"] .mapbody main { padding-top: 1rem; }
+
+/* Read provenance is part of the operational surface, not a transient toast. */
+.map-read-alert, .pulse-refresh-receipt {
+  margin: .75rem clamp(1rem,5vw,5rem) 0; padding: .65rem .8rem;
+  border: 1px solid color-mix(in srgb, var(--amber) 55%, var(--line));
+  border-radius: 9px; background: color-mix(in srgb, var(--amber) 9%, transparent);
+  color: var(--muted);
+}
+.pulse-refresh-receipt { margin: 0 0 .8rem; }
+.map-read-alert[hidden] { display: none; }
+
+/* Fleet matrix ------------------------------------------------------------ */
+/* Column headers are rotated because a vertical's name is far longer than the
+   count beneath it, and a horizontal header would set the column width. */
+.matrix { table-layout: auto; }
+.matrix th.corner { font-size: 11.5px; opacity: .45; white-space: nowrap; }
+.matrix thead th, .matrix tr:first-child th { vertical-align: bottom; }
+.matrix tr:first-child th span { display: inline-block; writing-mode: vertical-rl;
+  transform: rotate(180deg); font-size: 12.1px; letter-spacing: .06em; }
+.matrix th.who { white-space: nowrap; text-transform: none; letter-spacing: 0;
+  font-size: 12px; opacity: .9; }
+.matrix th.who .mark { width: 14px; height: 14px; margin-right: .45em; vertical-align: -2px; }
+.matrix td { text-align: center; font-variant-numeric: tabular-nums; position: relative; }
+.matrix td.c0 { opacity: .18; }
+.matrix td.c b { font-weight: 600; }
+
+/* Weight, not colour alone: a module with recorded running work should be the
+   first thing the eye lands on, and an empty cell should recede rather than read as
+   a zero worth checking. */
+.matrix td.cool { background: color-mix(in srgb, var(--muted) 7%, transparent); }
+.matrix td.warn { background: color-mix(in srgb, var(--amber) 16%, transparent); }
+.matrix td.hot  { background: color-mix(in srgb, var(--green) 20%, transparent); }
+.matrix td.tot, .matrix th.tot { opacity: .55; font-size: 11.5px; }
+.matrix tr:last-child th, .matrix tr:last-child td { opacity: .5; }
+
+.dot { display: inline-block; width: .42em; height: .42em; border-radius: 50%;
+  background: currentColor; opacity: .35; margin-left: .3em; vertical-align: middle; }
+.dot.run { background: var(--green); opacity: 1; box-shadow: 0 0 .5rem var(--green); }
+.dot.stuck { background: var(--amber); opacity: 1; }
+.legend { color: var(--muted); font-size: .74rem; margin: .7rem 0 0;
+  display: flex; align-items: center; gap: .35rem; }
+.legend .dot { margin: 0 .15em 0 .8em; }
+.legend .dot:first-child { margin-left: 0; }
+
+/* Running work, by lane --------------------------------------------------- */
+.lanes { display: grid; grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr));
+  gap: .8rem; margin-top: 1rem; }
+.lane { background: linear-gradient(145deg, var(--c-card-a,#151a18), var(--c-card-b,#0f1312));
+  border: 1px solid var(--line); border-radius: 14px; padding: 1rem; }
+.lane > .meta { display: flex; align-items: center; gap: .45em; margin: 0 0 .7rem;
+  font-size: .76rem; letter-spacing: .04em; text-transform: uppercase; }
+.lane .mark { width: 15px; height: 15px; }
+.wisp { display: grid; gap: .15rem; padding: .55rem 0;
+  border-top: 1px solid color-mix(in srgb, var(--line) 70%, transparent); }
+.wisp b { font-weight: 500; font-size: .87rem; }
+.wisp .meta, .wisp .step { font-size: .74rem; color: var(--muted); }
+.wisp .step { color: color-mix(in srgb, var(--green) 70%, var(--muted)); }
+
+/* Dependency graph -------------------------------------------------------- */
+/* Natural size inside a scroller. Fitting the drawing to the page would
+   rescale the labels with it, which is what made them balloon. */
+.gwrap { overflow-x: auto; }
+.gwrap svg { width: auto; max-width: none; min-width: 0; height: auto; }
+.edge { fill: none; stroke-width: 1.1; }
+/* Containment recedes; a dependency is what you scan for when something is
+   stuck, so it carries the accent and a little more weight. */
+.edge.kin { stroke: var(--muted); opacity: .28; }
+.edge.dep { stroke: var(--green); opacity: .62; stroke-width: 1.4; }
+.edge.dashed { stroke-dasharray: 4 3; stroke: var(--amber); opacity: .8; }
+marker.kin path { fill: var(--muted); opacity: .4; }
+marker.dep path { fill: var(--green); opacity: .7; }
+.keys { display: flex; flex-wrap: wrap; gap: .3rem 1.1rem; align-items: center;
+  margin: .6rem 0 0; font-size: .74rem; color: var(--muted); }
+.keys .key { display: inline-flex; align-items: center; gap: .4em; }
+.keys .key i { font-style: normal; font-variant-numeric: tabular-nums; opacity: .75; }
+.keys .key em { font-style: normal; opacity: .5; }
+.keys .swatch { width: .55em; height: .55em; border-radius: 50%; background: var(--muted); }
+.keys .swatch.run { background: var(--green); }
+.keys .swatch.stuck { background: var(--amber); }
+.keys .swatch.done { background: var(--muted); opacity: .35; }
+.gnode circle, .gnode rect { fill: var(--muted); opacity: .5; }
+.gnode.run circle, .gnode.run rect { fill: var(--green); opacity: 1; }
+.gnode.stuck circle, .gnode.stuck rect { fill: var(--amber); opacity: 1; }
+.gnode.done circle, .gnode.done rect { fill: var(--muted); opacity: .28; }
+.gnode.ghost circle, .gnode.ghost rect { fill: none; stroke: var(--amber); stroke-width: 1.4; stroke-dasharray: 3 2; }
+.gnode text { font-size: 11.5px; fill: var(--ink); opacity: .82; }
+
+/* Context reader ---------------------------------------------------------- */
+.ctxgroups { display: grid; grid-template-columns: repeat(auto-fill, minmax(21rem, 1fr));
+  gap: .8rem; margin-top: .8rem; align-items: start; }
+.note { display: grid; gap: .2rem; padding: .6rem 0;
+  border-top: 1px solid color-mix(in srgb, var(--line) 70%, transparent); }
+.note b { font-weight: 500; font-size: .87rem; }
+.note .meta { font-size: .72rem; }
+.note p { margin: .1rem 0 0; font-size: .82rem; color: color-mix(in srgb, var(--ink) 78%, var(--muted)); }
+
+@media (max-width: 720px) {
+  .maptabs-help {
+    display: block; margin: 0; padding: .5rem .8rem 0;
+    color: var(--muted); font-size: 12px;
+  }
+  .mapbody #maptabs { scrollbar-gutter: auto; }
+  /* app.css hides fourth-and-later cells on every small table. Fleet instead
+     conserves all declared verticals inside its own horizontal scroller. */
+  .mapbody #fleet .matrix th:nth-child(n+4),
+  .mapbody #fleet .matrix td:nth-child(n+4) { display: table-cell; }
+  .mapbody #fleet .matrix { width: max-content; min-width: 100%; }
+  .mapbody #fleet .tablewrap {
+    overflow-x: auto; overscroll-behavior-inline: contain;
+    scrollbar-gutter: stable;
+  }
+  .matrix tr:first-child th span { font-size: 11.0px; }
+  .ctxgroups { grid-template-columns: 1fr; }
+}
+
+/* Detail drawer ----------------------------------------------------------- */
+/* A panel rather than a page: following a dependency should not lose the view
+   you were reading it from. */
+.drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(30rem, 92vw);
+  background: var(--c-panel, #0d1218); border-left: 1px solid var(--line);
+  box-shadow: -2rem 0 4rem #0009; padding: 1.6rem 1.5rem 3rem; overflow-y: auto;
+  transform: translateX(100%); transition: transform .16s ease; z-index: 5; }
+.drawer.open { transform: none; }
+@media (prefers-reduced-motion: reduce) { .drawer { transition: none; } }
+.drawer .close { position: absolute; top: .7rem; right: .8rem; font-size: 1.3rem;
+  line-height: 1; padding: .2rem .55rem; }
+.drawer header { margin: 0 2rem .9rem 0; }
+.drawer h2 { font: 600 1.25rem/1.25 -apple-system, BlinkMacSystemFont, "SF Pro Display",
+  "SF Pro Text", system-ui, sans-serif; margin: .15rem 0 .4rem; }
+.drawer .step { color: color-mix(in srgb, var(--green) 72%, var(--muted));
+  font-size: .85rem; margin: 0; }
+.drawer .why { border-left: 2px solid var(--amber); padding: .1rem 0 .1rem .8rem;
+  margin: .9rem 0; }
+.drawer .why p { margin: .1rem 0; font-size: .84rem; }
+
+.facts { display: grid; grid-template-columns: 6.5rem 1fr; gap: .4rem .8rem;
+  margin: 1rem 0 .4rem; font-size: .84rem; align-items: baseline; }
+.facts dt { color: var(--muted); font-size: .74rem; letter-spacing: .07em;
+  text-transform: uppercase; }
+.facts dd { margin: 0; display: flex; align-items: center; gap: .4em; flex-wrap: wrap; }
+.facts code { font-family: ui-monospace, monospace; font-size: .78rem;
+  background: var(--c-card-b, #0f1312); padding: .1rem .35rem; border-radius: 4px; }
+.facts .ok { color: var(--green); font-size: .76rem; }
+.facts .mark { width: 15px; height: 15px; }
+
+.rel { margin-top: 1.1rem; }
+.rel > .meta { font-size: .72rem; letter-spacing: .09em; text-transform: uppercase;
+  margin: 0 0 .4rem; }
+.chips { display: grid; gap: .3rem; }
+/* Full width and stacked: these are destinations, and a row of truncated pills
+   makes you guess which one you want. */
+.chip { display: grid; grid-template-columns: auto 1fr; gap: .55em; align-items: baseline;
+  text-align: left; width: 100%; padding: .5rem .7rem; font-size: .8rem;
+  border: 1px solid var(--line); border-radius: 9px; background: var(--c-card-b, #0f1312); }
+.chip:hover { border-color: var(--c-hairline, #3d4643); background: var(--c-hover, #1a201e); }
+.chip span { color: var(--muted); font-size: .78rem; }
+.chip.running { border-left: 2px solid var(--green); }
+.chip.blocked, .chip.attention { border-left: 2px solid var(--amber); }
+.chip.done { opacity: .55; }
+
+/* What is currently open, wherever it appears. */
+.current { outline: 1.5px solid var(--green); outline-offset: 1px; border-radius: 4px; }
+.gnode.current circle, .gnode.current rect { stroke: var(--green); stroke-width: 2; }
+
+[data-row], [data-cell], [data-node] { cursor: pointer; }
+[data-row]:focus-visible, [data-cell]:focus-visible, [data-node]:focus-visible {
+  outline: 2px solid var(--green); outline-offset: 1px; }
+
+/* Graph layout picker and vertical bands ---------------------------------- */
+.layoutpick { display: inline-flex; gap: .25rem; margin: 0 0 .2rem; }
+.layoutpick button { font-size: .76rem; padding: .35rem .75rem; }
+.hop-control { display: inline-flex; gap: .25rem; align-items: center; margin: 0 0 .2rem .8rem; }
+.hop-control .meta { margin-right: .15rem; font-size: .72rem; }
+.hop-control button { font-size: .76rem; padding: .35rem .62rem; min-width: 2.1rem; }
+.band rect { fill: color-mix(in srgb, var(--muted) 5%, transparent);
+  stroke: color-mix(in srgb, var(--muted) 12%, transparent); }
+.band text { font-size: 12.1px; fill: var(--muted); letter-spacing: .1em;
+  text-transform: uppercase; }
+.band text tspan { opacity: .55; }
