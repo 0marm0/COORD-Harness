@@ -883,6 +883,17 @@ class SelfDependencyError(WorkRelationInvariantError):
     pass
 
 
+class WorkIdCollisionError(ValueError):
+    """A create asked for a work_id that already belongs to another row.
+
+    Raised from inside the creating transaction, not from a read taken before
+    it. Two sessions picking the same date-and-lane suffix is not exotic -- it
+    is the expected outcome of two agents choosing an id without talking to
+    each other -- and the old shape of this path let the second one overwrite
+    the first while being told it had created the row.
+    """
+
+
 _PARENT_CYCLE_WALK_MAX_DEPTH = 200
 
 
@@ -957,11 +968,23 @@ def _validate_relation_invariants_unlocked(
                 )
 
 
-def _upsert_work_unlocked(conn, work_id: str, fields: dict[str, Any]) -> None:
+def _upsert_work_unlocked(
+    conn, work_id: str, fields: dict[str, Any], *, require_new: bool = False
+) -> bool:
+    """Insert or amend one work row; return True only when a row was inserted.
+
+    ``require_new`` is the create path's guarantee. The default stays an upsert
+    because the amend branch is load-bearing elsewhere -- claim-time
+    born-complete metadata legitimately fills fields on a row that already
+    exists -- and only a caller claiming authorship of a *new* row asks for the
+    collision to be surfaced instead of merged.
+    """
     t = db_now(conn)
     existing = conn.execute(
         "SELECT * FROM work_items WHERE work_id=?", (work_id,)
     ).fetchone()
+    if existing is not None and require_new:
+        raise WorkIdCollisionError(_work_id_collision_message(existing, work_id))
     if existing is None:
         fields = dict(fields)
         _validate_relation_invariants_unlocked(conn, work_id, fields)
@@ -972,11 +995,29 @@ def _upsert_work_unlocked(conn, work_id: str, fields: dict[str, Any]) -> None:
                 continue
             cols.append(key)
             vals.append(value)
-        conn.execute(
-            f"INSERT INTO work_items({','.join(cols)}) VALUES ({','.join('?' * len(vals))})",
-            vals,
-        )
-    elif fields:
+        try:
+            conn.execute(
+                f"INSERT INTO work_items({','.join(cols)}) VALUES ({','.join('?' * len(vals))})",
+                vals,
+            )
+        except sqlite3.IntegrityError as exc:
+            # Belt and braces. The SELECT above runs inside BEGIN IMMEDIATE, so
+            # no writer can land between it and this INSERT; if the primary key
+            # ever does collide anyway, it surfaces as the collision it is
+            # rather than as storage-layer vocabulary. Only the work_id key is
+            # translated -- a foreign key failure is a different bug and keeps
+            # its own error.
+            message = str(exc).lower()
+            if "work_items.work_id" in message or "work_items primary key" in message:
+                raise WorkIdCollisionError(
+                    f"work_id_collision: {work_id!r} already exists; the create was "
+                    "refused and nothing was overwritten"
+                ) from exc
+            raise
+        inserted = True
+    else:
+        inserted = False
+    if existing is not None and fields:
         changed = {
             key: value for key, value in fields.items() if existing[key] != value
         }
@@ -995,6 +1036,20 @@ def _upsert_work_unlocked(conn, work_id: str, fields: dict[str, Any]) -> None:
             " WHERE display_titles.display!=excluded.display",
             (work_id, display, t),
         )
+    return inserted
+
+
+def _work_id_collision_message(existing: sqlite3.Row, work_id: str) -> str:
+    owner = str(existing["assignee"] or "").strip() or "an unrecorded lane"
+    session = str(existing["created_by_session_id"] or "").strip()
+    title = str(existing["title"] or "").strip() or work_id
+    by = f" by session {session}" if session else ""
+    return (
+        f"work_id_collision: {work_id!r} already exists -- {title!r}, owned by "
+        f"{owner}{by}. The create was refused and nothing was overwritten. "
+        "Choose a different work id; to add to the existing row, address it by "
+        "id with the verb for the change you want."
+    )
 
 
 def _public_writer_creation(fields: dict[str, Any]) -> bool:
@@ -1306,6 +1361,34 @@ def upsert_work(conn, work_id: str, **fields) -> str:
         _validate_work_policy_unlocked(conn, work_id, existing, fields)
         _upsert_work_unlocked(conn, work_id, dict(fields))
     return work_id
+
+
+def create_work(conn, work_id: str, **fields) -> bool:
+    """Insert a genuinely new work row, or refuse.
+
+    This is the difference between ``coord create`` and every other writer in
+    here. An upsert that finds the id taken merges into the row it found and
+    the caller cannot tell; a create that finds the id taken has been beaten to
+    it, and the only honest answer is a refusal. The existence check runs
+    inside the same ``BEGIN IMMEDIATE`` transaction as the insert, so a second
+    session cannot slip between them -- which a check taken before the
+    transaction opened could not promise.
+
+    Returns True, the measured outcome of the insert branch, so a caller
+    reporting ``created`` reports what happened rather than what it intended.
+    Raises WorkIdCollisionError when the id is already someone else's row.
+    """
+    bad = set(fields) - _WORK_COLS
+    if bad:
+        raise ValueError(f"unknown work_items columns: {bad}")
+    with tx(conn):
+        existing = conn.execute(
+            "SELECT * FROM work_items WHERE work_id=?", (work_id,)
+        ).fetchone()
+        if existing is not None:
+            raise WorkIdCollisionError(_work_id_collision_message(existing, work_id))
+        _validate_work_policy_unlocked(conn, work_id, existing, fields)
+        return _upsert_work_unlocked(conn, work_id, dict(fields), require_new=True)
 
 
 def apply_legacy_handoff_work(
@@ -2821,6 +2904,25 @@ def _insert_continuation_ready_event(
         "released_claim_id": released_claim_id,
         "work_version": scanned_version,
     }
+    if requeued and released_claim_id:
+        body = (
+            "The typed resume predicate evaluated true and the exact "
+            "blocked work/claim pair was requeued atomically."
+        )
+    elif requeued:
+        # The blocking claim's lease had already expired and been released,
+        # leaving the work item sticky-blocked with no holder. Requeuing it on
+        # its own state is what keeps auto-requeue alive past one lease.
+        body = (
+            "The typed resume predicate evaluated true. The blocking claim's "
+            "lease had already expired and been released, so the unheld work "
+            "item was requeued on its own state."
+        )
+    else:
+        body = (
+            "The typed resume predicate evaluated true. Authority-bearing "
+            "or non-allowlisted blocked work remains blocked."
+        )
     cur = conn.execute(
         "INSERT INTO events(ts,kind,actor,to_selector,work_id,trust,title,body,"
         "refs_json,payload_json,idempotency_key)"
@@ -2830,13 +2932,7 @@ def _insert_continuation_ready_event(
             f"actor:{lane}" if lane in {"claude", "codex"} else None,
             work_id,
             f"Continuation ready: {work_id}",
-            (
-                "The typed resume predicate evaluated true and the exact "
-                "blocked work/claim pair was requeued atomically."
-                if requeued
-                else "The typed resume predicate evaluated true. Authority-bearing "
-                "or non-allowlisted blocked work remains blocked."
-            ),
+            body,
             json.dumps(payload, sort_keys=True),
             f"continuation-ready:{work_id}:{scanned_version}",
         ),
@@ -2856,8 +2952,16 @@ def apply_continuation_ready_transition(
     expected_claim_version: int | None,
     requeue: bool,
 ) -> dict[str, object] | None:
-    if requeue and (not expected_claim_id or expected_claim_version is None):
-        raise ValueError("continuation requeue requires one exact blocked claim")
+    # Either one exact blocked claim to release, or none at all -- never half a
+    # claim. "None at all" is the row whose block outlived its lease: the expiry
+    # sweep released the claim and left the work item sticky-blocked, so there
+    # is no claim to compare against and no holder to disturb. The transaction
+    # below re-checks that emptiness rather than trusting this argument.
+    if requeue and bool(expected_claim_id) != (expected_claim_version is not None):
+        raise ValueError(
+            "continuation requeue takes one exact blocked claim (id and version) "
+            "or neither"
+        )
     try:
         with tx(conn):
             current = conn.execute(
@@ -2889,6 +2993,17 @@ def apply_continuation_ready_transition(
                 or current_claim_version != expected_claim_version
             ):
                 raise _ContinuationCASMismatch
+            if requeue and expected_claim_id is None:
+                # Requeuing an unheld row is only safe while it stays unheld.
+                # A claim acquired between the scan and this transaction makes
+                # someone the owner, and requeuing would take the row out from
+                # under them.
+                if conn.execute(
+                    "SELECT 1 FROM claims WHERE work_id=?"
+                    " AND status IN ('running','paused','blocked') LIMIT 1",
+                    (work_id,),
+                ).fetchone() is not None:
+                    raise _ContinuationCASMismatch
             now = db_now(conn)
             changed = conn.execute(
                 "UPDATE work_items SET continuation_ready_at=?,updated_at=?,"
@@ -2907,7 +3022,7 @@ def apply_continuation_ready_transition(
             )
             if changed.rowcount != 1:
                 raise _ContinuationCASMismatch
-            if requeue:
+            if requeue and expected_claim_id is not None:
                 released = conn.execute(
                     "UPDATE claims SET status='released',"
                     " release_reason='resume_predicate_satisfied',version=version+1"

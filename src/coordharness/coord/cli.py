@@ -568,8 +568,13 @@ def main(argv=None) -> int:
                 _emit({"ok": True, "ended": sid})
 
         elif args.cmd == "create":
-            if _work_row(conn, args.work_id):
-                raise ValueError(f"work_id {args.work_id!r} already exists")
+            # No pre-check here on purpose. The one this replaced ran outside
+            # the write transaction, so two sessions that picked the same
+            # date-and-lane id both read "free", both wrote, and the loser was
+            # told "created": true while its content was overwritten. The
+            # collision is now surfaced by coord_db.create_work from inside the
+            # transaction that does the insert, which is the only place the
+            # answer cannot go stale between the check and the write.
             from .creation_lint import normalize_creation_fields
 
             _register_identity_session(conn, ident)
@@ -608,11 +613,13 @@ def main(argv=None) -> int:
                 fields,
                 source="coord create",
             )
-            coord_db.upsert_work(conn, args.work_id, **normalized)
+            created = coord_db.create_work(conn, args.work_id, **normalized)
             _emit(
                 {
                     "ok": True,
-                    "created": True,
+                    # The measured outcome of the insert, not an assertion that
+                    # one happened.
+                    "created": created,
                     "work_id": args.work_id,
                     "assignee": normalized["assignee"],
                     "done_signal": normalized["done_signal"],

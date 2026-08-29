@@ -248,7 +248,9 @@ def evaluate_continuations(conn, *, root: Path | None = None) -> dict:
         "SELECT w.work_id,w.assignee,w.intent_state,w.blocked_reason_class,"
         " w.resume_predicate_json,w.version,c.claim_id,c.version AS claim_version,"
         " (SELECT COUNT(*) FROM claims bc WHERE bc.work_id=w.work_id"
-        " AND bc.status='blocked') AS blocked_claim_count"
+        " AND bc.status='blocked') AS blocked_claim_count,"
+        " (SELECT COUNT(*) FROM claims hc WHERE hc.work_id=w.work_id"
+        " AND hc.status IN ('running','paused','blocked')) AS held_claim_count"
         " FROM work_items w LEFT JOIN claims c ON c.work_id=w.work_id"
         " AND c.status='blocked'"
         " WHERE intent_state IN ('blocked','paused','queued','planned')"
@@ -278,11 +280,31 @@ def evaluate_continuations(conn, *, root: Path | None = None) -> dict:
             and reason_class in AUTO_REQUEUE_BLOCK_REASON_CLASSES
             and _predicate_can_auto_requeue(predicate)
         )
-        if safe_candidate and (
-            scanned_claim_id is None or int(row["blocked_claim_count"] or 0) != 1
-        ):
-            continue
-        requeue = safe_candidate
+        # A blocked claim is not the fact this decision rests on; a *holder* is.
+        # A block that outlives its ~1h lease is released by the expiry sweep,
+        # which deliberately leaves the work item sticky-blocked -- so the row
+        # stays exactly as blocked as it was while its claim quietly vanishes.
+        # Requiring a still-held blocked claim meant auto-requeue went dark for
+        # every one of those rows, permanently and without a word: nothing else
+        # sets `continuation_ready_at`, so the predicate could come true a
+        # hundred times and no one would hear it.
+        #
+        # So decide on what is actually true now. Exactly one blocked claim:
+        # requeue and release it, as before. No held claim of any kind: nobody
+        # is working this row, so requeue it on its own state, with no claim to
+        # release. Someone else holding it (a running or paused claim): do not
+        # yank the row out from under them -- but still record that the
+        # predicate came true, because silence is the thing being repaired.
+        held_claim_count = int(row["held_claim_count"] or 0)
+        exactly_one_blocked_claim = (
+            scanned_claim_id is not None and int(row["blocked_claim_count"] or 0) == 1
+        )
+        requeue = safe_candidate and (exactly_one_blocked_claim or held_claim_count == 0)
+        if not exactly_one_blocked_claim:
+            # The CAS below compares against the blocked claim it re-reads
+            # inside the transaction; there is none to name here.
+            scanned_claim_id = None
+            scanned_claim_version = None
         lane = str(row["assignee"] or "").strip().lower()
         transition = coord_db.apply_continuation_ready_transition(
             conn,
