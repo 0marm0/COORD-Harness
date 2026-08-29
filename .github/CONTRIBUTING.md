@@ -25,6 +25,20 @@ extra pins the exact reviewed Ruff release so a newly enabled upstream rule cann
 checks disagree with a contributor's clean local run. Upgrade that pin deliberately, together
 with any required lint migration.
 
+## Running everything CI runs
+
+```bash
+scripts/check.sh          # lint, tests, docs, gates, browser suite
+scripts/check.sh --fast   # same, without the browser suite
+```
+
+A green test suite is not a green build. CI lints before it tests, so a change can pass every test
+here and still fail on one rule. This script runs the same checks in the same order, and it is
+honest about two traps: the extraction gate reads Git's *index*, so it refuses to report a result
+while you have unstaged changes rather than printing a clean one that saw none of them; and it
+fails rather than passing quietly if Playwright is missing, because every browser test would
+otherwise skip and a skipped suite is not a passing one.
+
 ## Running tests
 
 ```bash
