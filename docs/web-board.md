@@ -48,6 +48,55 @@ Exact checked-in hashes remain declared in [`assets/provenance.json`](assets/pro
 
 These PNGs are release evidence only because they are synthetic, fixed-clock, hash-pinned, metadata-checked, and linked to source truth in [`assets/provenance.json`](assets/provenance.json).
 
+## Branding
+
+The board is meant to be embedded. A tool that points it at its own `coord.db`
+and frames the panels would otherwise show an operator their own coordination
+data under this project's name, so the name is configuration rather than
+markup:
+
+| Variable | Default | Effect |
+|---|---|---|
+| `COORD_BOARD_BRAND_NAME` | `COORD` | The mark in the shell header, and the product name inside each page's `<title>`. |
+| `COORD_BOARD_BRAND_TAGLINE` | unset | The line under the mark, on every page. Unset keeps each page's own wording. |
+
+```bash
+COORD_BOARD_BRAND_NAME="Northwind" \
+COORD_BOARD_BRAND_TAGLINE="operations desk" \
+  coord-board --db .coordharness/coord.db
+```
+
+The header then reads `Northwind / operations desk`, and the four tabs read
+`Northwind Cockpit · Northwind Board`, `Coordination Intelligence · Northwind`,
+`Northwind Swarm Mesh` and `Northwind Operations Atlas` — the product name is
+substituted inside each title rather than replacing it, so the pages stay
+distinguishable in a tab strip.
+
+What is deliberately not configurable:
+
+- **Anything else on the page.** `coordination`, `coord.db` and
+  `COORDINATION TRAFFIC` name what the board is about, not what it is called.
+  Renaming the product does not rename the domain.
+- **Colour, type and layout.** An operator who wants those is asking for a
+  different thing; the stylesheets are files, and a fork of them is honest
+  where a growing list of theme variables is not.
+- **Per-page taglines.** One lockup, four pages.
+
+Notes for embedders:
+
+- Both values are read once, when the server starts. Changing them takes a
+  restart, which is also what makes the served bytes deterministic for a given
+  process.
+- The value is escaped before it reaches the page, so a name containing markup
+  is shown as text and cannot inject anything.
+- A blank or whitespace-only value means unconfigured, not a blank brand: you
+  get `COORD` back rather than an empty header.
+- A value longer than 64 characters, or one carrying control characters, is
+  refused at startup with a message naming the variable.
+- With neither variable set, the board serves the committed page bytes exactly.
+  That is asserted in `tests/test_board_brand_configuration.py` rather than
+  assumed.
+
 ## Read-only boundary
 
 - Server binding is loopback by default. Non-loopback requires both the

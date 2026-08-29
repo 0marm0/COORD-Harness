@@ -4,11 +4,13 @@ import argparse
 from datetime import datetime, timezone
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import html
 from importlib.resources import files
 import json
 import mimetypes
 import os
 from pathlib import PurePosixPath
+import re
 import sys
 import threading
 import time
@@ -117,6 +119,66 @@ _STATIC_ALLOWLIST = {
     "view-topology.css",
     "shell.css",
 }
+
+# Branding, applied to served HTML rather than baked into it.
+#
+# The board is embeddable: a cockpit that points it at its own database and
+# frames the panels shows an operator their data under this project's name.
+# Three places on each page carry that name -- the document title, the mark,
+# and the line beneath it -- and these three patterns are the whole surface.
+# Nothing else is rewritten, because nothing else on these pages is the brand:
+# `coordination`, `coord.db` and `COORDINATION TRAFFIC` name the subject, not
+# the product, and an operator renaming the product does not rename the domain.
+#
+# Rewriting at serve time rather than templating the files keeps two properties
+# that matter more than elegance. The committed pages stay the pages that ship
+# -- the publication and extraction gates read those bytes, and a template with
+# holes in it would put a placeholder into the repository's public evidence.
+# And the default path is not a substitution with an identity argument: it is
+# no substitution at all, so the unconfigured board serves the committed file
+# object unchanged.
+_BRAND_ELEMENT_RE = re.compile(rb'(<span class="shell-(mark|sub)">)([^<]*)(</span>)')
+_BRAND_TITLE_RE = re.compile(rb"(<title>)([^<]*)(</title>)")
+# Only the default name, only as a whole word, and only inside the title. The
+# four titles differ after the product name -- Cockpit, Swarm Mesh, Operations
+# Atlas -- and a tab strip that lost those suffixes would be four identical
+# tabs, so the name is substituted within each title rather than replacing it.
+_BRAND_TITLE_TOKEN_RE = re.compile(
+    rb"\b" + re.escape(config.BOARD_BRAND_NAME.encode("utf-8")) + rb"\b"
+)
+
+
+def apply_brand(page: bytes, name: str, tagline: str | None) -> bytes:
+    """Return `page` with the operator's brand painted onto it.
+
+    `name` and `tagline` are operator-supplied text on their way into served
+    HTML, so both are escaped here rather than at the point they were read.
+    This is the boundary that matters: a name carrying `<script>` reaches the
+    browser as text in a mark, never as markup, and a product whose entire
+    claim is that it is safe to point at your own database does not get to
+    ship a self-inflicted injection in its own header.
+
+    An unconfigured board -- the default name and no tagline -- gets the exact
+    bytes it was given back, not a rewritten copy that happens to match.
+    """
+    if name == config.BOARD_BRAND_NAME and tagline is None:
+        return page
+    mark = html.escape(name).encode("utf-8")
+    sub = html.escape(tagline).encode("utf-8") if tagline is not None else None
+
+    def _element(match: re.Match[bytes]) -> bytes:
+        replacement = mark if match.group(2) == b"mark" else sub
+        if replacement is None:
+            return match.group(0)
+        return match.group(1) + replacement + match.group(4)
+
+    def _title(match: re.Match[bytes]) -> bytes:
+        # A lambda, not a replacement string: an operator's name is not a
+        # regular-expression template and must not be read as backreferences.
+        renamed = _BRAND_TITLE_TOKEN_RE.sub(lambda _m: mark, match.group(2))
+        return match.group(1) + renamed + match.group(3)
+
+    return _BRAND_TITLE_RE.sub(_title, _BRAND_ELEMENT_RE.sub(_element, page))
 
 
 def _utc_now() -> str:
@@ -376,6 +438,10 @@ class BoardServer(ThreadingHTTPServer):
         usage_account_forwarder: UsageAccountActionForwarder | None = None,
         provider_management_forwarder: ProviderManagementForwarder | None = None,
     ):
+        # Read before the socket is bound, so an unusable brand name is a
+        # startup error and not a traceback on every page request -- and so a
+        # rejected one does not leave a listening socket behind.
+        self.brand = (config.board_brand_name(), config.board_brand_tagline())
         super().__init__(address, handler)
         self.allowed_hosts = allowed_hosts
         self.db_path = db_path
@@ -922,9 +988,16 @@ class BoardHandler(BaseHTTPRequestHandler):
         except (FileNotFoundError, OSError):
             self._send_text(HTTPStatus.NOT_FOUND, "not found")
             return
+        if name.endswith(".html"):
+            # Every page, not a list of four: a page added to the allowlist
+            # later carries the shell and would otherwise be the one panel
+            # still wearing this project's name.
+            raw = apply_brand(raw, *self.server.brand)
         kind = mimetypes.guess_type(name)[0] or "application/octet-stream"
         if kind.startswith("text/") or kind in {"application/javascript"}:
             kind += "; charset=utf-8"
+        # Content-Length is measured from the payload being sent, so a page
+        # that grew or shrank in the rewrite above stays correctly framed.
         self._send(HTTPStatus.OK, raw, kind, security_headers=security_headers)
 
     def do_GET(self) -> None:
@@ -1261,6 +1334,13 @@ def main(argv: list[str] | None = None) -> int:
         # oversized database is not something a caller can be told to fix in
         # three lines, so those keep their traceback.
         print(_missing_database_message(args.db), file=sys.stderr)
+        return 2
+    except ValueError as exc:
+        # Configuration this process refuses to honour -- a brand name too long
+        # for the shell, or one carrying control characters. The message names
+        # the variable, which is the whole fix, so it is printed rather than
+        # raised.
+        print(f"coord-board: {exc}", file=sys.stderr)
         return 2
     wildcard_ipv4 = ".".join(("0", "0", "0", "0"))
     shown_host = args.host if args.host not in {wildcard_ipv4, "::"} else "127.0.0.1"

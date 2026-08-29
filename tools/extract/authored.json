@@ -316,6 +316,7 @@
     "tests/test_agent_onboarding.py": "fresh-clone onboarding configuration and doctor regression tests",
     "tests/test_board.py": "written fresh for this repository",
     "tests/test_board_action_registry.py": "preview-only action availability, safety veto, and human-reason contract tests written fresh",
+    "tests/test_board_brand_configuration.py": "configurable board branding regressions written fresh: committed-byte identity for the unconfigured default, mark, sub-label and title substitution across all four pages, escaping of an operator-supplied name containing markup, blank-value fallback, rewrite-scope containment, and startup refusal of an unusable value",
     "tests/test_board_comms_contract.py": "single-page communications, fleet-first, and pulse ordering regressions written fresh",
     "tests/test_board_done_is_verified.py": "regressions holding the board to its documented rule that a job's self-reported done is verified against its declared artifact, with the accepted-when-proved ablation, written fresh",
     "tests/test_board_first_contact.py": "missing-database refusal, single-sourced destinations, owner-mark legend, contrast floor, and per-row exchange population regressions written fresh",
