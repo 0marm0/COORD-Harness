@@ -32,8 +32,19 @@ class CreationLintError(ValueError):
         self.lane = lane
 
 
+# A durable work id is `PREFIX-LANE-SLUG`: some stable prefix of your own
+# choosing, the owning lane, and a descriptive slug. The prefix is deliberately
+# unconstrained beyond "uppercase and stable". This rule used to require the
+# prefix to be the literal `N` followed by four digits -- a house convention
+# from the project this harness was extracted from, shipped here as a hard
+# validation rule that no test covered and no document mentioned. Nobody else's
+# ids look like that, so nobody else could create work.
+#
+# What the rule is actually for survives unchanged: the id must name its owning
+# lane, so a row's owner is legible from the id alone and cannot be silently
+# reassigned by editing a field.
 _DURABLE_ID_RE = re.compile(
-    r"^N\d{4}-(CLA|CDX|OP|FABLE)-[A-Z0-9][A-Z0-9-]*$"
+    r"^[A-Z][A-Z0-9]*-(CLA|CDX|OP|FABLE)-[A-Z0-9][A-Z0-9-]*$"
 )
 _CHAT_NUMBERED_OWNER_RE = re.compile(r"-(?:CLA|CDX|OP|FABLE)-\d+-", re.I)
 _GENERIC_MODULES = {
@@ -330,7 +341,7 @@ def durable_id_policy_issues(
         issues.append("no chat-number owner in durable ID")
     actor = durable_id_actor(wid)
     if require_policy_id and actor is None:
-        issues.append("durable ID prefix NMMDD-CLA|CDX|OP|FABLE")
+        issues.append("durable ID shape PREFIX-CLA|CDX|OP|FABLE-SLUG")
     return issues
 
 

@@ -209,7 +209,7 @@ document does not say is that **none of them is exposed over MCP.**
 | Lens | CLI | MCP | Nearest MCP tool, and how it differs |
 |---|---|---|---|
 | `digest` | `python -m coordharness.coord.board_context digest` | none | `board` — a filtered row list, no bucketing or rollups |
-| `focus <id>` | `... board_context focus PAY-101` | none | `work_context` — one row plus parent plus recent events; no scored sibling/related set |
+| `focus <id>` | `... board_context focus PAY-CDX-REFUND-PATH` | none | `work_context` — one row plus parent plus recent events; no scored sibling/related set |
 | `search <q>` | `... board_context search "idempotency key"` | none | `knowledge_search` — a federated query whose providers happen to include the board, not a board-row keyword scan |
 | `skeleton` | `... board_context skeleton` | none | none |
 

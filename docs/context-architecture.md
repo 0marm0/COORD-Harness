@@ -85,7 +85,7 @@ with its own row cap and `expansion` pointer to the next lens:
 Focused generic-project commands:
 
 ```bash
-python -m coordharness.coord.board_context focus PAY-101
+python -m coordharness.coord.board_context focus PAY-CDX-REFUND-PATH
 python -m coordharness.coord.board_context search "idempotency key"
 ```
 
@@ -130,7 +130,7 @@ and `deep` turn on `include_board_history`, pulling in closed-out items smaller 
 ```python
 from coordharness.knowledge.context_federator import compile_context_pack
 
-pack = compile_context_pack("idempotency key replay", work_id="PAY-102", profile="work")
+pack = compile_context_pack("idempotency key replay", work_id="PAY-CLA-IDEMPOTENCY-REPLAY", profile="work")
 ```
 
 The result is organized into named sections (`current_work`, `facts`, `knowledge`, `artifact_manifests`,
