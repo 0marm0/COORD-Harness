@@ -53,6 +53,25 @@ if [ -n "$(git diff --name-only)" ]; then
 else
   step "extraction gate"
   "$PY" tools/extract/gate.py
+  # The bare gate runs two of its five legs. Fidelity needs the private source
+  # and its pinned manifest; patterns needs the rename/refusal vocabulary, which
+  # is gitignored because naming what you redact discloses it; history needs to
+  # be asked for. The gate says so on its own last line -- and that line was read
+  # as a pass for the life of this repository, while the three legs that had
+  # never run were holding a house id convention, its fixtures, and its blobs.
+  #
+  # This is the check to run before publishing anything:
+  #
+  #   "$PY" tools/extract/gate.py \
+  #     --source-root /path/to/the/private/repository \
+  #     --source-manifest /path/to/manifest.private.json \
+  #     --vocabulary tools/extract/vocabulary.json \
+  #     --history --ref HEAD
+  #
+  # Only that form can print PUBLISHABLE. See docs/security-and-privacy.md.
+  echo
+  echo "    Two of five legs ran. A publication verdict needs --source-root,"
+  echo "    --source-manifest, --vocabulary and --history; see docs/security-and-privacy.md."
 fi
 
 if [ "$FAST" = 1 ]; then
