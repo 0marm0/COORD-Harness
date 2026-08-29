@@ -1,10 +1,14 @@
 # Opaque normalized-phrase digests for cross-project and personal vocabulary.
 # Raw values live only in the private release environment.
+# The maintainer's given name is deliberately NOT on this list. Attribution is
+# wanted: commits are authored as a real person, and blocking the name would
+# have failed the gate on every commit that credits one. The home-directory
+# username remains blocked -- that one is not attribution, it is the signature
+# of an absolute host path leaking into published bytes.
 6c95f7a631b8011d3b4bc234a2825ecedb28b4f9f4d2e3a3a272b7c90e69611f
 1c9bb77bf9524b0710e3554cd3feaa0096f2114c5864bfd4e58b690e7cfe6241
 f2c4b4f22668777177047dd7e788d1b6a499b7ef3c11e73dbc30700ae614ad38
 5622d65b3afd4c49ae11307e04671811c9ba73baad7b122c00f852811bbb7280
 7051dca8ac20aa91a4bb88d012c51caa72770847bbb54685998e4d12b786622e
-21297e6e966afbd06e8f08c4525ae2edcbd3696cc6bc436037e278d4b1e67b4d
 a334b20b2045359f17578f76363f673daffc36ec0d169da0d562106df986c1d6
 31de312977fc2ebdfead5003842e1a6cea1f1ea29b8de13ff4e9e3e90b2b47a1
