@@ -16,6 +16,10 @@ Two roots, deliberately separate:
 The system this was extracted from ran these together, which meant a completion
 proof was looked up beneath the database directory rather than beneath the
 project. Keeping them apart is the fix.
+
+Alongside the two roots, the small amount of presentation an operator can own:
+`COORD_BOARD_BRAND_NAME` and `COORD_BOARD_BRAND_TAGLINE`, read by the read-only
+web board so an embedder's panels carry the embedder's name.
 """
 
 from __future__ import annotations
@@ -25,8 +29,11 @@ import re
 from pathlib import Path
 
 __all__ = [
+    "BOARD_BRAND_NAME",
     "HARNESS_ROOT",
     "actor_name",
+    "board_brand_name",
+    "board_brand_tagline",
     "coord_db_path",
     "deployment_profile",
     "is_strict_deployment",
@@ -45,6 +52,11 @@ _SAFE_ACTOR_RE = re.compile(r"[a-z][a-z0-9_.-]{0,63}")
 _GENERIC_PROFILES = {"generic", "local", "public"}
 _STRICT_PROFILES = {"strict", "deployment", "exact-authority"}
 
+# The product name the board paints on itself when nothing is configured.
+BOARD_BRAND_NAME = "COORD"
+_BRAND_MAX_CHARS = 64
+_BRAND_CONTROL_CHARS = re.compile(r"[\x00-\x1f\x7f]")
+
 
 def actor_name(value: str | None = None) -> str:
     """Return the configured actor after validating its public identifier."""
@@ -56,6 +68,50 @@ def actor_name(value: str | None = None) -> str:
             "lowercase letters, digits, dot, underscore, or hyphen (max 64 chars)"
         )
     return clean
+
+
+def _validated_brand_text(value: str, variable: str) -> str:
+    """Reject a brand string the shell cannot paint, and say which one it was."""
+    if len(value) > _BRAND_MAX_CHARS:
+        raise ValueError(
+            f"{variable} must be at most {_BRAND_MAX_CHARS} characters "
+            f"(got {len(value)})"
+        )
+    if _BRAND_CONTROL_CHARS.search(value):
+        raise ValueError(f"{variable} must not contain control characters")
+    return value
+
+
+def board_brand_name() -> str:
+    """The product name shown on the board's mark and in its document titles.
+
+    Defaults to COORD. An operator embedding the read-only board inside their
+    own tool sets `COORD_BOARD_BRAND_NAME` so the panels carry their name over
+    their data instead of this project's.
+
+    A blank value means unconfigured, not a blank brand: exporting the variable
+    empty -- which a shell does readily -- returns the default rather than
+    serving a nameless shell.
+    """
+    name = str(os.environ.get("COORD_BOARD_BRAND_NAME", "")).strip()
+    if not name:
+        return BOARD_BRAND_NAME
+    return _validated_brand_text(name, "COORD_BOARD_BRAND_NAME")
+
+
+def board_brand_tagline() -> str | None:
+    """The second line under the mark, or None to keep each page's own wording.
+
+    Unset is not the same as empty here. Every page ships its own sub-label --
+    the board says `read-only runtime`, the map and the two atlases say
+    `Intelligence` -- and leaving `COORD_BOARD_BRAND_TAGLINE` unset preserves
+    that per-page wording. Setting it replaces the line on every page, which is
+    the point: the lockup then reads as one operator's, not four pages'.
+    """
+    tagline = str(os.environ.get("COORD_BOARD_BRAND_TAGLINE", "")).strip()
+    if not tagline:
+        return None
+    return _validated_brand_text(tagline, "COORD_BOARD_BRAND_TAGLINE")
 
 
 def deployment_profile() -> str:
