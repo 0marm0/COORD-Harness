@@ -140,9 +140,14 @@ _BINARY_SUFFIXES = {
 }
 
 # Each pattern is a whole-word / structured match, never a naive substring:
-# the codename pattern does not fire inside "litany" or "militant"; the
+# the codename pattern is anchored on word boundaries, so ordinary English
+# words that merely contain the codename inside them do not fire; the
 # home-path pattern requires a real identifier after `/Users/`, so a
 # documentation placeholder like `/Users/<name>/...` never matches.
+#
+# The examples that used to sit in this comment were spelled out, which made
+# this file the last thing in the tree still carrying the token -- a scanner
+# tripping over its own explanation of why it should not trip.
 _PRIVATE_PROJECT_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     (
         "private contract section pointer",
