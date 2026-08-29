@@ -93,6 +93,41 @@ TERMINAL_GPU_STATUSES = {
     "superseded",
 }
 
+# The words that mean nothing further will ever be written about a job.
+#
+# This answers a narrower question than "is this row finished": it asks whether
+# another update is still owed. `sidecar_writer` stops writing on its own copy
+# of this vocabulary -- blocked and paused included, which is why they are here
+# even though neither is a completion -- and `board.snapshot` counts a row done
+# on a third. This set has to cover all of them, because a word missing from it
+# becomes a permanent staleness warning on work that is over, and a warning
+# that never clears is worse than the silence it replaced.
+# `tests/test_job_staleness_is_not_only_running.py` pins the cover.
+TERMINAL_JOB_STATES = frozenset(
+    {
+        "archived",
+        "blocked",
+        "canceled",
+        "cancelled",
+        "closed",
+        "complete",
+        "completed",
+        "dead",
+        "done",
+        "error",
+        "errored",
+        "failed",
+        "finished",
+        "killed",
+        "orphaned",
+        "paused",
+        "skipped",
+        "stalled",
+        "success",
+        "superseded",
+    }
+)
+
 PASS_RUBRIC_VERDICTS = {"pass", "passed", "ok", "green"}
 BLOCKING_RUBRIC_VERDICTS = {"blocked", "block"}
 FAILING_RUBRIC_VERDICTS = {"flag", "fail", "failed", "red", "reject", "rejected"}
@@ -106,6 +141,13 @@ class StatusEvidence:
     raw_status: str
     blocked_by: tuple[str, ...] = ()
     unverified: bool = False
+    # Whether the item declared a proof at all, which `unverified` cannot say.
+    # A done claim whose artifact resolved and a done claim that named no
+    # artifact both come back unverified=False; without this they are one
+    # label, and a caller counting verified work counts the second as the
+    # first. Recorded on every branch, because it is a fact about the item
+    # rather than about the question that happened to answer it.
+    declared_proof: bool = False
 
 
 def _within_allowed_status_roots(path: Path, root: Path) -> bool:
@@ -571,6 +613,20 @@ def derive_status(item: Mapping, root: str | Path, *,
                   ps_text: str = "",
                   proc_patterns: Mapping[str, str] | None = None,
                   dependency_statuses: Mapping[str, str] | None = None) -> StatusEvidence:
+    """Answer what an item is doing from evidence, not from its own status word.
+
+    A `done` claim is answered three ways, and callers need to tell them apart.
+    The artifact resolved: `unverified=False, declared_proof=True`. An artifact
+    was declared and is not there: `unverified=True`. No artifact was ever
+    declared: `unverified=False, declared_proof=False`.
+
+    That last case is a deliberate limitation, not an oversight. `coord create`
+    requires `--done-signal`, so a job reaching here with no signal is an
+    orphan or unlinked sidecar rather than one dodging a gate, and refusing it
+    would enforce a requirement its author was never given. It is still weaker
+    evidence than a resolved artifact, so it is labelled rather than counted as
+    equal: `declared_proof` is what separates "checked" from "never asked".
+    """
     iid = str(item.get("id") or item.get("job") or item.get("job_id") or "")
     raw = str(item.get("status") or item.get("state") or "").strip().lower()
     rubric = str(item.get("rubric_verdict") or "").strip().lower()
@@ -585,37 +641,45 @@ def derive_status(item: Mapping, root: str | Path, *,
     proc = _proc_running(str(pattern), ps_text) if pattern else False
 
     if proc:
-        return StatusEvidence(RUNNING, done, True, raw)
+        return StatusEvidence(RUNNING, done, True, raw, declared_proof=has_signal)
     if rubric in BLOCKING_RUBRIC_VERDICTS:
-        return StatusEvidence(BLOCKED, done, False, raw)
+        return StatusEvidence(BLOCKED, done, False, raw, declared_proof=has_signal)
     if rubric in FAILING_RUBRIC_VERDICTS:
-        return StatusEvidence(QUEUED, done, False, raw)
+        return StatusEvidence(QUEUED, done, False, raw, declared_proof=has_signal)
     if done:
-        return StatusEvidence(DONE, True, False, raw)
+        return StatusEvidence(DONE, True, False, raw, declared_proof=has_signal)
     done_words = {"done", "complete", "completed", "finished", "success", "superseded"}
+    # Three cases, three labels. A claim that named no artifact is not refused
+    # -- see the docstring -- but it is no longer reported as though an
+    # artifact had been read.
     if raw in done_words and not has_signal:
-        return StatusEvidence(DONE, False, False, raw)
+        return StatusEvidence(DONE, False, False, raw, declared_proof=False)
     if raw in done_words and has_signal:
-        return StatusEvidence(DONE, False, False, raw, unverified=True)
+        return StatusEvidence(DONE, False, False, raw, unverified=True, declared_proof=True)
 
     reaped = str(item.get("_reaped") or "").strip().lower()
     if raw in {"failed", "error", "errored", "killed", "dead", "stalled"} \
             or reaped in {"failed", "killed", "stalled", "error"}:
-        return StatusEvidence(FAILED, False, False, raw)
+        return StatusEvidence(FAILED, False, False, raw, declared_proof=has_signal)
 
     blocked_by: tuple[str, ...] = ()
     deps = [str(d) for d in (item.get("depends_on") or [])]
     if dependency_statuses and deps:
         blocked_by = tuple(d for d in deps if dependency_statuses.get(d) != DONE)
     if raw == BLOCKED or blocked_by:
-        return StatusEvidence(BLOCKED, False, False, raw, blocked_by)
+        return StatusEvidence(BLOCKED, False, False, raw, blocked_by, declared_proof=has_signal)
     if raw in {"queued", "running", "active", "in_progress", "in-progress", "live"}:
-        return StatusEvidence(QUEUED, False, False, raw)
-    return StatusEvidence(PLANNED, False, False, raw)
+        return StatusEvidence(QUEUED, False, False, raw, declared_proof=has_signal)
+    return StatusEvidence(PLANNED, False, False, raw, declared_proof=has_signal)
 
 
 def is_terminal_gpu_status(status: str | None) -> bool:
     return str(status or "").strip().lower() in TERMINAL_GPU_STATUSES
+
+
+def is_terminal_job_state(state: str | None) -> bool:
+    """Whether this state means no further update is owed. See the set above."""
+    return str(state or "").strip().lower() in TERMINAL_JOB_STATES
 
 
 _SLUG_RE = re.compile(r"[^a-z0-9]+")

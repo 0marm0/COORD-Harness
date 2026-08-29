@@ -16,7 +16,12 @@ from coordharness import config
 from coordharness.coord import coord_db
 from coordharness.coord.config import connect_ro
 from coordharness.jobs.sidecar_snapshot import load_snapshot
-from coordharness.jobs.status import derive_status, done_signal_exists, parse_updated_at
+from coordharness.jobs.status import (
+    derive_status,
+    done_signal_exists,
+    is_terminal_job_state,
+    parse_updated_at,
+)
 
 NATIVE_SNAPSHOT_SCHEMA = "1"
 _SCHEMA_RESOURCE = "native_snapshot_v1.schema.json"
@@ -196,7 +201,22 @@ def _eta_seconds(job: dict[str, Any]) -> int | None:
 
 
 def _job_stale(job: dict[str, Any], now: float) -> bool:
-    if _string(job.get("state")).lower() != "running":
+    """Whether a job that still owed an update has stopped sending them.
+
+    This asked `state == "running"` and returned False for everything else,
+    which made the flag blind to the shape it exists for: a job that stopped
+    without saying so. A `queued` job whose GPU slot was never granted, or a
+    `starting` one whose process died before it reported, sat unflagged
+    forever, looking exactly like work that was about to begin.
+
+    The test is not "is this row finished" but "was another update owed". A
+    terminal state owes none -- its writer has stopped for good -- and flagging
+    one would hang a warning on completed work that no later event can clear,
+    which is a worse failure than the silence being fixed. Every other state,
+    named or not, is still expected to report, so every other state answers to
+    the same age check `running` always did.
+    """
+    if is_terminal_job_state(_string(job.get("state"))):
         return False
     # A sidecar may carry either stamp: sidecar_snapshot reads updated_at and
     # falls back to last_progress_at, and a reader that skips the fallback
@@ -258,7 +278,7 @@ def _verified_job_state(
         # through unchecked. A declared proof that does not resolve is not
         # verified, whatever else the sidecar says about itself.
         unverified = bool(evidence.unverified) or (
-            bool(declared_signal) and not evidence.done_signal_exists
+            evidence.declared_proof and not evidence.done_signal_exists
         )
     except ValueError:
         # derive_status also loads the optional process-pattern configuration,
@@ -272,20 +292,63 @@ def _verified_job_state(
     return "needs_verification", "done reported, declared proof artifact not found"
 
 
+def _work_signals(work: list[dict[str, Any]]) -> dict[str, str]:
+    """The declared proof of every work item, keyed by work id.
+
+    Kept off the rendered documents on purpose -- neither the snapshot nor the
+    graph carries artifact paths -- but a job bound to a work item inherits
+    that item's declared proof, which is usually the only proof anyone
+    declared. Without this the verification has nothing to check for most real
+    jobs.
+    """
+    return {
+        _string(item.get("work_id")): _string(item.get("done_signal"))
+        for item in work
+        if _string(item.get("work_id"))
+    }
+
+
+def _derived_job_status(
+    job: dict[str, Any], work_signals: dict[str, str], root: Path
+) -> tuple[str, str]:
+    """The one place a sidecar's self-report becomes a status anyone serves.
+
+    `build_snapshot` and `build_graph` read the same sidecars and used to reach
+    their own answers: the row path called `_verified_job_state`, and the graph
+    wrote `job["state"]` straight onto its node. One sidecar claiming
+    `"state": "done"` with no artifact therefore produced `needs_verification`
+    on the board and `done` on the graph, in the same process, over the same
+    served API -- and a verification a caller can route around is not one.
+
+    Both callers now come through here, so the two documents cannot disagree
+    about a job again without disagreeing about this function.
+
+    Returns the derived status and a step note, both empty when the sidecar
+    named no state at all and there is accordingly nothing to derive.
+    """
+    state = _string(job.get("state")).lower()
+    if not state:
+        return "", ""
+    declared_signal = _string(job.get("done_signal")) or work_signals.get(
+        _string(job.get("roadmap_id")), ""
+    )
+    return _verified_job_state(job, state, declared_signal, root)
+
+
 def _apply_job(
     row: dict[str, Any],
     job: dict[str, Any],
     now: float,
     *,
-    declared_signal: str = "",
+    work_signals: dict[str, str] | None = None,
     root: Path | None = None,
 ) -> None:
-    state = _string(job.get("state")).lower()
-    note = ""
+    state, note = _derived_job_status(
+        job,
+        work_signals if work_signals is not None else {},
+        root if root is not None else config.project_root(),
+    )
     if state:
-        state, note = _verified_job_state(
-            job, state, declared_signal, root if root is not None else config.project_root()
-        )
         row["status"] = state
     row["bucket"] = "job"
     row["owner"] = _string(job.get("owner"), row["owner"])
@@ -371,15 +434,7 @@ def build_snapshot(
         for row in (_work_row(item) for item in work)
         if row["id"]
     }
-    # Kept off the rendered rows on purpose -- the public snapshot carries no
-    # artifact paths -- but a job bound to a work item inherits that item's
-    # declared proof, which is usually the only proof anyone declared. Without
-    # this the verification below has nothing to check for most real jobs.
-    declared_signals = {
-        _string(item.get("work_id")): _string(item.get("done_signal"))
-        for item in work
-        if _string(item.get("work_id"))
-    }
+    work_signals = _work_signals(work)
     artifact_root = config.project_root()
     jobs = sorted(
         (dict(item) for item in load_snapshot(sidecars).items),
@@ -439,14 +494,7 @@ def build_snapshot(
             "current_step": "",
         }
         rows_by_id[row_id] = row
-        _apply_job(
-            row,
-            job,
-            now,
-            declared_signal=_string(job.get("done_signal"))
-            or declared_signals.get(roadmap_id, ""),
-            root=artifact_root,
-        )
+        _apply_job(row, job, now, work_signals=work_signals, root=artifact_root)
 
     rows = [rows_by_id[key] for key in sorted(rows_by_id)]
     snapshot: dict[str, Any] = {
@@ -504,6 +552,8 @@ def build_graph(
                 "SELECT artifact_id,work_id,kind FROM artifacts ORDER BY artifact_id"
             ).fetchall()
         ]
+    work_signals = _work_signals(work)
+    artifact_root = config.project_root()
     jobs = sorted(
         (dict(item) for item in load_snapshot(sidecars).items),
         key=lambda item: (_string(item.get("roadmap_id")), _string(item.get("job_id"))),
@@ -599,7 +649,10 @@ def build_graph(
         if not identity:
             continue
         target = f"job:{identity}"
-        add_node(target, "job", job_id or identity, status=_string(job.get("state")))
+        # Derived, not read: the sidecar's own `state` string is a claim, and
+        # the board already refuses to serve it unchecked.
+        status, _note = _derived_job_status(job, work_signals, artifact_root)
+        add_node(target, "job", job_id or identity, status=status)
         work_id = _string(job.get("roadmap_id"))
         if work_id:
             source = f"work:{work_id}"
