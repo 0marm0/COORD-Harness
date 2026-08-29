@@ -78,14 +78,14 @@ be tracked by Git's current index. Staging is sufficient for this custody gate;
 a commit is not required.
 
 ```
-$ coord claim PAY-101 --step "tracing the refund path"
-{"ok": true, "claim_id": "clm_...", "work_id": "PAY-101", ...}
+$ coord claim PAY-CDX-REFUND-PATH --step "tracing the refund path"
+{"ok": true, "claim_id": "clm_...", "work_id": "PAY-CDX-REFUND-PATH", ...}
 
 $ mkdir -p docs/reports
 $ printf '%s\n' '# Synthetic proof' > docs/reports/settlement-reconciler.md
 $ git add docs/reports/settlement-reconciler.md
-$ coord done PAY-101 --artifact docs/reports/settlement-reconciler.md
-{"ok": true, "work_id": "PAY-101", "artifact": "docs/reports/settlement-reconciler.md"}
+$ coord done PAY-CDX-REFUND-PATH --artifact docs/reports/settlement-reconciler.md
+{"ok": true, "work_id": "PAY-CDX-REFUND-PATH", "artifact": "docs/reports/settlement-reconciler.md"}
 ```
 
 Both guards are exercised end to end in `tests/test_lifecycle_smoke.py`

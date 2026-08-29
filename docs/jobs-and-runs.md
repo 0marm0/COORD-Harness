@@ -96,7 +96,7 @@ its own small JSON file under a `job_progress/` directory, in the convention
 kept by `coordharness/jobs/sidecar_snapshot.py` and `status.py`:
 
 ```json
-{"job_id": "backfill-ledger-2026-03", "roadmap_id": "PAY-103", "state": "running",
+{"job_id": "backfill-ledger-2026-03", "roadmap_id": "PAY-CDX-LEDGER-BACKFILL", "state": "running",
  "pct": 62.0, "done": 620, "total": 1000, "pid": 48213, "updated_at": 1772442600.0}
 ```
 

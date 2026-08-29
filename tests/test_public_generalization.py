@@ -9,7 +9,10 @@ from pathlib import Path
 import pytest
 
 from coordharness.coord import board_context
-from coordharness.coord.creation_lint import expected_owner_prefix
+from coordharness.coord.creation_lint import (
+    durable_id_policy_issues,
+    expected_owner_prefix,
+)
 from coordharness.coord.row_classification import derive_semantic_system
 from coordharness.knowledge import kfts, memory_proposals
 
@@ -19,6 +22,29 @@ def test_public_operator_prefix_is_role_based() -> None:
     assert expected_owner_prefix("human") == "OP"
     assert expected_owner_prefix("user") == "OP"
     assert expected_owner_prefix("initials") is None
+
+
+def test_durable_id_grammar_is_not_a_house_convention() -> None:
+    """A stranger's work ids must be creatable.
+
+    The rule this pins used to require every durable id to begin with the
+    literal `N` and four digits -- the date-stamped convention of the project
+    this harness was extracted from. It was enforced in shipped code, covered
+    by no test, and mentioned in no document, so the first thing an outside
+    adopter hit was a refusal naming a scheme they had never seen.
+    """
+    # An ordinary prefix of the adopter's own choosing is accepted.
+    for work_id in ("ACME-CLA-BILLING-EXPORT", "Q3-CDX-INDEX-REBUILD", "W7-OP-SIGN-OFF"):
+        assert durable_id_policy_issues(work_id) == [], work_id
+
+    # The part of the rule that carries weight is untouched: an id still has to
+    # name its owning lane, so a row's owner is legible from the id alone.
+    for work_id in ("ACME-BILLING-EXPORT", "ACME-QA-BILLING-EXPORT", "PLAIN"):
+        assert durable_id_policy_issues(work_id), work_id
+
+    # And a lane followed by a chat number is still refused, because a chat is
+    # not an owner and does not outlive the conversation that made it.
+    assert durable_id_policy_issues("ACME-CLA-3-BILLING-EXPORT")
 
 
 def test_product_classification_is_explicit_or_configured(monkeypatch) -> None:

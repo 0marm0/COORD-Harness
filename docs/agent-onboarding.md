@@ -100,6 +100,14 @@ does not rediscover it.
 
 ## 4. Create, inspect, claim, and prove the first item
 
+A durable work id is `PREFIX-LANE-SLUG`. The prefix is yours -- a product area,
+a team, a sprint, whatever is stable in your world. The lane is `CLA`, `CDX`,
+`OP` or `FABLE`, and it is the one part `create` insists on: an id that names
+its owner stays legible after the conversation that made it is gone, and cannot
+be quietly reassigned by editing a field. A bare `PAY-101` is refused for that
+reason; `PAY-CDX-REFUND-PATH` is accepted.
+
+
 ```bash
 export COORD_ACTOR=codex
 export COORD_SESSION_ID=codex:first-session
