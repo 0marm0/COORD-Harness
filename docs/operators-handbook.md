@@ -596,7 +596,10 @@ coord release CLAIM --status paused \
   --resume-manual
 
 coord release CLAIM --status blocked \
-  --next-step "…" --resume-when "…"
+  --reason "the upstream fixture is absent" \
+  --next-step "rebuild it from the ingest run" \
+  --resume-when "the fixture is on disk" \
+  --resume-manual
 
 # no CLI twin for the recovery verbs
 ```
@@ -610,6 +613,14 @@ One CLI verb (`release --status`) covers what MCP splits across `release`, `park
 exclusive. Paused and blocked are not euphemisms for unfinished — they record why
 execution stopped, and a parked or blocked row keeps its disposition even after the
 claim releases, where a bare running claim is requeued.
+
+`--status blocked` takes two things the released case does not. `--reason` names the
+criterion that is not met and is required — it is the same text MCP's `block()` passes
+as `step`, and it lands in the same `release_claim(reason=…)` parameter. And blocked,
+like paused, needs an explicit resume trigger, so one of `--resume-manual` or
+`--resume-predicate` has to accompany `--resume-when`. Both requirements live in the
+storage layer, so an incomplete blocked release is refused rather than recorded as a
+block nobody can act on.
 
 ### 5.3 Reading the board
 
@@ -676,11 +687,45 @@ session_closeout(...)
 ```bash
 coord inbox --actor codex
 
+coord sign-off WORK_ID \
+  --reason "the reviewing lane is offline and
+            I read the artifact myself" \
+  --ref docs/reports/refunds.md \
+  --operation-id signoff-2026-08-29-a
+
 # no CLI twin for any of the rest
 ```
 
 </td></tr>
 </table>
+
+#### Signing off a review gate
+
+`coord sign-off` is the human override of the T0 review gate, and the only writer of
+`operator_ok` anywhere in this product. Reach for it when a T0 row is finished, its
+proof exists, and the opposite lane cannot supply the verdict — the case where
+`coord done` refuses with *"T0 review has not passed and no valid operator-ok event is
+bound"* and nothing an agent can do clears it.
+
+It is deliberately not on the MCP surface, and `post_event` and `upsert_work` both
+refuse the field, so no agent surface can write it. That is not by itself the guard —
+an agent runs this CLI too. The guard is that the verb asks **the controlling
+terminal** for confirmation and reads the answer from `/dev/tty`, never from stdin: it
+prints the row's identity, tier, proof and acceptance digest, and signs only if you
+type the work id back. A process with no controlling terminal is refused outright, and
+a piped or scripted answer is not read at all. No environment variable and no flag
+opens it; a guard the guarded party can satisfy by assigning a value is not a guard.
+
+Three fields are required — `--reason` in your own words, at least one `--ref` to what
+you actually read, and an `--operation-id` so that re-running the identical command
+replays the existing receipt instead of signing twice.
+
+One refusal is worth knowing in advance: a sign-off is refused on a row with an **open
+review barrier** (an outstanding `audit_request`, or an acceptance repair). Sign-off
+substitutes for a peer verdict only where review was never requested
+([review tiers](review-tiers.md)), so recording one against a live request would be a
+valid event that every reader then ignores. The verb says so and names the barrier
+event rather than reporting a success that changes nothing.
 
 `handoff_existing` is the sole member of `_SERVER_PROMOTION_CANDIDATES`
 ([`mcp_coord_server.py:64`](../src/coordharness/coord/mcp_coord_server.py)) and registers
@@ -762,6 +807,7 @@ Where each capability actually exists. Blank means it does not.
 | Note read by pointer | `read_note` | — | `kfts.read_note` | — |
 | Inbox | `inbox`, `inbox_recent` | `coord inbox` | yes | — |
 | Review and closeout | `verdict`, `audit`, `request_audit`, `session_closeout` | — | yes | — |
+| Operator sign-off (review-gate override) | — (deliberately absent) | `coord sign-off` — needs a controlling terminal | `record_operator_sign_off` | — |
 | Typed handoff | `handoff_existing` (profile-gated) | — | yes | — |
 | Job telemetry | `runs` (visibility-gated, visible by default) | `coord-jobs status`, `coord-jobs launch` | yes | `/` Jobs tab |
 | Safety and integrity checks | — | `coord doctor` | yes | — |

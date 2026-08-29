@@ -5201,6 +5201,226 @@ def _has_valid_operator_ok_unlocked(
     return _operator_ok_event_is_valid_unlocked(event, work_id, row)
 
 
+OPERATOR_AUTHORITY_CHANNEL = "authenticated_resident_controller"
+OPERATOR_SIGN_OFF_WRITER_CONTRACT = "operator_ok.v1"
+
+
+def operator_sign_off_refs_sha256(refs: list[str]) -> str:
+    """Canonical digest of the evidence a sign-off was given against.
+
+    The validator only checks that ``refs_sha256`` is 64 hex characters, so the
+    digest exists to make the *list* tamper-evident rather than to be recomputed
+    by the reader. Canonicalized the same way every other payload in this module
+    is, so a replay of the identical request produces the identical digest.
+    """
+    return hashlib.sha256(
+        json.dumps(refs, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode(
+            "utf-8"
+        )
+    ).hexdigest()
+
+
+def record_operator_sign_off(
+    conn: sqlite3.Connection,
+    *,
+    work_id: str,
+    reason: str,
+    refs: list[str],
+    operation_id: str,
+    expected_version: int | None = None,
+) -> dict[str, Any]:
+    """Mint the one event that lets a human override a review gate.
+
+    This is the writer ``post_event`` refuses to be. ``operator_ok`` needs
+    ``trust='system'`` and a payload the public event writer cannot be trusted to
+    assemble, so both are stamped here and nowhere else, and the receipt is bound
+    to the row under a compare-and-set in the same transaction that mints it --
+    an event with nothing pointing at it is not a sign-off,
+    ``_has_valid_operator_ok_unlocked`` reads the *binding*.
+
+    This function is the mechanism. It is not the human-only part: it cannot see
+    who called it, and nothing in Python can. The channel that makes the
+    authority real is ``coord sign-off``, which asks the controlling terminal
+    before it gets here. Calling this from anywhere else records an operator
+    sign-off that no operator gave.
+
+    Refuses a row with an open review barrier. ``classify_verdict_status`` only
+    honours ``operator_ok`` when the barrier is zero, so a sign-off minted while
+    an ``audit_request`` or an acceptance repair is outstanding is a *valid event
+    that does nothing* -- it would report success and leave the row exactly as
+    stuck as it was. Answering with a refusal that names the barrier is the whole
+    difference between an escape hatch and a placebo.
+    """
+    clean_work_id = str(work_id or "").strip()
+    clean_reason = str(reason or "").strip()
+    clean_operation = str(operation_id or "").strip()
+    clean_refs = [str(ref).strip() for ref in (refs or []) if str(ref).strip()]
+    if not clean_work_id:
+        raise ValueError("operator sign-off requires work_id")
+    if not clean_reason:
+        raise ValueError(
+            "operator sign-off requires a reason naming what was accepted"
+        )
+    if not clean_refs:
+        raise ValueError(
+            "operator sign-off requires at least one evidence ref; a sign-off "
+            "with nothing to point at cannot be reviewed later"
+        )
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.:-]{7,199}", clean_operation):
+        raise ValueError("operator sign-off operation_id must be 8-200 safe characters")
+    refs_sha = operator_sign_off_refs_sha256(clean_refs)
+    idempotency_key = f"operator-ok:{clean_operation}"
+
+    with tx(conn):
+        prior = conn.execute(
+            "SELECT event_id,work_id,payload_json,refs_json FROM events"
+            " WHERE idempotency_key=?",
+            (idempotency_key,),
+        ).fetchone()
+        row = conn.execute(
+            "SELECT * FROM work_items WHERE work_id=?",
+            (clean_work_id,),
+        ).fetchone()
+        if row is None:
+            raise ValueError(f"operator sign-off work item not found: {clean_work_id}")
+        work = dict(row)
+        observed_version = int(work.get("version") or 0)
+
+        if prior is not None:
+            try:
+                prior_payload = json.loads(str(prior["payload_json"] or "{}"))
+            except json.JSONDecodeError as exc:
+                raise ValueError("operator sign-off replay receipt is malformed") from exc
+            if (
+                str(prior["work_id"] or "") != clean_work_id
+                or prior_payload.get("reason") != clean_reason
+                or prior_payload.get("refs_sha256") != refs_sha
+            ):
+                raise ValueError(
+                    "operator sign-off operation_id reused for a different request"
+                )
+            event_id = int(prior["event_id"])
+            bound_id = int(work.get("operator_ok_event_id") or 0)
+            if bound_id not in {0, event_id}:
+                raise ValueError(
+                    "operator sign-off replay conflicts with an existing binding"
+                )
+            binding_backfilled = False
+            if bound_id == 0:
+                bound = conn.execute(
+                    "UPDATE work_items SET operator_ok_event_id=?,updated_at=?,"
+                    " version=version+1 WHERE work_id=? AND version=?"
+                    " AND operator_ok_event_id IS NULL",
+                    (event_id, db_now(conn), clean_work_id, observed_version),
+                )
+                if bound.rowcount != 1:
+                    raise ValueError("operator sign-off replay binding CAS drift")
+                observed_version += 1
+                binding_backfilled = True
+            return {
+                "work_id": clean_work_id,
+                "event_id": event_id,
+                "version": observed_version,
+                "binding_backfilled": binding_backfilled,
+                "replayed": True,
+            }
+
+        if expected_version is not None and int(expected_version) != observed_version:
+            raise ValueError(
+                f"operator sign-off version drift for {clean_work_id}: expected "
+                f"{int(expected_version)}, observed {observed_version}"
+            )
+        if work.get("archived_at") is not None or str(
+            work.get("intent_state") or ""
+        ).strip().lower() in TERMINAL_WORK_STATES:
+            raise ValueError(
+                "operator sign-off refuses terminal or archived work; there is no "
+                "gate left to open"
+            )
+        existing_binding = int(work.get("operator_ok_event_id") or 0)
+        if existing_binding > 0 and _has_valid_operator_ok_unlocked(
+            conn, clean_work_id
+        ):
+            raise ValueError(
+                f"{clean_work_id} already carries a valid operator sign-off at "
+                f"event:{existing_binding}; signing twice would not add authority"
+            )
+        # A binding that no longer validates is not a sign-off, it is a receipt
+        # the row has moved out from under -- the contract digest is over the
+        # work's identity and acceptance, so editing either voids it. Refusing
+        # here on the strength of a receipt that authorizes nothing would strand
+        # the row for good, so a stale binding is superseded rather than
+        # protected.
+
+        from . import review_integrity
+
+        status = review_integrity.classify_verdict_status(
+            conn, clean_work_id, row=work
+        )
+        barrier = int(status.get("latest_review_barrier_event_id") or 0)
+        if barrier > 0:
+            raise ValueError(
+                f"operator sign-off refused: {clean_work_id} has an open review "
+                f"barrier at event:{barrier}. A sign-off does not answer a review "
+                "that was actually requested -- it would be recorded and then "
+                "ignored. Answer the request with an opposite-lane verdict, or "
+                "sign off on a row whose review was never requested."
+            )
+
+        t = db_now(conn)
+        payload = {
+            "schema_version": 1,
+            "writer_contract": OPERATOR_SIGN_OFF_WRITER_CONTRACT,
+            "authority_channel": OPERATOR_AUTHORITY_CHANNEL,
+            "work_id": clean_work_id,
+            "expected_work_version": observed_version,
+            "work_contract_sha256": operator_authority_contract_sha256(work),
+            "refs_sha256": refs_sha,
+            "reason": clean_reason,
+            "operation_id": clean_operation,
+            "effective_tier_at_sign_off": effective_review_tier_for_work(
+                conn, clean_work_id, row=work
+            ),
+        }
+        assignee = str(work.get("assignee") or "").strip().lower()
+        cur = conn.execute(
+            "INSERT INTO events(ts,kind,actor,session_id,to_selector,work_id,trust,"
+            " title,body,refs_json,payload_json,idempotency_key)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                t,
+                "operator_ok",
+                "operator",
+                None,
+                f"actor:{assignee}" if assignee in {"claude", "codex"} else None,
+                clean_work_id,
+                "system",
+                f"Operator sign-off for {clean_work_id}",
+                clean_reason[:_BODY_CAP],
+                json.dumps(clean_refs, sort_keys=True, separators=(",", ":")),
+                json.dumps(payload, sort_keys=True, separators=(",", ":")),
+                idempotency_key,
+            ),
+        )
+        event_id = int(cur.lastrowid)
+        bound = conn.execute(
+            "UPDATE work_items SET operator_ok_event_id=?,updated_at=?,"
+            " version=version+1 WHERE work_id=? AND version=?"
+            " AND COALESCE(operator_ok_event_id,0)=?",
+            (event_id, t, clean_work_id, observed_version, existing_binding),
+        )
+        if bound.rowcount != 1:
+            raise ValueError("operator sign-off receipt binding CAS drift")
+        return {
+            "work_id": clean_work_id,
+            "event_id": event_id,
+            "version": observed_version + 1,
+            "binding_backfilled": False,
+            "superseded_event_id": existing_binding or None,
+            "replayed": False,
+        }
+
+
 def _flag_repair_request_event_is_valid_unlocked(
     event: sqlite3.Row,
     work_id: str,
@@ -6321,6 +6541,17 @@ def post_event(
         raise ValueError(
             "public post_event cannot mint the reserved typed canary rollback "
             "namespace; use the dedicated controller writer"
+        )
+    if str(idempotency_key or "").startswith("operator-ok:"):
+        # Reserved for the same reason as the two above. The kind refusal below
+        # already stops a forged sign-off, but an unreserved key namespace lets
+        # any writer squat an operation id and turn the operator's next real
+        # sign-off into a replay collision -- a denial of the escape hatch
+        # rather than a forgery of it, and equally not something a caller
+        # should be able to do.
+        raise ValueError(
+            "public post_event cannot mint the reserved operator sign-off "
+            "namespace; use the typed human-only writer"
         )
     if normalized_kind == "operator_ok":
         raise ValueError(
