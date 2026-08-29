@@ -398,7 +398,7 @@ def main(argv=None) -> int:
         "create",
         help="create the first or next proof-gated work item in this coord database",
     )
-    p.add_argument("work_id", help="durable work id (for example DEMO-CDX-RUNTIME-CHECK)")
+    p.add_argument("work_id", help="durable work id (for example PAY-CDX-REFUND-PATH)")
     p.add_argument("--title", required=True, help="descriptive work title")
     p.add_argument("--display", default=None, help="short board label; defaults to title")
     p.add_argument("--assignee", default=None, help="owner lane; defaults to the current actor")
