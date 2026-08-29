@@ -150,9 +150,16 @@ def _require_vocabulary(
 #: every commit co-authored by an assistant carries one, which otherwise makes
 #: the history check red on ordinary work -- and a gate whose red is routine
 #: stops being read, which is the failure this whole tool exists to prevent.
+# A GitHub noreply address is public by construction: it is derived from an
+# already-public account handle and routes nowhere. Allowing a maintainer's own
+# `<id>+<login>@users.noreply.github.com` lets a real person take authorship
+# credit -- name, avatar, contribution graph -- without a private mailbox ever
+# reaching the history. Any address OUTSIDE users.noreply.github.com (a personal,
+# corporate or institutional mailbox) stays refused; that is the leak this guard
+# exists to stop, and widening it here does not widen that.
 _NEUTRAL_NOREPLY = re.compile(
-    r"(?:noreply@github\.com|noreply@users\.noreply\.github\.com|"
-    r"(?:\d+\+)?[A-Za-z0-9-]+\[bot\]@users\.noreply\.github\.com|"
+    r"(?:noreply@github\.com|"
+    r"(?:\d+\+)?[A-Za-z0-9-]+(?:\[bot\])?@users\.noreply\.github\.com|"
     r"noreply@anthropic\.com|noreply@openai\.com)\Z",
     re.I,
 )
