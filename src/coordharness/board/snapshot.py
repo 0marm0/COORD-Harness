@@ -271,14 +271,26 @@ def build_snapshot(
     db_path: str | Path | None = None,
     *,
     activity_limit: int = 100,
+    job_progress_dir: str | Path | None = None,
 ) -> dict[str, Any]:
     """Build the native snapshot using read-only database and filesystem access.
 
     activity_limit remains accepted for source compatibility with the early
     board prototype. NativeSnapshotV1 intentionally exposes no event bodies.
+
+    `job_progress_dir` names the telemetry root explicitly. Left unset it is
+    derived from the database being served, so one screen is never assembled
+    from two unrelated directories. A caller that has already materialized a
+    private copy of the database must pass the original's telemetry root, since
+    the copy carries none: see `board.server.build_documents`.
     """
     del activity_limit
     db = Path(db_path) if db_path is not None else config.coord_db_path()
+    sidecars = (
+        Path(job_progress_dir)
+        if job_progress_dir is not None
+        else config.job_progress_dir_for_database(db)
+    )
     with _materialized_connection(db) as conn:
         now = config.source_date_epoch(coord_db.db_now(conn))
         work = sorted(
@@ -298,7 +310,7 @@ def build_snapshot(
         if row["id"]
     }
     jobs = sorted(
-        (dict(item) for item in load_snapshot(config.job_progress_dir()).items),
+        (dict(item) for item in load_snapshot(sidecars).items),
         key=lambda item: (_string(item.get("roadmap_id")), _string(item.get("job_id"))),
     )
     for job in jobs:
@@ -385,9 +397,22 @@ def _json_list(value: Any) -> list[str]:
     return sorted({_string(item) for item in parsed if _string(item)})
 
 
-def build_graph(db_path: str | Path | None = None) -> dict[str, Any]:
-    """Build a safe source-bound graph separate from NativeSnapshotV1."""
+def build_graph(
+    db_path: str | Path | None = None,
+    *,
+    job_progress_dir: str | Path | None = None,
+) -> dict[str, Any]:
+    """Build a safe source-bound graph separate from NativeSnapshotV1.
+
+    Telemetry is bound to the served database exactly as in `build_snapshot`;
+    the graph draws job nodes from the same sidecars the snapshot counts.
+    """
     db = Path(db_path) if db_path is not None else config.coord_db_path()
+    sidecars = (
+        Path(job_progress_dir)
+        if job_progress_dir is not None
+        else config.job_progress_dir_for_database(db)
+    )
     with _materialized_connection(db) as conn:
         now = config.source_date_epoch(coord_db.db_now(conn))
         work = sorted(
@@ -401,7 +426,7 @@ def build_graph(db_path: str | Path | None = None) -> dict[str, Any]:
             ).fetchall()
         ]
     jobs = sorted(
-        (dict(item) for item in load_snapshot(config.job_progress_dir()).items),
+        (dict(item) for item in load_snapshot(sidecars).items),
         key=lambda item: (_string(item.get("roadmap_id")), _string(item.get("job_id"))),
     )
     nodes: dict[str, dict[str, Any]] = {}

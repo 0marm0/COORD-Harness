@@ -104,7 +104,14 @@ def test_board_operational_and_tertiary_type_floors(tmp_path: Path) -> None:
         try:
             page.goto(f"{url}/#v=overview", wait_until="networkidle")
             page.locator(".metrics").wait_for()
-            assert page.locator("#rail").is_hidden()
+            # The running-now region is painted by render() after the board
+            # documents resolve, which networkidle does not imply. Measuring
+            # .live before it exists made this test fail about half the time.
+            page.locator(".live .lm").first.wait_for()
+            # #rail was removed, not hidden. Assert absence: Playwright reports a
+            # non-existent element as hidden, so the old is_hidden() check passed
+            # whether the element was gone or merely invisible.
+            assert page.locator("#rail").count() == 0
             for selector in (
                 ".shell-nav a",
                 ".shell-subnav a",

@@ -53,11 +53,23 @@ board service on port 7870:
 
 Without Xcode/XcodeGen — or if you only want the CLI and board — pass `--no-native` to
 skip that requirement and the native build entirely; it does the same `.venv` and
-`.coordharness/coord.db` setup as the manual CLI steps above, in one command:
+`.coordharness/coord.db` setup as the manual CLI steps above, in one command, and also
+writes this clone's `.codex/config.toml` and `.mcp.json` if they are absent:
 
 ```bash
 ./scripts/setup-macos.sh --no-native
 ```
+
+It stops there. Registering this clone with the Codex and Claude MCP clients installed on
+your machine writes configuration *outside* the clone — on the Codex side, your global
+config — so under `--no-native` you have to ask for it:
+
+```bash
+./scripts/setup-macos.sh --no-native --register-clients
+```
+
+The default path above, which installs the native apps system-wide anyway, still
+registers them without the flag.
 
 Verify entry points (works after either path above — both leave a `.venv` at the repo root):
 
@@ -131,7 +143,7 @@ From the repository root:
 .venv/bin/coord board --group-by module
 ```
 
-The seed is synthetic and fictional. It uses the current clock so live demo leases remain active; set `SOURCE_DATE_EPOCH` when you need a byte-reproducible capture. It writes 37 rows total: 32 work items nested under five initiatives — UI overhaul, Model development, Platform migration, Search relevance, and Operational hardening — plus the five initiative rows themselves, with Claude, Codex, and service actors and rows in several lifecycle states. It does not copy or paraphrase a private board.
+The seed is synthetic and fictional. It uses the current clock so live demo leases remain active; set `SOURCE_DATE_EPOCH` when you need a byte-reproducible capture, and expect a red board when you do. A frozen seed clock backdates every lease and heartbeat, `coord doctor` reads the real one, and so it finds all of them expired and reports `"status": "BLOCKED"` with exit 2 (`expired_claim_count: 10`, `expired_session_count: 8`). Seed without the override for the walkthrough below. It writes 37 rows total: 32 work items nested under five initiatives — UI overhaul, Model development, Platform migration, Search relevance, and Operational hardening — plus the five initiative rows themselves, with Claude, Codex, and service actors and rows in several lifecycle states. It does not copy or paraphrase a private board.
 
 It also writes ten job sidecars into `.coordharness/job_progress/`, each bound to one of those work rows. Seed with the default paths: if you send the database somewhere else with `--db`, the sidecars stay behind in `.coordharness/` and `coord doctor` will report the split.
 
@@ -150,7 +162,7 @@ Confirm the seeded board is healthy before going further:
 .venv/bin/coord doctor
 ```
 
-It prints `"status": "PASS"` and exits 0.
+Seeded without `SOURCE_DATE_EPOCH`, it prints `"status": "PASS"` and exits 0.
 
 ## Claim one Codex-owned row
 

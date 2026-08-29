@@ -8,11 +8,20 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 
 NATIVE=1
+REGISTER_CLIENTS=
 for arg in "$@"; do
   case "$arg" in
     --no-native) NATIVE=0 ;;
+    --register-clients) REGISTER_CLIENTS=1 ;;
   esac
 done
+# `coord onboard --register-clients` writes MCP client configuration *outside*
+# this clone -- on the Codex side, the user's global config. The native path
+# installs system-wide by definition and says so, so registration stays its
+# default. --no-native advertises the opposite, a CLI-only path that matches the
+# manual steps in docs/getting-started.md, and those register nothing. There it
+# has to be asked for by name.
+: "${REGISTER_CLIENTS:=$NATIVE}"
 
 # --no-native combined with a help flag must stay side-effect-free even when the
 # help flag is not $1 (so the check below, which only inspects $1, would miss
@@ -26,7 +35,14 @@ Usage: scripts/setup-macos.sh --no-native [options]
 
 CLI-only setup: skips the Xcode/XcodeGen requirement and the native app
 install entirely, and sets up only this clone's .venv, .coordharness/coord.db,
-and MCP client wiring (lifecycle authority: $ROOT/.coordharness/coord.db).
+and the clone-local .codex/config.toml and .mcp.json
+(lifecycle authority: $ROOT/.coordharness/coord.db).
+
+Options:
+  --register-clients  also register this clone with the Codex and Claude MCP
+                      clients installed on this machine. Off under --no-native,
+                      because that writes configuration outside this clone --
+                      on the Codex side, your global config.
 EOF
         exit 0
         ;;
@@ -75,11 +91,16 @@ export COORD_DB="$DB_PATH"
 export COORD_KNOWLEDGE_DB="$ROOT/.coordharness/knowledge.db"
 export COORD_DEPLOYMENT_PROFILE=generic
 "$VENV/bin/coord" board >/dev/null
-"$VENV/bin/coord" onboard --write-configs --register-clients --skip-client-probes
+ONBOARD_ARGS=(onboard --write-configs --skip-client-probes)
+if [[ "$REGISTER_CLIENTS" == 1 ]]; then
+  ONBOARD_ARGS=(onboard --write-configs --register-clients --skip-client-probes)
+fi
+"$VENV/bin/coord" "${ONBOARD_ARGS[@]}"
 
 if [[ "$NATIVE" == 0 ]]; then
   printf '%s\n' \
     'CLI-only setup complete (no native apps installed; re-run without --no-native for those).' \
+    "  MCP clients: $(if [[ "$REGISTER_CLIENTS" == 1 ]]; then echo 'registered'; else echo 'not registered (add --register-clients to register them)'; fi)" \
     "  Verify: $VENV/bin/coord --help" \
     "  Board:  $VENV/bin/coord-board --db $DB_PATH --host 127.0.0.1 --port 7870"
   exit 0

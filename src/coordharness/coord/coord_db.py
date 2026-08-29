@@ -8904,6 +8904,52 @@ def _json_dumps(value: Any) -> str:
     return json.dumps(value)
 
 
+def resolve_note_session_target(conn, session_id: str, *, at: float | None = None) -> str:
+    """Validate one session as a note recipient, or refuse loudly.
+
+    ``inbox_cursors`` is keyed ``(recipient, session_id)`` and every inbox read
+    path already resolves a ``session:<id>`` selector, so addressing a single
+    session has always been readable -- there was simply no writer that produced
+    one. Adding the writer means adding this check with it: a selector naming a
+    session that never existed, or one whose lease has lapsed, is a message
+    posted into a void. Nothing errors, nothing bounces, and the sender believes
+    it was delivered. Refusing here is the difference between "the other agent
+    has not answered yet" and "the other agent was never going to see it".
+
+    Liveness is the same derivation the session rollup uses -- an active row
+    whose lease has not expired -- so a session the board shows as live is
+    exactly a session that can be addressed.
+    """
+    target = str(session_id or "").strip()
+    if not target:
+        raise ValueError("a session note target must name a session_id")
+    row = conn.execute(
+        "SELECT session_id, actor, state, lease_until, ended_at FROM agent_sessions"
+        " WHERE session_id=?",
+        (target,),
+    ).fetchone()
+    if row is None:
+        raise ValueError(
+            f"unknown session {target!r}: no such session has ever registered on "
+            "this board, so a note addressed to it would be readable by nobody"
+        )
+    now = at if at is not None else db_now(conn)
+    state = str(row["state"] or "")
+    lease_until = float(row["lease_until"] or 0.0)
+    if state != "active" or lease_until <= now:
+        detail = (
+            f"state={state!r}"
+            if state != "active"
+            else f"lease expired {int(now - lease_until)}s ago"
+        )
+        raise ValueError(
+            f"session {target!r} is not live ({detail}); a note addressed to a "
+            "dead session is never read by anyone -- address the lane with "
+            "to_actor instead, or wait for that session to reappear"
+        )
+    return target
+
+
 def post_note(
     conn,
     *,
@@ -8911,6 +8957,7 @@ def post_note(
     actor: str,
     session_id: str = "",
     to_actor: str = "",
+    to_session_id: str = "",
     title: str | None = None,
     body: str,
     refs: list[str] | None = None,
@@ -8920,6 +8967,11 @@ def post_note(
     A note carries no lifecycle: it does not move ownership, status, version or
     verdict. That is the whole point of having it -- an agent mid-run needs a
     way to tell the other lane something without taking or altering its work.
+
+    ``to_session_id`` narrows the address from a lane to one live session, which
+    is what a fleet of same-lane sessions needs: ``actor:claude`` reaches all
+    three of them and is answered by none. It is checked, not trusted -- see
+    ``resolve_note_session_target``. Omitted, the behaviour is unchanged.
 
     Bounded like the MCP tool it mirrors, so the two surfaces cannot drift into
     different contracts for the same event kind.
@@ -8943,7 +8995,15 @@ def post_note(
     ).fetchone():
         raise ValueError(f"note target {clean_work!r} is not a row on this board")
 
-    selector = f"actor:{to_actor.strip()}" if str(to_actor or "").strip() else None
+    # A session address wins over the lane address when both are given: it is
+    # the strictly narrower of the two, and silently widening it back to the
+    # lane would deliver the message to peers the sender chose not to name.
+    if str(to_session_id or "").strip():
+        selector = "session:" + resolve_note_session_target(conn, to_session_id)
+    elif str(to_actor or "").strip():
+        selector = f"actor:{to_actor.strip()}"
+    else:
+        selector = None
     payload = json.dumps({
         "schema_version": 1,
         "event_only": True,
@@ -10735,7 +10795,10 @@ def session_closeout(
         "waived_events": matched_waivers,
         "memory_proposals": proposal_production,
         "successor_pointer": (
-            f"coordharness/scripts/board_context.py successor --sessions {sid}"
+            # Runnable from a clone: board_context lives inside the package and
+            # has no console script, so name the module. The previous string
+            # pointed at a coordharness/scripts/ directory that no checkout has.
+            f"python -m coordharness.coord.board_context successor --sessions {sid}"
         ),
     }
 

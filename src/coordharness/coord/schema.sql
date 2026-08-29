@@ -175,6 +175,62 @@ CREATE TABLE IF NOT EXISTS display_titles (
   updated_at  REAL NOT NULL
 );
 
+-- Work-contract tables. These are also declared in work_contracts.py, which
+-- creates them lazily for a caller holding its own writable connection. They
+-- belong here as well because the conflict query is a READ: a read-only board
+-- connection that finds the table missing cannot create it, and the lazy path
+-- then fails with "attempt to write a readonly database" rather than reporting
+-- an empty write set. Bootstrapping them makes the first reader's answer a
+-- result instead of a crash. CREATE ... IF NOT EXISTS keeps both paths safe on
+-- a database that already has them.
+CREATE TABLE IF NOT EXISTS work_contract_done_signals (
+  signal_sha256      TEXT NOT NULL,
+  work_id            TEXT NOT NULL,
+  spec_json          TEXT NOT NULL,
+  input_refs_json    TEXT NOT NULL,
+  producer_sha256    TEXT NOT NULL,
+  completed_ref      TEXT NOT NULL,
+  recorded_at        REAL NOT NULL,
+  invalidated_at     REAL,
+  invalidated_reason TEXT,
+  PRIMARY KEY (signal_sha256, work_id)
+);
+CREATE INDEX IF NOT EXISTS ix_work_contract_signal
+  ON work_contract_done_signals(signal_sha256, invalidated_at);
+
+-- One row per declared scope per claim. The claim id is the grain rather than
+-- the work id because the declaration is a property of who currently holds the
+-- row, not of the row itself: a released and re-taken claim declares its own.
+CREATE TABLE IF NOT EXISTS work_contract_write_sets (
+  claim_id     TEXT NOT NULL,
+  work_id      TEXT NOT NULL,
+  session_id   TEXT NOT NULL,
+  scope_kind   TEXT NOT NULL,
+  scope_value  TEXT NOT NULL,
+  declared_at  REAL NOT NULL,
+  PRIMARY KEY (claim_id, scope_kind, scope_value)
+);
+CREATE INDEX IF NOT EXISTS ix_work_contract_write_set_work
+  ON work_contract_write_sets(work_id);
+
+CREATE TABLE IF NOT EXISTS work_contract_child_attempts (
+  attempt_id        TEXT PRIMARY KEY,
+  claim_id          TEXT NOT NULL,
+  work_id           TEXT NOT NULL,
+  parent_session_id TEXT NOT NULL,
+  child_label       TEXT NOT NULL,
+  executed_by       TEXT NOT NULL,
+  model             TEXT,
+  spawned_at        REAL NOT NULL,
+  outcome           TEXT,
+  outcome_ref       TEXT,
+  outcome_at        REAL
+);
+CREATE INDEX IF NOT EXISTS ix_work_contract_children_claim
+  ON work_contract_child_attempts(claim_id);
+CREATE INDEX IF NOT EXISTS ix_work_contract_children_work
+  ON work_contract_child_attempts(work_id);
+
 
 DROP VIEW IF EXISTS v_session_claimcount;
 CREATE VIEW v_session_claimcount AS

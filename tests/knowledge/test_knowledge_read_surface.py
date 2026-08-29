@@ -17,8 +17,14 @@ from typing import Any
 
 import pytest
 
-from coordharness.coord import mcp_coord_server
-from coordharness.knowledge import facts, memory_proposals, read_surface
+pytest.importorskip(
+    "mcp",
+    reason="the MCP server surface under test needs the optional [mcp] extra; "
+    "without it this module is skipped rather than failing collection for the whole suite",
+)
+
+from coordharness.coord import mcp_coord_server  # noqa: E402
+from coordharness.knowledge import facts, memory_proposals, read_surface  # noqa: E402
 
 Fingerprint = tuple[Any, ...]
 

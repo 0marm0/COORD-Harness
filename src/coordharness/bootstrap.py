@@ -87,7 +87,15 @@ def database_current(db_path: str | Path | None = None) -> bool:
         resource.name for resource in _migration_resources()
     }
     return (
-        {"schema_migrations", "agent_sessions", "work_items", "claims", "runs"} <= tables
+        # work_contract_write_sets is listed because a database created before
+        # it moved into the base schema is NOT current: the conflict query is a
+        # read, a read-only connection cannot create the table it is missing,
+        # and reporting such a database as current would skip the one bootstrap
+        # that repairs it.
+        {
+            "schema_migrations", "agent_sessions", "work_items", "claims",
+            "runs", "work_contract_write_sets",
+        } <= tables
         and {"v_work_owner", "v_session_rollup"} <= views
         and expected_migrations <= names
     )

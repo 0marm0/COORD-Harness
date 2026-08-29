@@ -423,33 +423,31 @@ then has to route through the same policy pipeline the CLI does rather than
 shortcut it, which is most of the CLI's own complexity re-earned in a
 different frontend.
 
-## Conflict detection from declared write sets
+## Conflict detection from declared write sets — built
 
-`locked_paths.py` protects specific known-sensitive paths, and the
-work-contract modules (`work_contracts.py`, `exact_authority.py`) let a
-claim carry structured constraints — but nothing today asks "do two
-currently-held claims intend to touch the same file?" before both proceed.
-Two agents can each hold a perfectly valid claim on two different work
-items that happen to edit the same module, and the first signal either one
-gets is a merge conflict or a silently clobbered file, not a warning at
-claim time when it would still be cheap to coordinate.
+This shipped. `coord claim --write-scope [KIND=]VALUE` declares a scope when a
+claim is taken, `coord declare-write-set` adds one to a claim already held, and
+`coord conflicts` answers, read-only, which currently-held claims intend to
+touch the same paths. The same three are on the MCP surface. An overlap names
+both sides — work id, claim id, session and scope — so an agent is told which
+peer it is about to collide with, not merely that a collision exists.
 
-The missing piece is that nothing is actually declared. A claim's `refs`
-field is free-text metadata an agent can put anything in, not a machine-
-checked set of paths. Even with a real `declared_paths` field, the harder
-problem is false positives: two claims both touching `README.md` is nearly
-always harmless, while two both touching the same schema migration file
-almost never is. "These claims overlap" needs to carry a severity signal an
-agent can weigh, not become a blocking rule on day one — a naive block
-would stop plenty of harmless concurrent work the way an overly broad lock
-would, for a feature meant to prevent surprises, not introduce new ones.
+Two decisions made while building it are worth keeping.
 
-**Smallest first step:** an optional `declared_paths: list[str]` field on
-`claim()`, stored but enforcing nothing, paired with a read-only
-`conflicting_claims(work_id)` query that surfaces other currently-held
-claims sharing a declared path — visible to an agent as information it can
-act on, with zero blocking behavior until there's real data on how often
-declared overlaps turn out to matter. **Effort:** a few days for the field
-and the read-only overlap query. Turning any of it into an enforced
-conflict block is a separate, harder decision that needs real usage data
-before it's worth making.
+**It reports, it does not block.** The original entry argued that a naive block
+would stop plenty of harmless concurrent work, and that still stands: two claims
+on `README.md` are almost always fine, two on the same migration almost never
+are, and nothing here can yet tell those apart. Overlaps are information an
+agent weighs. Enforcement remains a separate, harder decision that wants real
+usage data first.
+
+**A claim that declared nothing is reported as undeclared, not as clean.** The
+report carries `undeclared_claims` beside its findings. Without it, an empty
+result reads as "no conflicts" when it may mean "nobody said what they were
+touching" — and a silent all-clear is worse than no answer, because it is
+believed.
+
+What remains open is the severity signal the original entry wanted: an overlap
+on a lockfile and one on a shared schema are the same event today. Grading them
+needs observations of how often a declared overlap actually mattered, which only
+exist once people run this.

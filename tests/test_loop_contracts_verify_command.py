@@ -43,7 +43,13 @@ def test_compact_verify_command_does_not_name_a_missing_script() -> None:
 
 def test_compact_verify_command_names_a_subcommand_the_cli_recognizes() -> None:
     tokens = COMPACT_VERIFY_COMMAND.split()
-    assert tokens[0].endswith(".venv/bin/coord"), COMPACT_VERIFY_COMMAND
+    # The program must be the installed console script, resolved from PATH. An
+    # earlier version of this assertion required a ".venv/bin/coord" prefix,
+    # which pinned a checkout-relative path no clone has -- so the emitted
+    # instruction stayed unrunnable while the test that existed to catch that
+    # agreed with it.
+    assert tokens[0] == "coord", COMPACT_VERIFY_COMMAND
+    assert "/" not in COMPACT_VERIFY_COMMAND, COMPACT_VERIFY_COMMAND
     subcommand = tokens[1]
 
     # argparse exits 0 for a recognized subcommand's --help and 2 for an

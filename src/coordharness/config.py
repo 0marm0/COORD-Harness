@@ -31,12 +31,14 @@ __all__ = [
     "deployment_profile",
     "is_strict_deployment",
     "job_progress_dir",
+    "job_progress_dir_for_database",
     "knowledge_db_path",
     "project_root",
     "public_path_ref",
     "resource_modes_path",
     "source_date_epoch",
     "state_dir",
+    "state_root_for_database",
 ]
 
 _SAFE_ACTOR_RE = re.compile(r"[a-z][a-z0-9_.-]{0,63}")
@@ -125,8 +127,52 @@ def knowledge_db_path() -> Path:
 
 
 def job_progress_dir() -> Path:
-    """Per-job telemetry sidecars, one JSON file per run."""
+    """Per-job telemetry sidecars, one JSON file per run.
+
+    The ambient default: the telemetry belonging to the state tree this
+    process is standing in. Writers -- the launcher, the sidecar writer, the
+    demo seeder -- want exactly this, because they are writing into their own
+    tree. A reader handed a database to serve wants
+    `job_progress_dir_for_database` instead, so that both halves of what it
+    shows come from the same place.
+    """
     return state_dir() / "job_progress"
+
+
+def state_root_for_database(db_path: str | os.PathLike[str]) -> Path:
+    """The state root that owns a particular coordination database.
+
+    Work rows come out of a named database; job telemetry came out of the
+    ambient state tree, which never consulted that database. `coord-board --db
+    /elsewhere/coord.db` therefore drew one screen out of two unrelated
+    directories, and a genuinely empty database served whatever sidecars
+    happened to be lying around -- which also put the honest empty board out of
+    reach. The rule here is that telemetry belongs to the database it
+    describes.
+
+    In the default layout the database sits inside the state directory, so this
+    returns exactly `state_dir()` and nothing about `coord-board` with no
+    arguments changes. A database named outside that tree brings its own root:
+    the directory it sits in. That is the same containment `coord doctor`
+    already enforces from the other side -- it refuses to open a database it
+    cannot place inside the state root it was given, and reports
+    `database_outside_state_root` -- so the board no longer disagrees with the
+    doctor about which files belong together.
+    """
+    supplied = Path(db_path).expanduser()
+    ambient = state_dir()
+    real_db = Path(os.path.realpath(str(supplied)))
+    real_ambient = Path(os.path.realpath(str(ambient)))
+    if real_db.is_relative_to(real_ambient) or supplied.resolve(
+        strict=False
+    ).is_relative_to(ambient):
+        return ambient
+    return real_db.parent
+
+
+def job_progress_dir_for_database(db_path: str | os.PathLike[str]) -> Path:
+    """Per-job telemetry for the state root that owns `db_path`."""
+    return state_root_for_database(db_path) / "job_progress"
 
 
 def resource_modes_path() -> Path:

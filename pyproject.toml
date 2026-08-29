@@ -47,6 +47,7 @@ coord-mcp = "coordharness.coord.mcp_coord_server:main"
 coord-board = "coordharness.board.server:main"
 coord-jobs = "coordharness.jobs.cli:main"
 coord-models = "coordharness.coord.model_cli:main"
+coord-reaper = "coordharness.coord.reaper:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

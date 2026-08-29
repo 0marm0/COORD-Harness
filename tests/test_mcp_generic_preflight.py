@@ -4,8 +4,14 @@ from pathlib import Path
 
 import pytest
 
-from coordharness.bootstrap import bootstrap_database
-from coordharness.coord import locked_paths, mcp_coord_server
+pytest.importorskip(
+    "mcp",
+    reason="the MCP server surface under test needs the optional [mcp] extra; "
+    "without it this module is skipped rather than failing collection for the whole suite",
+)
+
+from coordharness.bootstrap import bootstrap_database  # noqa: E402
+from coordharness.coord import locked_paths, mcp_coord_server  # noqa: E402
 
 
 def test_generic_preflight_reads_a_fresh_standalone_database(

@@ -16,6 +16,12 @@ _EXPECTED_TABLES = {
     "schema_migrations", "agent_sessions", "work_items", "claims", "runs",
     "events", "inbox_cursors", "artifacts", "display_titles",
     "request_consumption",
+    # The work-contract tables are verified here, not merely created. The write
+    # set behind them is read by callers that hold a read-only connection and
+    # therefore cannot create what is missing, so "the schema applied" has to
+    # mean they are present rather than that they will appear on first write.
+    "work_contract_done_signals", "work_contract_write_sets",
+    "work_contract_child_attempts",
 }
 _EXPECTED_VIEWS = {"v_session_claimcount", "v_work_owner", "v_session_rollup", "v_runs_read_model"}
 _ADD_COLUMNS = {
