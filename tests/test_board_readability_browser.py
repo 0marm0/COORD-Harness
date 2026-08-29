@@ -50,10 +50,30 @@ def _board(tmp_path: Path):
 
 
 def _font_size(page, selector: str) -> float:
-    return float(
-        page.locator(selector).first.evaluate(
+    """Computed font size in px, or a failure that says what actually went wrong.
+
+    The board re-renders whole panels, so a node this locator resolved can be
+    detached before it is measured. ``getComputedStyle`` on a detached node
+    returns an empty declaration, ``parseFloat("")`` is NaN, and the caller's
+    ``assert size >= 12`` then reports ``assert nan >= 12`` -- which reads as a
+    typography regression when the element simply was not there. Retry across
+    the re-render, and if it still cannot be measured say so.
+    """
+    last: float | None = None
+    for _ in range(5):
+        locator = page.locator(selector).first
+        locator.wait_for(state="attached")
+        value = locator.evaluate(
             "element => Number.parseFloat(getComputedStyle(element).fontSize)"
         )
+        last = float(value) if value is not None else float("nan")
+        if last == last:  # not NaN
+            return last
+        page.wait_for_timeout(200)
+    raise AssertionError(
+        f"{selector!r} could not be measured: it resolved but had no computed "
+        f"font size across five attempts, which means it was detached mid-render "
+        f"rather than styled too small (last read: {last})"
     )
 
 

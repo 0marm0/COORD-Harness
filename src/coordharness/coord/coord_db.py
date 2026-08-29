@@ -3707,11 +3707,166 @@ def resume_parked_work(
         }
 
 
+#: The classes of caller sanctioned to mutate a claim they do not hold.
+#:
+#: Every one of these is a real behaviour of this module, but each is currently
+#: implemented as its own typed operation with its own SQL and its own guard --
+#: ``_release_expired_claims_unlocked``, ``reap_zombie_sessions`` and
+#: ``post_existing_work_handoff``. None of them routes through
+#: ``heartbeat_claim`` / ``release_claim`` / ``complete_claim``, so nothing in
+#: this tree passes ``system_caller`` today. The enum exists so that if one of
+#: them is ever refactored onto these functions it arrives through a named,
+#: enumerated door rather than by omitting an argument -- which is exactly how
+#: the holder check went missing in the first place.
+CLAIM_MUTATION_SYSTEM_CALLERS = frozenset(
+    {
+        "reaper:expired_lease",
+        "reaper:zombie_session",
+        "handoff:ownership_transfer",
+    }
+)
+
+
+def _assert_claim_holder_unlocked(
+    conn: sqlite3.Connection,
+    claim_id: str,
+    *,
+    action: str,
+    session_id: str | None,
+    actor: str | None = None,
+    system_caller: str | None = None,
+) -> sqlite3.Row | None:
+    """Refuse to mutate a claim on behalf of a session that does not hold it.
+
+    A ``claim_id`` is not a secret and was never a capability: ``claim`` returns
+    it, the board prints it, and handoff payloads carry it. Any surface that
+    accepted one as sufficient authority let a peer block, park or *complete*
+    another session's work -- and because the claim row keeps the holder's
+    ``session_id``, the resulting row still read as the holder's own action.
+    There was no trace at all distinguishing "the owner did this" from "somebody
+    else did it for them".
+
+    The check lives here rather than only at the MCP surface because the CLI
+    reaches the same three mutators, and so would any future face. This is the
+    one place every path goes through.
+
+    The caller's identity is asserted, not proven -- that is the trust model the
+    rest of this module already uses. What this closes is the far larger hole of
+    needing to assert nothing whatsoever.
+    """
+
+    declared_system_caller = str(system_caller or "").strip()
+    if declared_system_caller and declared_system_caller not in CLAIM_MUTATION_SYSTEM_CALLERS:
+        raise ValueError(
+            f"{action} refuses an undeclared system_caller {declared_system_caller!r}; "
+            f"acting on a claim you do not hold requires one of "
+            f"{sorted(CLAIM_MUTATION_SYSTEM_CALLERS)}"
+        )
+
+    row = conn.execute(
+        "SELECT c.claim_id, c.work_id, c.session_id, s.actor FROM claims c"
+        " LEFT JOIN agent_sessions s ON s.session_id=c.session_id"
+        " WHERE c.claim_id=?",
+        (claim_id,),
+    ).fetchone()
+    if row is None:
+        # Nothing is held, so nothing can be taken. Leave the missing-claim
+        # message to the caller, which already has one.
+        return None
+    if declared_system_caller:
+        return row
+
+    holder_sid = str(row["session_id"] or "").strip()
+    holder_actor = (
+        str(row["actor"] or "").strip().lower()
+        or expected_actor_for_session_id(holder_sid)
+        or ""
+    )
+    caller_sid = str(session_id or "").strip()
+    caller_actor = (
+        str(actor or "").strip().lower()
+        or expected_actor_for_session_id(caller_sid)
+        or ""
+    )
+
+    if not caller_sid:
+        raise ValueError(
+            f"{action} requires the calling session's identity: claim {claim_id!r} "
+            f"on {str(row['work_id'] or '')!r} is held by "
+            f"{holder_actor or '?'}/{holder_sid or '?'}, and this call named no "
+            "session at all. Pass session_id so the board can tell the holder's "
+            "own action apart from a peer acting on its row"
+        )
+
+    if caller_actor:
+        _validate_session_actor(caller_sid, caller_actor)
+
+    if caller_sid == holder_sid:
+        return row
+    # Same orchestrator, re-registered session row: the work_id resolution path
+    # already treats these as one owner, and so must this.
+    if holder_sid and holder_sid in _related_session_ids_unlocked(
+        conn, caller_sid, actor=caller_actor or None
+    ):
+        return row
+
+    raise ValueError(
+        f"{action} cannot touch a claim this session does not hold: claim "
+        f"{claim_id!r} on {str(row['work_id'] or '')!r} is held by "
+        f"{holder_actor or '?'}/{holder_sid or '?'}, and the call came from "
+        f"{caller_actor or '?'}/{caller_sid}. A claim id is printed on the board "
+        "and carried in handoff payloads, so holding one proves nothing -- ask "
+        "the holder to act, take the row over with a typed handoff, or wait for "
+        "the lease to expire and be reaped"
+    )
+
+
+def assert_claim_holder(
+    conn: sqlite3.Connection,
+    claim_id: str,
+    *,
+    action: str,
+    session_id: str | None,
+    actor: str | None = None,
+    system_caller: str | None = None,
+) -> sqlite3.Row | None:
+    """Public, read-only form of the claim-ownership guard.
+
+    The mutators call the ``_unlocked`` variant from inside their own
+    transaction so the check and the write cannot be separated. This wrapper is
+    for surfaces that want to refuse before they get that far.
+    """
+
+    return _assert_claim_holder_unlocked(
+        conn,
+        claim_id,
+        action=action,
+        session_id=session_id,
+        actor=actor,
+        system_caller=system_caller,
+    )
+
+
 def heartbeat_claim(
-    conn, claim_id: str, lease_s: float = LEASE_DEFAULT_S, step: str | None = None
+    conn,
+    claim_id: str,
+    lease_s: float = LEASE_DEFAULT_S,
+    step: str | None = None,
+    *,
+    session_id: str | None,
+    actor: str | None = None,
+    system_caller: str | None = None,
 ) -> None:
     with tx(conn):
         t = db_now(conn)
+        _assert_claim_holder_unlocked(
+            conn,
+            claim_id,
+            action="heartbeat",
+            session_id=session_id,
+            actor=actor,
+            system_caller=system_caller,
+        )
         row = conn.execute(
             "SELECT c.session_id, c.status, c.expires_at, s.actor FROM claims c"
             " LEFT JOIN agent_sessions s ON s.session_id=c.session_id"
@@ -3752,6 +3907,9 @@ def release_claim(
     resume_when: str | None = None,
     resume_predicate_json: str | None = None,
     resume_manual: bool = False,
+    session_id: str | None,
+    actor: str | None = None,
+    system_caller: str | None = None,
 ) -> None:
     if status not in RELEASABLE_CLAIM_STATUSES:
         raise ValueError(
@@ -3764,6 +3922,14 @@ def release_claim(
         )
     frees = status in ("released", "unclaimed")
     with tx(conn):
+        _assert_claim_holder_unlocked(
+            conn,
+            claim_id,
+            action=f"release(status={status})",
+            session_id=session_id,
+            actor=actor,
+            system_caller=system_caller,
+        )
         parked_next_step = str(next_step or "").strip()
         parked_resume_when = str(resume_when or "").strip()
         if status == "paused":
@@ -5166,9 +5332,20 @@ def complete_claim(
     proof_root: str | Path | None = None,
     receipt_body: str | None = None,
     receipt_source: str = "coord_db.complete_claim",
+    session_id: str | None,
+    actor: str | None = None,
+    system_caller: str | None = None,
 ) -> str:
     with tx(conn):
         t = db_now(conn)
+        _assert_claim_holder_unlocked(
+            conn,
+            claim_id,
+            action="complete",
+            session_id=session_id,
+            actor=actor,
+            system_caller=system_caller,
+        )
         row = conn.execute(
             "SELECT c.work_id, c.session_id, c.status, c.expires_at,"
             " w.done_signal, w.acceptance_json,"
