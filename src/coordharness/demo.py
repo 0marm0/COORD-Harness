@@ -494,6 +494,7 @@ def _live_activity(conn: sqlite3.Connection, clock: _Clock) -> list[str]:
                 coord_db.release_claim(
                     conn, claim, status="blocked", reason=reason,
                     resume_when=reason, resume_manual=True,
+                    session_id=session,
                 )
             except Exception as exc:  # noqa: BLE001
                 refusals.append(f"{row['work_id']}: block refused: {type(exc).__name__}: {exc}")

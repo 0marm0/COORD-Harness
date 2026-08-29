@@ -155,7 +155,13 @@ class MLXRunner:
             )
             self.run_id = run_id
             claim_id = coord_db.claim_work(conn, self.session_id, self.work_id, step=step)
-            coord_db.heartbeat_claim(conn, claim_id, step=step or f"mlx:{self.model_name}")
+            coord_db.heartbeat_claim(
+                conn,
+                claim_id,
+                step=step or f"mlx:{self.model_name}",
+                session_id=self.session_id,
+                actor=self.actor,
+            )
             text, n_tokens = generate(prompt)
 
             coord_db.post_event(
@@ -235,13 +241,20 @@ class MLXRunner:
                 try:
                     if succeeded and self.allow_complete_claim:
                         try:
-                            coord_db.complete_claim(conn, claim_id)
+                            coord_db.complete_claim(
+                                conn,
+                                claim_id,
+                                session_id=self.session_id,
+                                actor=self.actor,
+                            )
                         except ValueError:
                             coord_db.release_claim(
                                 conn,
                                 claim_id,
                                 status="released",
                                 reason="run completed without artifact proof",
+                                session_id=self.session_id,
+                                actor=self.actor,
                             )
                     else:
                         coord_db.release_claim(
@@ -253,6 +266,8 @@ class MLXRunner:
                                 if succeeded
                                 else "local_mlx run failed; claim released by finally"
                             ),
+                            session_id=self.session_id,
+                            actor=self.actor,
                         )
                 except Exception as exc:  # noqa: BLE001
                     cleanup_errors.append(exc)

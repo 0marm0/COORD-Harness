@@ -795,7 +795,13 @@ def main(argv=None) -> int:
                 ident=ident,
                 payload={"step": args.step, "claim_id": args.claim_id},
             )
-            coord_db.heartbeat_claim(conn, args.claim_id, step=args.step)
+            coord_db.heartbeat_claim(
+                conn,
+                args.claim_id,
+                step=args.step,
+                session_id=sid,
+                actor=ident["actor"],
+            )
             _emit({"ok": True, "policy": policy})
 
         elif args.cmd == "release":
@@ -835,6 +841,8 @@ def main(argv=None) -> int:
                 resume_when=resume_when,
                 resume_predicate_json=args.resume_predicate,
                 resume_manual=args.resume_manual,
+                session_id=sid,
+                actor=ident["actor"],
             )
             _emit({
                 "ok": True,
@@ -873,6 +881,8 @@ def main(argv=None) -> int:
                 claim["claim_id"],
                 artifact_path=args.artifact,
                 receipt_source="coordharness.coord.cli.done",
+                session_id=sid,
+                actor=ident["actor"],
             )
             receipt = conn.execute(
                 "SELECT event_id FROM events WHERE idempotency_key=?",

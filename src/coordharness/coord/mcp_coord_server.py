@@ -1217,7 +1217,17 @@ def _resolve_lifecycle_claim_row(
     actor: str | None = None,
     session_id: str | None = None,
     env: dict | None = None,
-):
+) -> tuple[Any, str, str]:
+    """Resolve the claim a lifecycle verb will act on, and who is asking.
+
+    Returns ``(row, caller_actor, caller_session_id)``. The caller identity is
+    part of the return value on purpose: every caller forwards it to the
+    ``coord_db`` mutator, so the database re-checks ownership against the
+    *asking* session rather than against the row it just read. Handing the
+    stored holder back down instead would make the database guard vacuous from
+    this surface -- a check that can only ever agree with itself.
+    """
+
     normalized_claim_id = str(claim_id or "").strip()
     if normalized_claim_id:
         row = conn.execute(
@@ -1235,6 +1245,38 @@ def _resolve_lifecycle_claim_row(
             )
         explicit_actor = str(actor or "").strip().lower()
         explicit_sid = str(session_id or "").strip()
+        # Resolve who is asking BEFORE the volunteered-identity checks below.
+        # Those only ever ran `if explicit_actor or explicit_sid`, so a call
+        # carrying nothing but a claim_id was never compared to the holder at
+        # all -- and a claim_id is not a secret. `claim` returns it, the board
+        # prints it, and handoff payloads carry it. The work_id branch below has
+        # always resolved a bound identity; this branch simply never did.
+        holder_sid = str(row["session_id"] or "").strip()
+        holder_actor = str(
+            row["actor"] or coord_db.expected_actor_for_session_id(holder_sid) or ""
+        ).strip().lower()
+        try:
+            _identity, claim_caller_actor, claim_caller_sid = _resolve_tool_identity(
+                actor=actor,
+                session_id=session_id,
+                env=env,
+            )[:3]
+        except ValueError as exc:
+            if explicit_actor or explicit_sid:
+                raise
+            raise ValueError(
+                f"{verb} claim_id {normalized_claim_id!r} is held by "
+                f"{holder_actor or '?'}/{holder_sid or '?'}, and this call named "
+                f"no session of its own. A claim id is printed on the board and "
+                f"carried in handoff payloads, so holding one proves nothing: {exc}"
+            ) from exc
+        coord_db.assert_claim_holder(
+            conn,
+            normalized_claim_id,
+            action=verb,
+            session_id=claim_caller_sid,
+            actor=claim_caller_actor,
+        )
         if explicit_actor or explicit_sid:
             if explicit_sid:
                 expected_actor = coord_db.expected_actor_for_session_id(explicit_sid)
@@ -1256,7 +1298,7 @@ def _resolve_lifecycle_claim_row(
                     f"{verb} claim_id {normalized_claim_id!r} actor {explicit_actor!r} "
                     f"does not match stored claim actor {stored_actor!r}"
                 )
-        return row
+        return row, claim_caller_actor, claim_caller_sid
 
     normalized_work_id = str(work_id or "").strip()
     if not normalized_work_id:
@@ -1311,7 +1353,7 @@ def _resolve_lifecycle_claim_row(
                     f"{verb} resolved session_id={supplied_sid!r} as actor={supplied_actor!r}, "
                     f"but stored claim actor is {stored_actor!r}"
                 )
-            return supplied_row
+            return supplied_row, supplied_actor, norm_sid
 
     _identity, resolved_actor, resolved_sid, _label_fields = _resolve_tool_identity(
         actor=actor,
@@ -1366,7 +1408,7 @@ def _resolve_lifecycle_claim_row(
             f"{verb} resolved session_id={resolved_sid!r} as actor={resolved_actor!r}, "
             f"but stored claim actor is {row['actor']!r}"
         )
-    return row
+    return row, resolved_actor, resolved_sid
 
 
 def _parse_event_json(
@@ -1965,7 +2007,7 @@ def _tool_heartbeat(
 ) -> dict[str, Any]:
     conn = _get_conn(db_path)
     try:
-        row = _resolve_lifecycle_claim_row(
+        row, caller_actor, caller_sid = _resolve_lifecycle_claim_row(
             conn,
             verb="heartbeat",
             claim_id=claim_id,
@@ -1985,7 +2027,12 @@ def _tool_heartbeat(
         if policy.get("blocked"):
             raise ValueError(f"policy blocked heartbeat {resolved_claim_id}: {policy.get('block_reason')}")
         coord_db.heartbeat_claim(
-            conn, resolved_claim_id, lease_s=INTERACTIVE_LEASE_S, step=step
+            conn,
+            resolved_claim_id,
+            lease_s=INTERACTIVE_LEASE_S,
+            step=step,
+            session_id=caller_sid,
+            actor=caller_actor,
         )
         run_event_id = _record_mcp_lifecycle_run_event(
             conn,
@@ -2043,7 +2090,7 @@ def _tool_release(
         )
     conn = _get_conn(db_path)
     try:
-        row = _resolve_lifecycle_claim_row(
+        row, caller_actor, caller_sid = _resolve_lifecycle_claim_row(
             conn,
             verb=_verb,
             claim_id=claim_id,
@@ -2078,6 +2125,8 @@ def _tool_release(
             resume_when=resume_when,
             resume_predicate_json=resume_predicate,
             resume_manual=resume_manual,
+            session_id=caller_sid,
+            actor=caller_actor,
         )
         run_event_id = _record_mcp_lifecycle_run_event(
             conn,
@@ -2253,11 +2302,17 @@ def _complete_claim_with_proof_index_refresh(
     declared_proof: str,
     artifact_path: str | None,
     artifact_kind: str,
+    caller_actor: str,
+    caller_session_id: str,
 ) -> tuple[str, dict[str, object] | None]:
     complete_kwargs = {
         "artifact_path": artifact_path,
         "artifact_kind": artifact_kind,
         "receipt_source": "mcp_coord_server.complete",
+        # The asking session, not the stored holder: the database re-checks
+        # ownership, and it cannot do that against the row it just read.
+        "session_id": caller_session_id,
+        "actor": caller_actor,
     }
     try:
         return coord_db.complete_claim(conn, claim_id, **complete_kwargs), None
@@ -2305,7 +2360,7 @@ def _tool_complete(
     note_text = str(note or "").strip() or None
     conn = _get_conn(db_path)
     try:
-        row = _resolve_lifecycle_claim_row(
+        row, caller_actor, caller_sid = _resolve_lifecycle_claim_row(
             conn,
             verb="complete",
             claim_id=claim_id,
@@ -2349,6 +2404,8 @@ def _tool_complete(
             declared_proof=declared_proof,
             artifact_path=artifact_path,
             artifact_kind=artifact_kind,
+            caller_actor=caller_actor,
+            caller_session_id=caller_sid,
         )
         canonical_receipt = conn.execute(
             "SELECT event_id FROM events WHERE idempotency_key=?",
@@ -5202,6 +5259,13 @@ def build_server(
             db_path=db_path,
         )
 
+    # The five lifecycle wrappers below deliberately do not accept or forward an
+    # `env`. Over MCP the server's own process environment is not the caller's
+    # identity, and a client-supplied `env` would be an identity the client
+    # chose for itself twice over. `_resolve_tool_identity(env=None)` therefore
+    # demands an explicit actor and session_id -- the same contract `claim_work`
+    # already imposes -- and that asserted identity is what the claim-ownership
+    # check downstream compares against `claims.session_id`.
     @mcp.tool()
     def heartbeat(
         claim_id: str | None = None,
