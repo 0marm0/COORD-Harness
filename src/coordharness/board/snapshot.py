@@ -16,13 +16,17 @@ from coordharness import config
 from coordharness.coord import coord_db
 from coordharness.coord.config import connect_ro
 from coordharness.jobs.sidecar_snapshot import load_snapshot
-from coordharness.jobs.status import parse_updated_at
+from coordharness.jobs.status import derive_status, done_signal_exists, parse_updated_at
 
 NATIVE_SNAPSHOT_SCHEMA = "1"
 _SCHEMA_RESOURCE = "native_snapshot_v1.schema.json"
 _DEFAULT_SNAPSHOT_MAX_BYTES = 4 * 1024 * 1024 * 1024
 _RUNNING = {"claimed", "running"}
 _ATTENTION = {"attention", "blocked", "failed", "needs_verification", "artifact_present"}
+# The words a sidecar uses to call itself finished. Kept identical to the set
+# `jobs.status.derive_status` matches on, because the two have to agree about
+# which claims are terminal for the verification to be reached at all.
+_DONE_CLAIMS = {"done", "complete", "completed", "finished", "success", "superseded"}
 _DONE = {
     "archived",
     "canceled",
@@ -221,16 +225,74 @@ def _work_row(row: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _apply_job(row: dict[str, Any], job: dict[str, Any], now: float) -> None:
+def _verified_job_state(
+    job: dict[str, Any], state: str, declared_signal: str, root: Path
+) -> tuple[str, str]:
+    """Answer the job's own `done` claim with the artifact, not with the claim.
+
+    `docs/jobs-and-runs.md` says neither surface trusts the state string a job
+    last wrote about itself, and names `derive_status` as the sidecar half of
+    that discipline. The board was not calling it: a sidecar carrying
+    `"state": "done"` became a done row, and a done row in the summary, with no
+    artifact ever consulted. So call it, and let its `unverified` verdict --
+    a done claim whose declared proof does not resolve -- land on the row as
+    `needs_verification`, which the board already reads as needing attention
+    rather than as finished.
+
+    Returns the row status and a step note, empty when there is nothing to add.
+    A job that declares no proof at all is left alone: there is no artifact to
+    check, and inventing a refusal for it would say more than the evidence
+    does.
+    """
+    if state not in _DONE_CLAIMS:
+        return state, ""
+    item = {**job, "id": _string(job.get("job_id") or job.get("roadmap_id")), "status": state}
+    if declared_signal:
+        item["done_signal"] = declared_signal
+    try:
+        evidence = derive_status(item, root, ps_text="")
+        # Its `unverified` verdict, plus the artifact fact it always computes.
+        # derive_status answers several questions and returns on the first one
+        # that fires, so a sidecar carrying a blocking `rubric_verdict` would
+        # otherwise return before the done branch and carry its done claim
+        # through unchecked. A declared proof that does not resolve is not
+        # verified, whatever else the sidecar says about itself.
+        unverified = bool(evidence.unverified) or (
+            bool(declared_signal) and not evidence.done_signal_exists
+        )
+    except ValueError:
+        # derive_status also loads the optional process-pattern configuration,
+        # and a malformed one raises. That question cannot change this answer
+        # -- with no ps output to match against, the pattern branch is
+        # unreachable here -- so fall back to the artifact alone rather than
+        # letting an unrelated misconfiguration take the board down.
+        unverified = bool(declared_signal) and not done_signal_exists(declared_signal, root)
+    if not unverified:
+        return state, ""
+    return "needs_verification", "done reported, declared proof artifact not found"
+
+
+def _apply_job(
+    row: dict[str, Any],
+    job: dict[str, Any],
+    now: float,
+    *,
+    declared_signal: str = "",
+    root: Path | None = None,
+) -> None:
     state = _string(job.get("state")).lower()
+    note = ""
     if state:
+        state, note = _verified_job_state(
+            job, state, declared_signal, root if root is not None else config.project_root()
+        )
         row["status"] = state
     row["bucket"] = "job"
     row["owner"] = _string(job.get("owner"), row["owner"])
     row["progress_fraction"] = _progress(job)
     row["eta_seconds"] = _eta_seconds(job)
     row["stale"] = _job_stale(job, now)
-    row["current_step"] = _string(job.get("step"), row["current_step"])
+    row["current_step"] = note or _string(job.get("step"), row["current_step"])
 
 
 def _session_row(row: dict[str, Any]) -> dict[str, Any]:
@@ -309,6 +371,16 @@ def build_snapshot(
         for row in (_work_row(item) for item in work)
         if row["id"]
     }
+    # Kept off the rendered rows on purpose -- the public snapshot carries no
+    # artifact paths -- but a job bound to a work item inherits that item's
+    # declared proof, which is usually the only proof anyone declared. Without
+    # this the verification below has nothing to check for most real jobs.
+    declared_signals = {
+        _string(item.get("work_id")): _string(item.get("done_signal"))
+        for item in work
+        if _string(item.get("work_id"))
+    }
+    artifact_root = config.project_root()
     jobs = sorted(
         (dict(item) for item in load_snapshot(sidecars).items),
         key=lambda item: (_string(item.get("roadmap_id")), _string(item.get("job_id"))),
@@ -367,7 +439,14 @@ def build_snapshot(
             "current_step": "",
         }
         rows_by_id[row_id] = row
-        _apply_job(row, job, now)
+        _apply_job(
+            row,
+            job,
+            now,
+            declared_signal=_string(job.get("done_signal"))
+            or declared_signals.get(roadmap_id, ""),
+            root=artifact_root,
+        )
 
     rows = [rows_by_id[key] for key in sorted(rows_by_id)]
     snapshot: dict[str, Any] = {
