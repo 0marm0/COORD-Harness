@@ -530,15 +530,21 @@ def _live_activity(conn: sqlite3.Connection, clock: _Clock) -> list[str]:
     return refusals
 
 
-def _write_job_sidecars(*, now: float | None = None) -> int:
-    """Write one progress sidecar per sample job.
+def _write_job_sidecars(db_path: Path, *, now: float | None = None) -> int:
+    """Write one progress sidecar per sample job, beside the seeded database.
 
     A tracked job reports progress to a file rather than to whoever started it,
     so the board can tell the difference between a job that is working and one
     whose process died holding a claim. These are invented, but they are the
     real shape the reader will produce.
+
+    The sidecars belong to the database being seeded, not to the ambient state
+    tree. Writing them to ``config.job_progress_dir()`` regardless of the target
+    put a demo's job rows in front of whatever database the board happened to
+    serve next, and left the honest empty-board state unreachable for anyone who
+    had ever run the demo.
     """
-    directory = config.job_progress_dir()
+    directory = config.job_progress_dir_for_database(db_path)
     directory.mkdir(parents=True, exist_ok=True)
     now = time.time() if now is None else float(now)
     for job in SAMPLE_JOBS:
@@ -573,7 +579,7 @@ def seed(db_path: Path, *, quiet: bool = False) -> dict[str, int]:
         # A reproducible seed must use one clock for lifecycle rows, event
         # history, and job telemetry.  Mixing a fixed lifecycle clock with the
         # host clock produces future-dated jobs and an impossible read model.
-        jobs_written = _write_job_sidecars(now=epoch)
+        jobs_written = _write_job_sidecars(db_path, now=epoch)
         # The native clients read a materialised projection rather than querying
         # the board directly, so a seeded board is invisible to them until it is
         # built once.

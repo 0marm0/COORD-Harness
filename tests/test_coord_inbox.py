@@ -27,9 +27,15 @@ from pathlib import Path
 
 import pytest
 
-from coordharness.bootstrap import bootstrap_database
-from coordharness.coord import coord_db, mcp_coord_server
-from coordharness.coord.config import connect
+pytest.importorskip(
+    "mcp",
+    reason="the MCP server surface under test needs the optional [mcp] extra; "
+    "without it this module is skipped rather than failing collection for the whole suite",
+)
+
+from coordharness.bootstrap import bootstrap_database  # noqa: E402
+from coordharness.coord import coord_db, mcp_coord_server  # noqa: E402
+from coordharness.coord.config import connect  # noqa: E402
 
 REPO = Path(__file__).resolve().parents[1]
 SRC = REPO / "src"

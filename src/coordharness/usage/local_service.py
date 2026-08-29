@@ -56,6 +56,29 @@ def _clean_env(home: Path) -> dict[str, str]:
     }
 
 
+# The vendor CLIs are run from a directory outside the caller's tree, so a
+# project-local config file cannot steer what they report. `/private/tmp` is the
+# macOS spelling of that directory, and these probes are macOS-only. Where it
+# does not exist, `subprocess` raises FileNotFoundError for the *working
+# directory* -- which the broad handlers below read as "the CLI did not answer"
+# and report as `unavailable`. A signed-in CLI then reads exactly like a
+# signed-out one. Detecting the platform instead costs one stat and says so.
+_PROBE_CWD = "/private/tmp"
+
+
+def _probe_cwd() -> str | None:
+    """The directory the vendor CLIs run in, or None where this platform has none."""
+    return _PROBE_CWD if os.path.isdir(_PROBE_CWD) else None
+
+
+def _unsupported_platform_probe(provider: str) -> ProviderProbe:
+    """Say the platform is unsupported rather than answer as if we had asked."""
+    return ProviderProbe(
+        account={"status": "unsupported", "plan": "unknown", "authenticated": None},
+        errors=(f"{provider}_probe_platform_unsupported", f"{provider}_quota_unavailable"),
+    )
+
+
 def probe_claude_account(home: Path | str, *, timeout_seconds: float = 3.0) -> ProviderProbe:
     """Read the official Claude CLI's bounded JSON auth status."""
 
@@ -66,13 +89,16 @@ def probe_claude_account(home: Path | str, *, timeout_seconds: float = 3.0) -> P
             account={"status": "unavailable", "plan": "unknown", "authenticated": None},
             errors=("claude_cli_unavailable", "claude_quota_unavailable"),
         )
+    sandbox = _probe_cwd()
+    if sandbox is None:
+        return _unsupported_platform_probe("claude")
     try:
         result = subprocess.run(
             [executable, "auth", "status", "--json"],
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
-            cwd="/private/tmp",
+            cwd=sandbox,
             env=_clean_env(home_path),
             timeout=max(0.2, min(float(timeout_seconds), 5.0)),
             check=False,
@@ -119,13 +145,19 @@ def _default_jsonl_runner(
     *,
     env: Mapping[str, str] | None = None,
 ) -> list[Mapping[str, Any]]:
+    sandbox = _probe_cwd()
+    if sandbox is None:
+        raise NotADirectoryError(
+            f"{_PROBE_CWD} does not exist: the local usage probes run the vendor CLIs "
+            "from that directory and are supported on macOS only"
+        )
     process = subprocess.Popen(
         list(command),
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL,
         env=dict(env) if env is not None else None,
-        cwd="/private/tmp",
+        cwd=sandbox,
         text=False,
         bufsize=0,
     )
@@ -294,6 +326,8 @@ def probe_codex_account(
             account={"status": "unavailable", "plan": "unknown", "authenticated": None},
             errors=("codex_cli_unavailable", "codex_quota_unavailable"),
         )
+    if runner is _default_jsonl_runner and _probe_cwd() is None:
+        return _unsupported_platform_probe("codex")
     command = [executable or "codex", "app-server"]
     requests = [
         {

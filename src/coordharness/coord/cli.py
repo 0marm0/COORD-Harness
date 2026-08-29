@@ -128,6 +128,50 @@ def _clean_refs(refs, *, action: str) -> list[str]:
     return cleaned
 
 
+_WRITE_SCOPE_LIMIT = 64
+
+
+def _parse_write_scopes(raw_scopes, *, action: str) -> list[tuple[str, str]]:
+    """Turn ``KIND=VALUE`` (or a bare path) into normalized write scopes.
+
+    ``path`` is the default kind because it is the case the collision problem is
+    actually about, and requiring ``path=`` in front of every argument would be
+    ceremony on the common call. The split is only honoured when the head is a
+    kind this module knows: a path may legitimately contain ``=``, and silently
+    treating ``src/a=b.py`` as kind ``src/a`` would refuse a valid scope while
+    naming the wrong thing.
+
+    Normalization happens here, before any claim is taken, so an ungrantable
+    scope refuses the whole command instead of leaving a claim behind that the
+    caller then has to release.
+    """
+    from .work_contracts import SCOPE_KINDS, normalize_scope
+
+    scopes: list[tuple[str, str]] = []
+    for raw in raw_scopes or []:
+        text = str(raw).strip()
+        if not text:
+            continue
+        head, sep, tail = text.partition("=")
+        if sep and head.strip().lower() in SCOPE_KINDS:
+            kind, value = head.strip().lower(), tail
+        else:
+            kind, value = "path", text
+        scope = normalize_scope(kind, value)
+        scopes.append(scope.as_tuple())
+    if not scopes:
+        raise ValueError(
+            f"{action} requires at least one --write-scope, for example "
+            "--write-scope src/billing/ or --write-scope table=orders"
+        )
+    if len(scopes) > _WRITE_SCOPE_LIMIT:
+        raise ValueError(
+            f"{action} write scopes are bounded to {_WRITE_SCOPE_LIMIT} entries; "
+            "declare a prefix rather than enumerating files"
+        )
+    return scopes
+
+
 def _bounded_audit_payload_json(
     payload: dict,
     *,
@@ -230,6 +274,32 @@ def main(argv=None) -> int:
     p = sub.add_parser("claim")
     p.add_argument("work_id")
     p.add_argument("--step", default=None)
+    # Declared with the claim rather than afterwards because the window this
+    # protects opens the moment the claim is held. A scope declared two commands
+    # later is a scope declared after the first edit.
+    p.add_argument("--write-scope", action="append", default=[], dest="write_scopes",
+                   metavar="[KIND=]VALUE",
+                   help="a scope this claim intends to write, as path=PREFIX, "
+                        "table=NAME or service=NAME; a bare value is a path. "
+                        "Repeatable")
+    p = sub.add_parser(
+        "declare-write-set",
+        help="declare which scopes a held claim intends to write",
+    )
+    p.add_argument("claim_id")
+    p.add_argument("--write-scope", action="append", required=True, default=[],
+                   dest="write_scopes", metavar="[KIND=]VALUE",
+                   help="a scope this claim intends to write; repeatable")
+    p = sub.add_parser(
+        "conflicts",
+        help="which currently-held claims declare overlapping write scopes",
+    )
+    # Read-only and non-blocking by design: it reports, it does not refuse. See
+    # docs/agent-protocol.md -- the first version of this deliberately ships
+    # with no blocking behaviour, because a naive block would stop plenty of
+    # harmless concurrent work.
+    p.add_argument("--include-expired", action="store_true",
+                   help="also scan claims whose lease has already expired")
     p = sub.add_parser(
         "create",
         help="create the first or next proof-gated work item in this coord database",
@@ -322,6 +392,13 @@ def main(argv=None) -> int:
                    help="pointer to the evidence; repeatable")
     p.add_argument("--to", default=None, choices=("claude", "codex"),
                    help="recipient lane; defaults to the row's other lane")
+    # A lane address reaches every session in that lane, which is the right
+    # default and the wrong one for a fleet: three concurrent claude sessions
+    # all match actor:claude, so the message is everyone's and therefore
+    # nobody's. Naming a session narrows it to the one that needs it.
+    p.add_argument("--to-session", default=None, metavar="SESSION_ID",
+                   help="recipient session id, narrower than --to; the session "
+                        "must exist and be live or the note is refused")
     p = sub.add_parser(
         "verdict",
         help="record this lane's independent review verdict on the other lane's work",
@@ -427,10 +504,49 @@ def main(argv=None) -> int:
 
         with _materialized_connection(db_path) as read_conn:
             rows = coord_db.board_rows(read_conn, group_by=args.group_by)
+        # `assignee` is the LANE the row belongs to, and three concurrent
+        # claude sessions all render as "claude" -- which is the whole board
+        # for a fleet, printed as one name. The owner fields say which session
+        # is actually holding the row: v_work_owner already derives
+        # owner_session_label as human_label, then conversation_title, then the
+        # actor, so it degrades back to the lane name only when nothing better
+        # was ever registered. `assignee` stays exactly where it was, because
+        # everything downstream reads it.
         _emit({"count": len(rows), "rows": [
             {"work_id": row["work_id"], "title": row.get("title"), "status": row["status"],
-             "group": row["group"], "assignee": row.get("assignee")} for row in rows
+             "group": row["group"], "assignee": row.get("assignee"),
+             "owner_session_id": row.get("owner_session_id"),
+             "owner_session_actor": row.get("owner_session_actor"),
+             "owner_session_label": row.get("owner_session_label")} for row in rows
         ]})
+        return 0
+
+    if args.cmd == "conflicts":
+        from .config import connect_ro
+        from .work_contracts import write_set_overlaps
+
+        db_path = Path(args.db) if args.db is not None else harness_config.coord_db_path()
+        if not database_current(db_path):
+            bootstrap_database(db_path)
+        # Opened read-only on purpose. Asking who collides must not be able to
+        # change who collides, and the query used to reach for a CREATE TABLE on
+        # a database that had never carried a declaration -- which failed here,
+        # on exactly this kind of connection.
+        read_conn = connect_ro(db_path)
+        try:
+            report = write_set_overlaps(
+                read_conn, include_expired=args.include_expired
+            )
+        finally:
+            read_conn.close()
+        _emit({
+            "ok": True,
+            **report.as_dict(),
+            "include_expired": bool(args.include_expired),
+        })
+        # Advisory, so a detected overlap is still a successful read. The exit
+        # code says the question was answered, not that the board is clean; the
+        # answer is in `count`.
         return 0
 
     bootstrap_database(args.db)
@@ -571,6 +687,13 @@ def main(argv=None) -> int:
             })
 
         elif args.cmd == "claim":
+            # Parsed before the claim is taken. normalize_scope refuses an
+            # ungrantable scope by raising, and a refusal after the insert would
+            # leave the caller holding a claim it did not get to declare.
+            write_scopes = (
+                _parse_write_scopes(args.write_scopes, action="coord claim")
+                if args.write_scopes else []
+            )
             policy = _run_lifecycle_policy(
                 conn,
                 action="claim",
@@ -606,15 +729,62 @@ def main(argv=None) -> int:
             ).fetchone()
             if claim_row is None or not str(claim_row["lease_token"] or ""):
                 raise RuntimeError("new claim is missing its exact custody fence")
-            _emit(
-                {
-                    "ok": True,
-                    "claim_id": cid,
-                    "claim_fence": str(claim_row["lease_token"]),
-                    "work_id": args.work_id,
-                    "policy": policy,
+            result = {
+                "ok": True,
+                "claim_id": cid,
+                "claim_fence": str(claim_row["lease_token"]),
+                "work_id": args.work_id,
+                "policy": policy,
+            }
+            if write_scopes:
+                from .work_contracts import declare_write_set, write_set_overlaps
+
+                declared = declare_write_set(conn, claim_id=cid, scopes=write_scopes)
+                result["write_set"] = [
+                    {"kind": scope.kind, "value": scope.value} for scope in declared
+                ]
+                # Reported, never enforced. The point of declaring at claim time
+                # is to find out before the first edit; deciding what to do about
+                # an overlap is the agents' call, not this command's.
+                overlaps = write_set_overlaps(conn)
+                mine = [
+                    finding for finding in overlaps.findings
+                    if cid in (finding.claim_a, finding.claim_b)
+                ]
+                result["write_set_conflicts"] = {
+                    "count": len(mine),
+                    "findings": [finding.describe() for finding in mine],
                 }
+            _emit(result)
+
+        elif args.cmd == "declare-write-set":
+            from .work_contracts import declare_write_set, write_set_overlaps
+
+            scopes = _parse_write_scopes(
+                args.write_scopes, action="coord declare-write-set"
             )
+            # Resolve the work id first: it refuses an unknown claim id with the
+            # message the rest of the CLI uses, rather than the one the contract
+            # module raises for its own callers.
+            work_id = _claim_work_id(conn, args.claim_id)
+            declared = declare_write_set(conn, claim_id=args.claim_id, scopes=scopes)
+            overlaps = write_set_overlaps(conn)
+            mine = [
+                finding for finding in overlaps.findings
+                if args.claim_id in (finding.claim_a, finding.claim_b)
+            ]
+            _emit({
+                "ok": True,
+                "claim_id": args.claim_id,
+                "work_id": work_id,
+                "write_set": [
+                    {"kind": scope.kind, "value": scope.value} for scope in declared
+                ],
+                "write_set_conflicts": {
+                    "count": len(mine),
+                    "findings": [finding.describe() for finding in mine],
+                },
+            })
 
         elif args.cmd == "heartbeat-claim":
             work_id = _claim_work_id(conn, args.claim_id)
@@ -720,8 +890,15 @@ def main(argv=None) -> int:
 
         elif args.cmd == "inbox":
             recipient = args.actor or ident["actor"]
+            # Bind the reading to this session when the reader IS this session,
+            # so a note addressed to `session:<id>` is visible here and not only
+            # over MCP. Under --actor for another lane the process session is
+            # not that reader's identity, and passing it would silently mix one
+            # session's directed mail into another lane's reading.
+            reader_session = sid if recipient == ident["actor"] else ""
             msgs = coord_db.read_inbox(
-                conn, recipient_actor=recipient, limit=args.limit,
+                conn, recipient_actor=recipient, session_id=reader_session,
+                limit=args.limit,
                 newest_first=not args.backlog, directed_only=args.directed,
             )
             # Say what was NOT shown. A caller that asks for twenty and gets
@@ -733,7 +910,9 @@ def main(argv=None) -> int:
             # anything arrive for me": on a working board the broadcasts
             # outnumber the directed messages many times over, so a single
             # figure buries the one event that was actually addressed here.
-            unread = coord_db.unread_inbox_counts(conn, recipient_actor=recipient)
+            unread = coord_db.unread_inbox_counts(
+                conn, recipient_actor=recipient, session_id=reader_session
+            )
             # Under --directed the broadcast leg was never eligible to be shown,
             # so counting it as "not shown" would report a backlog that this
             # reading is not waiting on.
@@ -795,12 +974,17 @@ def main(argv=None) -> int:
             # almost always addressed across the pen split, and an unaddressed
             # note is a broadcast that everyone skims and nobody answers.
             recipient = args.to or ("codex" if sender == "claude" else "claude")
+            target_session = str(args.to_session or "").strip()
             receipt = coord_db.post_note(
                 conn,
                 work_id=args.work_id,
                 actor=sender,
                 session_id=sid,
+                # Passed alongside, not instead of: post_note prefers the
+                # session when both are set, and reporting the lane the session
+                # belongs to keeps the emitted `to` field meaningful either way.
                 to_actor=recipient,
+                to_session_id=target_session,
                 title=args.title,
                 body=args.body,
                 refs=args.refs,
@@ -811,6 +995,8 @@ def main(argv=None) -> int:
                 "work_id": args.work_id,
                 "from": sender,
                 "to": recipient,
+                "to_session": target_session or None,
+                "to_selector": receipt["to_selector"],
             })
 
         elif args.cmd == "verdict":

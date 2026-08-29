@@ -5,6 +5,8 @@ import json
 import os
 from pathlib import Path
 import hashlib
+import sqlite3
+import tempfile
 
 from . import coord_db
 from .config import connect
@@ -527,29 +529,130 @@ def run_reaper(
         conn.close()
 
 
+def dry_run_reaper(
+    db_path=None,
+    grace_s: float = coord_db.REAP_GRACE_S,
+) -> dict:
+    """Report what `run_reaper()` would do, without writing to the real database.
+
+    A hand-written preview that re-implements each predicate ("is this claim
+    expired", "is this session's pid dead") alongside the real one is a second
+    copy of exactly the logic most likely to drift -- and a preview that drifts
+    from reality is worse than no preview at all, because it reports a lie with
+    a reassuring "would" in front of it. So nothing here is re-implemented: this
+    takes a consistent point-in-time copy of the database with SQLite's own
+    online backup API -- which, unlike a raw file copy, is safe to run against a
+    live WAL-mode database with concurrent writers -- and then runs the real,
+    completely unmodified `run_reaper()` against that disposable copy. The
+    report it returns is exactly the report a real run would have produced.
+
+    The source database is opened read-only and is never written to; the
+    snapshot lives in a temporary directory that is removed before this
+    function returns, so nothing about a dry run outlives the call.
+    """
+    from . import config as _config
+
+    source_path = Path(db_path) if db_path is not None else _config.DEFAULT_DB_PATH
+    if not source_path.exists():
+        raise FileNotFoundError(f"coord.db does not exist: {source_path}")
+    with tempfile.TemporaryDirectory(prefix="coord-reaper-dry-run-") as scratch:
+        snapshot_path = Path(scratch) / "snapshot.db"
+        source_conn = sqlite3.connect(
+            f"file:{source_path}?mode=ro", uri=True, timeout=5.0
+        )
+        snapshot_conn = sqlite3.connect(str(snapshot_path))
+        try:
+            source_conn.backup(snapshot_conn)
+        finally:
+            snapshot_conn.close()
+            source_conn.close()
+        # flush_projection=False: the snapshot has no reader waiting on it, and
+        # flushing takes native_cockpit's projection-maintenance file lock --
+        # real machinery a throwaway preview has no business touching.
+        report = run_reaper(snapshot_path, grace_s, flush_projection=False)
+    report["dry_run"] = True
+    return report
+
+
 def main() -> None:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--db", default=None)
-    ap.add_argument("--grace", type=float, default=coord_db.REAP_GRACE_S)
-    ap.add_argument("--receipt", default=None)
-    ap.add_argument("--defer-projection", action="store_true")
-    args = ap.parse_args()
-    report = run_reaper(
-        args.db,
-        args.grace,
-        flush_projection=not args.defer_projection,
+    ap = argparse.ArgumentParser(
+        prog="coord-reaper",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description=(
+            "Release expired claims, reap zombie sessions, finalize dead runs, "
+            "renew claims for live fleets, and drain the native-cockpit "
+            "projection-refresh queue.\n"
+            "\n"
+            "THIS COMMAND WRITES TO THE DATABASE. `coord doctor` is the "
+            "read-only diagnostic surface; a normal run of coord-reaper changes "
+            "lifecycle state. It is the background half of \"status is derived "
+            "at read time, never stored\": a lapsed lease already reads as "
+            "stale on the very next board read, but nobody puts the claim back "
+            "in circulation or notices a dead process until something actually "
+            "walks the table and checks -- this is that something. Run with "
+            "--dry-run first if you want to see what it would change before it "
+            "changes anything."
+        ),
     )
+    ap.add_argument(
+        "--db", default=None,
+        help="path to coord.db (default: the configured project database)",
+    )
+    ap.add_argument(
+        "--grace", type=float, default=coord_db.REAP_GRACE_S,
+        help="seconds of grace before a dead-pid session is reaped (default: %(default)s)",
+    )
+    ap.add_argument(
+        "--dry-run", action="store_true",
+        help=(
+            "report what would be released/reaped/finalized WITHOUT mutating "
+            "the real database. Runs the real reaper logic against a "
+            "disposable snapshot of the database, so the preview cannot drift "
+            "from what a real run would do."
+        ),
+    )
+    ap.add_argument(
+        "--receipt", default=None,
+        help="write the JSON report to this path (a dry run writes a preview, marked \"dry_run\": true)",
+    )
+    ap.add_argument(
+        "--defer-projection", action="store_true",
+        help=(
+            "skip flushing the native-cockpit projection queue after reaping "
+            "(ignored with --dry-run, which never flushes)"
+        ),
+    )
+    args = ap.parse_args()
+    if args.dry_run:
+        report = dry_run_reaper(args.db, args.grace)
+    else:
+        report = run_reaper(
+            args.db,
+            args.grace,
+            flush_projection=not args.defer_projection,
+        )
     if args.receipt:
         path = Path(args.receipt)
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_name(f"{path.name}.tmp")
         tmp.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
         tmp.replace(path)
-    print(f"reaped {len(report['reaped'])} session(s); released {report['claims_released']} "
-          f"zombie claim(s) + {report['expired_claims']['released_count']} expired claim(s); "
-          f"finalized {report['runs_finalized']} dead run(s); "
-          f"normalized {report['active_intents_normalized']} stale active intent(s); "
-          f"projection_flushed={report['projection'].get('flushed', False)}")
+    if args.dry_run:
+        print(
+            f"[DRY RUN] would reap {len(report['reaped'])} session(s); "
+            f"would release {report['claims_released']} zombie claim(s) + "
+            f"{report['expired_claims']['released_count']} expired claim(s); "
+            f"would finalize {report['runs_finalized']} dead run(s); "
+            f"would normalize {report['active_intents_normalized']} stale "
+            "active intent(s). Nothing was written -- rerun without --dry-run "
+            "to apply."
+        )
+    else:
+        print(f"reaped {len(report['reaped'])} session(s); released {report['claims_released']} "
+              f"zombie claim(s) + {report['expired_claims']['released_count']} expired claim(s); "
+              f"finalized {report['runs_finalized']} dead run(s); "
+              f"normalized {report['active_intents_normalized']} stale active intent(s); "
+              f"projection_flushed={report['projection'].get('flushed', False)}")
 
 
 if __name__ == "__main__":

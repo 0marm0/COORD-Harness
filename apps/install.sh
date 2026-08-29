@@ -11,13 +11,39 @@ fail() {
 usage() {
   cat <<'EOF'
 Usage: apps/install.sh [--db PATH] [--app-dir PATH] [--python PATH] [--no-launch]
+                        [--install-reaper-agent] [--reaper-interval SECONDS]
 
-  --db PATH       Existing or new COORD authority (default: ~/.coordharness/coord.db)
-  --app-dir PATH  Native app destination (default: ~/Applications)
-  --python PATH   Python 3.11+ interpreter (default: python3 on PATH)
-  --no-launch     Install without opening the menu-bar app
+  --db PATH                 Existing or new COORD authority (default: ~/.coordharness/coord.db)
+  --app-dir PATH            Native app destination (default: ~/Applications)
+  --python PATH             Python 3.11+ interpreter (default: python3 on PATH)
+  --no-launch               Install without opening the menu-bar app
+  --install-reaper-agent    Opt in to a second LaunchAgent that runs `coord-reaper`
+                            on a timer (see "Scheduling the reaper" below). Off
+                            by default: nothing reaps expired claims or dead
+                            sessions unless this flag is passed.
+  --reaper-interval SECONDS How often the reaper LaunchAgent fires (default: 300).
+                            Only meaningful with --install-reaper-agent.
 
 COORD_DB is accepted as the database selection when --db is absent.
+
+Scheduling the reaper
+----------------------
+`coord-reaper` releases expired claims, reaps sessions whose process has
+died, and finalizes dead runs -- the background half of "status is derived,
+not stored": a lapsed lease already reads as stale on the next board read
+(see docs/architecture.md), but nothing puts the claim back into circulation,
+and nothing re-checks a session's pid, until something actually walks the
+tables and does it. This installer never runs it for you. Pass
+--install-reaper-agent to also install a `launchd` agent
+(org.coordharness.reaper) that runs `coord-reaper` against the same database
+on the interval above; its stdout/stderr land in
+~/Library/Logs/COORD/coord-reaper.{stdout,stderr}.log (or $COORD_LOG_DIR if
+set). Remove it later with:
+  launchctl bootout "gui/$(id -u)/org.coordharness.reaper"
+  rm ~/Library/LaunchAgents/org.coordharness.reaper.plist
+Prefer cron, a different scheduler, or a manual `coord-reaper` on your own
+cadence instead -- the LaunchAgent here is one convenient default, not a
+requirement.
 EOF
 }
 
@@ -25,10 +51,16 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 REPO_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd -P)"
 BOARD_URL="http://127.0.0.1:7870"
 LABEL="org.coordharness.board"
+LABEL_REAPER="org.coordharness.reaper"
 DB_INPUT="${COORD_DB:-$HOME/.coordharness/coord.db}"
 APP_DIR_INPUT="${COORD_APP_DIR:-$HOME/Applications}"
 PYTHON_COMMAND="${COORD_PYTHON:-python3}"
 LAUNCH_APPS=1
+# Opt-in only: installing the board above must never also schedule the
+# reaper as a side effect. See "Scheduling the reaper" in usage() for why
+# this exists and what it does.
+INSTALL_REAPER_AGENT=0
+REAPER_INTERVAL_S="${COORD_REAPER_INTERVAL_S:-300}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -50,6 +82,15 @@ while [[ $# -gt 0 ]]; do
     --no-launch)
       LAUNCH_APPS=0
       shift
+      ;;
+    --install-reaper-agent)
+      INSTALL_REAPER_AGENT=1
+      shift
+      ;;
+    --reaper-interval)
+      [[ $# -ge 2 ]] || fail "--reaper-interval requires a number of seconds"
+      REAPER_INTERVAL_S="$2"
+      shift 2
       ;;
     -h|--help)
       usage
@@ -89,6 +130,7 @@ LOG_DIR="$(absolute_path "$LOG_DIR")"
 LAUNCH_AGENT_DIR="${COORD_LAUNCH_AGENT_DIR:-$HOME/Library/LaunchAgents}"
 LAUNCH_AGENT_DIR="$(absolute_path "$LAUNCH_AGENT_DIR")"
 PLIST="$LAUNCH_AGENT_DIR/$LABEL.plist"
+PLIST_REAPER="$LAUNCH_AGENT_DIR/$LABEL_REAPER.plist"
 DERIVED="$REPO_ROOT/var/build"
 BUILD_LOG="$REPO_ROOT/var/install_log.txt"
 CONFIG_PATH="$HOME/.coordharness/menubar_panel_config.json"
@@ -96,6 +138,8 @@ CONFIG_PATH="$HOME/.coordharness/menubar_panel_config.json"
 [[ "$DB_PATH" != "/" && "$DB_PATH" != "$HOME" ]] || fail "refusing unsafe database path: $DB_PATH"
 [[ "$RUNTIME_ROOT" != "/" && "$RUNTIME_ROOT" != "$HOME" ]] || fail "refusing unsafe runtime root: $RUNTIME_ROOT"
 [[ "$APP_DIR" != "/" && "$APP_DIR" != "$HOME" ]] || fail "refusing unsafe app directory: $APP_DIR"
+[[ "$REAPER_INTERVAL_S" =~ ^[0-9]+$ && "$REAPER_INTERVAL_S" -ge 30 ]] \
+  || fail "--reaper-interval must be a whole number of seconds, >= 30 (got: $REAPER_INTERVAL_S)"
 
 for command_name in xcodegen xcodebuild codesign ditto curl launchctl defaults; do
   command -v "$command_name" >/dev/null || fail "$command_name is required"
@@ -270,3 +314,56 @@ echo "  menu bar:    $MENU_TARGET"
 echo "  cockpit:     $WINDOW_TARGET"
 echo "  uninstall:   $SCRIPT_DIR/uninstall.sh"
 echo "The database is preserved by repairs and by the default uninstall."
+
+# Opt-in only (--install-reaper-agent): nothing above this line schedules the
+# reaper, and installing the board must never do it as a side effect. Without
+# this -- or an equivalent cron entry, or a human running `coord-reaper` by
+# hand -- expired claims are never released and dead sessions are never
+# reaped; see the "Scheduling the reaper" section of `apps/install.sh --help`
+# and docs/operators-handbook.md for what that costs.
+if [[ "$INSTALL_REAPER_AGENT" == 1 ]]; then
+  echo
+  echo "optional: install reaper LaunchAgent (--install-reaper-agent)"
+  [[ -x "$VENV/bin/coord-reaper" ]] || fail "coord-reaper was not installed into $VENV"
+  "$VENV/bin/python" - "$PLIST_REAPER" "$LABEL_REAPER" "$VENV/bin/coord-reaper" "$DB_PATH" \
+    "$RUNTIME_ROOT" "$REAPER_INTERVAL_S" \
+    "$LOG_DIR/coord-reaper.stdout.log" "$LOG_DIR/coord-reaper.stderr.log" <<'PY'
+import pathlib
+import plistlib
+import sys
+
+(
+    path, label, executable, database, working_directory, interval_s,
+    stdout_path, stderr_path,
+) = sys.argv[1:]
+payload = {
+    "Label": label,
+    "ProgramArguments": [executable, "--db", database],
+    "EnvironmentVariables": {"COORD_DB": database},
+    "WorkingDirectory": working_directory,
+    # RunAtLoad + StartInterval, deliberately not KeepAlive: coord-reaper is a
+    # batch job that runs to completion and exits 0 every time, not a
+    # long-lived service like coord-board above. KeepAlive treats a clean
+    # exit as a crash and respawns immediately, which would turn a periodic
+    # sweep into a tight loop; StartInterval is launchd's own "run this every
+    # N seconds" primitive and is what a run-to-completion job should use.
+    "RunAtLoad": True,
+    "StartInterval": int(interval_s),
+    "ProcessType": "Background",
+    "StandardOutPath": stdout_path,
+    "StandardErrorPath": stderr_path,
+}
+destination = pathlib.Path(path)
+temporary = destination.with_name(destination.name + ".coord-install.tmp")
+with temporary.open("wb") as stream:
+    plistlib.dump(payload, stream, sort_keys=True)
+temporary.replace(destination)
+PY
+  chmod 600 "$PLIST_REAPER"
+  launchctl bootout "gui/$UID/$LABEL_REAPER" >/dev/null 2>&1 || true
+  launchctl bootstrap "gui/$UID" "$PLIST_REAPER"
+  launchctl kickstart -k "gui/$UID/$LABEL_REAPER"
+  echo "  reaper agent: $PLIST_REAPER (every ${REAPER_INTERVAL_S}s)"
+  echo "  reaper logs:  $LOG_DIR/coord-reaper.stdout.log, $LOG_DIR/coord-reaper.stderr.log"
+  echo "  remove with:  launchctl bootout \"gui/\$UID/$LABEL_REAPER\"; rm \"$PLIST_REAPER\""
+fi

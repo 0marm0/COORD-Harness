@@ -204,11 +204,12 @@ is a missing call:
 |---|---|---|
 | `native_cockpit.refresh` | Rebuilds the projection outright | Called from exactly one place, the demo seeder ([`demo.py:402`](../src/coordharness/demo.py)) |
 | `native_cockpit.request_refresh` | Enqueues a rebuild in `native_projection_refresh_queue` | Called by the MCP writers (`_refresh_native_cockpit`, eleven sites in [`mcp_coord_server.py`](../src/coordharness/coord/mcp_coord_server.py)) and by [`reaper.py`](../src/coordharness/coord/reaper.py) |
-| `native_cockpit.flush_requested_refresh` | Drains that queue | Called only from `reaper.py`, and **nothing in this repository launches the reaper** — it has a `main()` but no console-script entry in `pyproject.toml` and no scheduler |
+| `native_cockpit.flush_requested_refresh` | Drains that queue | Called only from `reaper.py` — see §2.5: the reaper now has a console script and an opt-in schedule, but nothing runs it unless an operator installs or invokes that schedule |
 
 So the CLI never enqueues anything, and an MCP write enqueues a rebuild that nothing
-drains. Both surfaces end up stale for different reasons. The web board is unaffected —
-it reads the coordination tables through its own materialised copy on each refresh.
+drains **unless the reaper runs** (§2.5). Both surfaces end up stale for different
+reasons. The web board is unaffected — it reads the coordination tables through its own
+materialised copy on each refresh.
 
 The packaged clients probe three endpoints against this port. One is served and two are
 not — measured against a demo board on an ephemeral port:
@@ -231,6 +232,83 @@ harness has no capability planes. A 404 leaves each client on its own read model
 is the true answer. Removal of the two dead probes is ranked in
 [next steps §4f](next-steps.md); that entry distinguishes the served menubar
 document from the two intentionally unserved capability probes.
+
+### 2.5 The reaper: what runs it, and what happens if nothing does
+
+[`architecture.md`](architecture.md) makes the design claim: status is derived at read
+time from lease validity and process evidence, never stored and trusted. That claim is
+mostly self-fulfilling — `derive_work_status()` checks a claim's `expires_at` against
+"now" on every board read, so a lapsed lease reads as `attention` rather than `running`
+on the very next read, with nothing to run first. What is **not** self-fulfilling is
+everything downstream of noticing: putting an expired claim back into circulation for
+another agent, confirming a session's process actually died rather than just outliving
+its last heartbeat, and draining the native-cockpit refresh queue from §2.4. All three
+are one function, [`reaper.run_reaper()`](../src/coordharness/coord/reaper.py), and
+until this change nothing called it outside a test.
+
+**What it does**, in the order it does them: releases claims whose lease has expired
+(`release_expired_claims_batch`, table-wide — not the same as the per-row release that
+`claim_work` and a typed handoff already do opportunistically for the *one* work id
+they touch), reaps sessions whose process is confirmed dead by `os.kill(pid, 0)` or
+which never checked in at all, finalizes runs in the same way, renews claims for fleets
+still reporting live, evaluates blocked/paused continuation predicates and cross-lane
+request SLAs, and drains the native-cockpit projection-refresh queue.
+
+**What it costs when nothing runs it** — measured against this repository, not assumed:
+
+- A claim's row stays `status='running'` in the `claims` table until either its specific
+  work id is claimed or handed off again (which releases only that one row) or the
+  reaper's batch sweep runs. Nobody else can pick up that work in the meantime, even
+  though the board already displays it as stale.
+- No read path re-checks a session's `pid` the way [`board_rows()`](../src/coordharness/coord/coord_db.py)
+  already does for `runs` (`pid_matches` against `runs.pid`, fresh on every read). A
+  session's claim is time-leased, not pid-checked, at read time — so a crashed agent's
+  claim can read as `running` for its full lease (`LEASE_DEFAULT_S`, one hour by
+  default), not just until the next board read. This is the gap "process evidence" in
+  the design claim actually depends on the reaper for.
+- The native-cockpit refresh queue (§2.4) is drained only here. Without it, every MCP
+  write that enqueued a refresh sits enqueued forever, and the native clients keep
+  showing the seeded shape.
+- Continuation predicates and cross-lane SLA escalations are evaluated only here; a
+  blocked row whose unblocking condition became true stays blocked until something
+  checks.
+
+**How to run it.** `coord-reaper` (added by this change) is a normal console script:
+
+```bash
+coord-reaper --dry-run          # report what would change; writes nothing
+coord-reaper                    # do it — the default is mutating, unlike `coord doctor`
+coord-reaper --receipt PATH     # also write the JSON report (dry runs mark it "dry_run": true)
+```
+
+`--dry-run` runs the exact same logic as a real reap against a disposable snapshot of
+the database (SQLite's own backup API, not a hand-written re-implementation of "is this
+expired" — a second copy of that predicate is exactly the kind of thing that drifts), so
+its preview cannot lie about what a real run would release.
+
+**How to schedule it.** Nothing schedules it by default — installing the board with
+`apps/install.sh` never installs this as a side effect. Opt in explicitly:
+
+```bash
+apps/install.sh --install-reaper-agent [--reaper-interval SECONDS]   # default: 300
+```
+
+This installs a second `launchd` LaunchAgent, `org.coordharness.reaper`, that runs
+`coord-reaper` against the same database on that interval. It uses `RunAtLoad` +
+`StartInterval`, not `KeepAlive` — the reaper is a batch job that exits 0 every time,
+and `KeepAlive` would treat that clean exit as a crash and respawn it in a tight loop.
+Its stdout/stderr land in `~/Library/Logs/COORD/coord-reaper.{stdout,stderr}.log`
+(`$COORD_LOG_DIR` if set). Remove it with:
+
+```bash
+launchctl bootout "gui/$(id -u)/org.coordharness.reaper"
+rm ~/Library/LaunchAgents/org.coordharness.reaper.plist
+```
+
+Cron, a different scheduler, or a human running `coord-reaper` on their own cadence
+work just as well — the LaunchAgent is a convenient default, not a requirement. What
+matters is that *something* runs it periodically; nothing in this repository does that
+for you.
 
 ---
 

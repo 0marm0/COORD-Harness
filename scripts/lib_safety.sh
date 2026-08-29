@@ -1,15 +1,36 @@
 
+# Every reader here is Darwin-only, and each was called with its errors sent to
+# /dev/null. On a machine without them awk received no input, and its END block
+# still printed "%.1f" of unset variables: a confident 0.0, indistinguishable
+# from a machine genuinely out of memory. `mem_governor.sh wait` then held
+# forever against a number nobody had measured. So: report the platform, and
+# return non-zero, rather than name a figure.
 mem_free_gb() {
-    local pct total
+    local pct total free_gb
+    if ! command -v sysctl >/dev/null 2>&1 ||
+        { ! command -v memory_pressure >/dev/null 2>&1 && ! command -v vm_stat >/dev/null 2>&1; }; then
+        printf '%s\n' \
+            "mem_free_gb: unsupported on this platform -- needs macOS sysctl plus memory_pressure or vm_stat" >&2
+        return 3
+    fi
     pct=$(memory_pressure 2>/dev/null | awk -F: '/free percentage/{gsub(/[ %]/,"",$2); print $2; exit}')
     total=$(sysctl -n hw.memsize 2>/dev/null)
     if [ -n "$pct" ] && [ -n "$total" ]; then
         awk -v p="$pct" -v t="$total" 'BEGIN{ printf "%.1f", p/100.0*t/1073741824 }'
-    else
-        vm_stat 2>/dev/null | awk '
-            /page size of/ { ps=$8 } /Pages free/ { f=$3 } /Pages inactive/ { i=$3 } /Pages purgeable/ { p=$3 }
-            END { gsub(/\./,"",f); gsub(/\./,"",i); gsub(/\./,"",p); printf "%.1f", (f+i+p)*ps/1073741824 }'
+        return 0
     fi
+    # The fallback exits non-zero and prints nothing when it read no page
+    # counts, so an empty result can never be rounded into a plausible number.
+    free_gb=$(vm_stat 2>/dev/null | awk '
+        /page size of/ { ps=$8 } /Pages free/ { f=$3 } /Pages inactive/ { i=$3 } /Pages purgeable/ { p=$3 }
+        END { if (ps == "" || f == "") exit 1
+              gsub(/\./,"",f); gsub(/\./,"",i); gsub(/\./,"",p); printf "%.1f", (f+i+p)*ps/1073741824 }')
+    if [ -z "$free_gb" ]; then
+        printf '%s\n' \
+            "mem_free_gb: the macOS memory readers are present but returned nothing usable" >&2
+        return 3
+    fi
+    printf '%s' "$free_gb"
 }
 
 safety_swap_used_gb() {

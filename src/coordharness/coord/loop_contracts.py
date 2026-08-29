@@ -83,7 +83,7 @@ LOOP_SUGGESTIONS_MODE = "advisory_loop_contract_suggestions"
 LOOP_SUGGESTIONS_COMPAT_DECISION = "schema_version_1_additive_requires_ranking_version_v2"
 REQUIRED_SUPERVISOR_RANK_FIELDS = ("rank", "rank_score", "rank_reasons", "action_policy")
 DEFAULT_OMITTED_LIMIT = 25
-COMPACT_VERIFY_COMMAND = "coordharness/.venv/bin/coord doctor"
+COMPACT_VERIFY_COMMAND = "coord doctor"
 REQUIRED_RECEIPT_FIELDS = ("work_id", "loop_id", "iteration", "terminal_state", "observed", "action", "verification", "artifact_refs")
 MAX_RECEIPT_ARTIFACT_REFS = 20
 EXPENSIVE_TOOL_TERMS = {
@@ -1006,8 +1006,8 @@ def _proposal_for(
         f"Use when readonly supervisor reports {kind} for {rid} and a human wants a manual loop contract."
     )
     contract["observe"] = [
-        "Run coordharness/scripts/supervisor_readonly.py or coordharness/scripts/loop_contract.py suggest for fresh advisory output.",
-        f"Run coordharness/scripts/board_context.py focus {rid} before choosing any action.",
+        "Re-read the board with `coord board` for fresh advisory output.",
+        f"Run `python -m coordharness.coord.board_context focus {rid}` before choosing any action.",
     ]
     contract["choose"] = [
         "Choose one bounded manual triage, documentation, proof, or launch-contract repair step.",
@@ -1018,7 +1018,7 @@ def _proposal_for(
         "Use coord helpers for any later lifecycle mutation outside this proposal report.",
     ]
     contract["verify"] = [
-        "Run coordharness/scripts/loop_contract.py validate against the reviewed contract JSON.",
+        "Check the contract against the reviewed JSON before acting on it.",
         f"Run {COMPACT_VERIFY_COMMAND} before closing any boarded work.",
     ]
     contract["record"] = [
@@ -1028,7 +1028,7 @@ def _proposal_for(
     contract["evidence"] = {
         "required_artifacts": ["done_signal", "loop_contract_review"],
         "required_commands": [
-            "coordharness/scripts/loop_contract.py validate <contract-json>",
+            "coord doctor",
             COMPACT_VERIFY_COMMAND,
         ],
         "independent_review_required": False,

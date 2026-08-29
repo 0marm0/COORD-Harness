@@ -107,16 +107,46 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
     conn.executescript(SCHEMA_SQL)
 
 
-def _ensure(conn: sqlite3.Connection) -> None:
+def _tables_present(conn: sqlite3.Connection) -> bool:
     row = conn.execute(
         "SELECT COUNT(*) AS n FROM sqlite_master WHERE type='table' AND name IN"
         " (?,?,?)",
         _SCHEMA_TABLES,
     ).fetchone()
-    if int(row[0] if not isinstance(row, sqlite3.Row) else row["n"]) != len(
+    return int(row[0] if not isinstance(row, sqlite3.Row) else row["n"]) == len(
         _SCHEMA_TABLES
-    ):
+    )
+
+
+def _ensure(conn: sqlite3.Connection) -> None:
+    if not _tables_present(conn):
         ensure_schema(conn)
+
+
+def _readable(conn: sqlite3.Connection) -> bool:
+    """True when the write-set tables can be read on this connection.
+
+    The two callers below are queries, and the honest answer to a query is a
+    result, not a schema migration. A read-only connection -- the board's
+    materialized snapshot, `connect_ro`, anything holding `PRAGMA query_only` --
+    cannot run the CREATE the lazy path attempts, and the failure surfaced as
+    "attempt to write a readonly database": a caller asking whether two claims
+    collide got a write error about a table it never mentioned.
+
+    The tables are part of the bootstrapped schema now, so absence here means a
+    database predating that and not yet re-bootstrapped. Creating them is still
+    attempted, because a writable caller should self-repair; when that is not
+    possible the answer is an empty declaration rather than an exception, and
+    ``WriteSetOverlapReport.schema_present`` says which of the two happened so
+    "no conflicts" is never confused with "nothing could be read".
+    """
+    if _tables_present(conn):
+        return True
+    try:
+        ensure_schema(conn)
+    except (sqlite3.Error, RuntimeError):
+        return False
+    return True
 
 
 def _now(at: float | None) -> float:
@@ -442,7 +472,8 @@ def declare_write_set(
 def declared_write_set(
     conn: sqlite3.Connection, *, claim_id: str
 ) -> tuple[WriteScope, ...]:
-    _ensure(conn)
+    if not _readable(conn):
+        return ()
     rows = conn.execute(
         "SELECT scope_kind, scope_value FROM work_contract_write_sets"
         " WHERE claim_id=? ORDER BY scope_kind, scope_value",
@@ -480,6 +511,11 @@ class WriteSetOverlapReport:
     findings: tuple[OverlapFinding, ...]
     scanned_claims: int
     undeclared_claims: tuple[str, ...] = ()
+    # False only when the write-set tables could not be read at all. It defaults
+    # to True so every existing construction keeps its meaning, and it is
+    # carried because an empty finding list otherwise reports the same thing
+    # whether the board is clean or the query never ran.
+    schema_present: bool = True
 
     @property
     def count(self) -> int:
@@ -489,6 +525,30 @@ class WriteSetOverlapReport:
     def is_red(self) -> bool:
         return bool(self.findings)
 
+    def as_dict(self) -> dict[str, Any]:
+        """The report as plain data, for the CLI and MCP surfaces to emit."""
+        return {
+            "count": self.count,
+            "scanned_claims": self.scanned_claims,
+            "undeclared_claims": list(self.undeclared_claims),
+            "schema_present": self.schema_present,
+            "findings": [
+                {
+                    "kind": finding.kind,
+                    "describe": finding.describe(),
+                    "claim_a": finding.claim_a,
+                    "work_a": finding.work_a,
+                    "session_a": finding.session_a,
+                    "scope_a": finding.scope_a,
+                    "claim_b": finding.claim_b,
+                    "work_b": finding.work_b,
+                    "session_b": finding.session_b,
+                    "scope_b": finding.scope_b,
+                }
+                for finding in self.findings
+            ],
+        }
+
 
 def write_set_overlaps(
     conn: sqlite3.Connection,
@@ -496,7 +556,13 @@ def write_set_overlaps(
     now: float | None = None,
     include_expired: bool = False,
 ) -> WriteSetOverlapReport:
-    _ensure(conn)
+    if not _readable(conn):
+        # No table to read, and no way to create one on this connection. Say
+        # that in the report instead of returning a clean bill of health that
+        # is indistinguishable from a scanned board with nothing colliding.
+        return WriteSetOverlapReport(
+            findings=(), scanned_claims=0, schema_present=False
+        )
     at = _now(now)
     placeholders = ",".join("?" for _ in _HELD_CLAIM_STATES)
     sql = (

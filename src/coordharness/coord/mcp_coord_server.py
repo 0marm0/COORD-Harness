@@ -10,7 +10,7 @@ import sqlite3
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 from mcp.server.fastmcp import Context, FastMCP
 
@@ -60,10 +60,14 @@ _MCP_TOOL_NAMES = {
     "facts_query", "knowledge_index_status", "memory_proposals_list", "memory_proposals_get",
     "request_audit", "note", "decision", "session_closeout",
     "get_decision_context",
+    "declare_write_set", "write_set_conflicts", "route",
 }
 _SERVER_PROMOTION_CANDIDATES = frozenset({"handoff_existing"})
 _DEFAULT_BOARD_LIMIT = 100
 _MAX_BOARD_INLINE_LIMIT = 100
+# A write set is a set of prefixes, not a file list. The bound is here to keep
+# one declaration from becoming a manifest of every file in a module.
+_MAX_WRITE_SCOPES = 64
 _MAX_KNOWLEDGE_SEARCH_LIMIT = 40
 _KNOWLEDGE_PROVIDER_NAMES = {
     "board",
@@ -1681,11 +1685,20 @@ def _tool_claim(
     depends_on: Any = None,
     done_signal: str | None = None,
     priority: Any = None,
+    write_scopes: Any = None,
 ) -> dict[str, Any]:
     identity, resolved_actor, resolved_sid, label_fields = _resolve_tool_identity(
         actor=actor,
         session_id=session_id,
         env=env,
+    )
+    # Normalized before the claim is taken, so an ungrantable scope refuses the
+    # call outright instead of leaving the caller holding a claim it never got
+    # to declare against.
+    normalized_scopes = (
+        _normalize_write_scopes(write_scopes, action="claim_work write_scopes")
+        if write_scopes
+        else []
     )
     conn = _get_conn(db_path)
     try:
@@ -1839,6 +1852,18 @@ def _tool_claim(
             "run_event_id": run_event_id,
             "context_capsule": context_capsule,
         }
+        if normalized_scopes:
+            from coordharness.coord.work_contracts import declare_write_set
+
+            declared = declare_write_set(
+                conn, claim_id=claim_id, scopes=normalized_scopes
+            )
+            result["write_set"] = [
+                {"kind": scope.kind, "value": scope.value} for scope in declared
+            ]
+            result["write_set_conflicts"] = _write_set_conflicts_for_claim(
+                conn, claim_id
+            )
         work_row = conn.execute(
             "SELECT * FROM work_items WHERE work_id=?", (work_id,)
         ).fetchone()
@@ -2476,6 +2501,272 @@ def _tool_board(
         pass
 
 
+def _normalize_write_scopes(raw_scopes: Any, *, action: str) -> list[tuple[str, str]]:
+    """Normalize caller-supplied write scopes, refusing the ungrantable ones.
+
+    Accepts the two shapes an MCP client can express naturally: a list of
+    ``{"kind": ..., "value": ...}`` objects, and a list of ``"kind=value"``
+    strings where a bare value means ``path``. The kind prefix is only honoured
+    when it names a kind this module knows, because a path may contain ``=``.
+
+    Normalization runs before anything is written, so an ungrantable scope
+    refuses the whole call rather than leaving a partial declaration behind.
+    """
+    from coordharness.coord.work_contracts import SCOPE_KINDS, normalize_scope
+
+    if isinstance(raw_scopes, (str, Mapping)):
+        raw_scopes = [raw_scopes]
+    scopes: list[tuple[str, str]] = []
+    for entry in list(raw_scopes or []):
+        if isinstance(entry, Mapping):
+            kind = str(entry.get("kind") or "path")
+            value = str(entry.get("value") or "")
+        else:
+            raw = str(entry or "").strip()
+            head, sep, tail = raw.partition("=")
+            if sep and head.strip().lower() in SCOPE_KINDS:
+                kind, value = head.strip().lower(), tail
+            else:
+                kind, value = "path", raw
+        if not str(value).strip():
+            continue
+        scopes.append(normalize_scope(kind, value).as_tuple())
+    if not scopes:
+        raise ValueError(
+            f"{action} requires at least one write scope, for example "
+            '"src/billing/" or {"kind": "table", "value": "orders"}'
+        )
+    if len(scopes) > _MAX_WRITE_SCOPES:
+        raise ValueError(
+            f"{action} write scopes are bounded to {_MAX_WRITE_SCOPES} entries; "
+            "declare a prefix rather than enumerating files"
+        )
+    return scopes
+
+
+def _write_set_conflicts_for_claim(conn, claim_id: str) -> dict[str, Any]:
+    """The overlap findings that name this claim, as plain data.
+
+    Advisory. Declaring a write set reports who else is in the same part of the
+    tree; it does not refuse the claim, and it is not a lock. Deciding what to
+    do about an overlap is the agents' call.
+    """
+    from coordharness.coord.work_contracts import write_set_overlaps
+
+    report = write_set_overlaps(conn)
+    mine = [
+        finding
+        for finding in report.findings
+        if claim_id in (finding.claim_a, finding.claim_b)
+    ]
+    return {
+        "count": len(mine),
+        "findings": [finding.describe() for finding in mine],
+        "scanned_claims": report.scanned_claims,
+    }
+
+
+def _tool_declare_write_set(
+    claim_id: str,
+    scopes: Any,
+    actor: str | None = None,
+    session_id: str | None = None,
+    db_path: str | None = None,
+    env: dict | None = None,
+) -> dict[str, Any]:
+    """Declare which scopes a held claim intends to write.
+
+    The board coordinates rows, not files: two valid claims on two different
+    work items can edit the same module and neither one hears about it until a
+    merge conflict. A declared write set is what makes that answerable in
+    advance, and until this tool existed the copy-paste agent prompt in
+    docs/agent-protocol.md instructed agents to declare something no client
+    could declare.
+    """
+    from coordharness.coord.work_contracts import declare_write_set
+
+    clean_claim = str(claim_id or "").strip()
+    if not clean_claim:
+        raise ValueError("declare_write_set requires the claim_id to declare against")
+    normalized = _normalize_write_scopes(scopes, action="declare_write_set")
+    identity, resolved_actor, resolved_sid, label_fields = _resolve_tool_identity(
+        actor=actor,
+        session_id=session_id,
+        env=env,
+    )
+    conn = _get_conn(db_path)
+    try:
+        coord_db.register_session(
+            conn,
+            resolved_sid,
+            resolved_actor,
+            runner_type=identity.get("runner_type"),
+            **label_fields,
+        )
+        row = conn.execute(
+            "SELECT work_id, session_id, status FROM claims WHERE claim_id=?",
+            (clean_claim,),
+        ).fetchone()
+        if row is None:
+            raise ValueError(f"unknown claim_id {clean_claim!r}")
+        # A write set is a statement about what THIS session is about to edit,
+        # so it is refused on another session's claim. Without the check one
+        # agent could declare scopes on a peer's claim and the overlap report
+        # would name a collision neither of them intends.
+        holder = str(row["session_id"] or "")
+        if holder != resolved_sid:
+            raise ValueError(
+                f"claim {clean_claim!r} is held by session {holder!r}, not "
+                f"{resolved_sid!r}; declare a write set on your own claim"
+            )
+        declared = declare_write_set(conn, claim_id=clean_claim, scopes=normalized)
+        return {
+            "verb": "declare_write_set",
+            "claim_id": clean_claim,
+            "work_id": str(row["work_id"]),
+            "actor": resolved_actor,
+            "session_id": resolved_sid,
+            "write_set": [
+                {"kind": scope.kind, "value": scope.value} for scope in declared
+            ],
+            "write_set_conflicts": _write_set_conflicts_for_claim(conn, clean_claim),
+            "advisory": True,
+            "lifecycle_mutation": False,
+        }
+    finally:
+        conn.close()
+
+
+def _tool_write_set_conflicts(
+    include_expired: bool = False,
+    db_path: str | None = None,
+) -> dict[str, Any]:
+    """Which currently-held claims declare overlapping write scopes.
+
+    Read-only, and opened read-only: asking who collides must not be able to
+    change who collides. Claims that declared nothing are reported by id under
+    ``undeclared_claims`` rather than counted as clean -- an undeclared claim is
+    unknown, not safe.
+    """
+    from coordharness.coord.work_contracts import write_set_overlaps
+
+    conn = _get_read_conn(db_path)
+    try:
+        report = write_set_overlaps(conn, include_expired=bool(include_expired))
+    finally:
+        conn.close()
+    payload = report.as_dict()
+    payload["include_expired"] = bool(include_expired)
+    payload["advisory"] = True
+    payload["read_only"] = True
+    return payload
+
+
+def _parse_route_budgets(budgets: Any) -> dict[str, int]:
+    """Accept the two shapes a client can express a budget in, and no others.
+
+    ``{"claude": 5_000_000}`` and ``["claude=5000000"]`` mean the same thing.
+    A budget that is not a positive whole number of tokens is refused here
+    rather than passed down: ``advise`` would raise on it anyway, and the
+    message naming the caller's own argument is the useful one.
+    """
+    if not budgets:
+        return {}
+    pairs: list[tuple[str, Any]] = []
+    if isinstance(budgets, Mapping):
+        pairs = list(budgets.items())
+    else:
+        for entry in list(budgets):
+            if isinstance(entry, Mapping):
+                pairs.extend(entry.items())
+                continue
+            name, _, raw = str(entry).partition("=")
+            pairs.append((name, raw))
+    parsed: dict[str, int] = {}
+    for raw_name, raw_value in pairs:
+        name = str(raw_name or "").strip()
+        text_value = str(raw_value).strip()
+        if not name or not text_value.isdigit():
+            raise ValueError(
+                f"route budgets take PROVIDER=TOKENS with a positive whole "
+                f"number of tokens, got {raw_name!r}={raw_value!r}"
+            )
+        parsed[name] = int(text_value)
+    return parsed
+
+
+def _tool_route(
+    usage_db: str,
+    budgets: Any = None,
+    days: int = 7,
+    require_complete: bool = False,
+) -> dict[str, Any]:
+    """Which provider has headroom, on measured usage. Advice, never an action.
+
+    This is the MCP face of ``coord route``, and it is deliberately the same
+    function underneath: an agent asking which lane has room had to ask the
+    operator to shell out for it, which is the one question a coordination
+    server should be able to answer itself.
+
+    Read-only in the strict sense. It writes no board row, records no usage, and
+    refuses a ``usage_db`` that does not exist rather than creating one --
+    ``UsageLedger`` initializes an empty ledger at any path it is handed, so a
+    typo would otherwise mint a second, empty accounting store and then route
+    off it.
+
+    The coverage refusal is passed through, not re-derived. ``summarize_rows``
+    records an absent ``coverage_state`` as ``"unknown"`` and treats anything
+    that is not ``"complete"`` as incomplete; ``ProviderUsage.complete`` then
+    demands every expected day present AND every observation complete. This tool
+    reports ``coverage_state: "unknown"`` whenever that strictness has not been
+    met for every provider it advised on, so a caller reading one field still
+    gets the refusal rather than the headline number.
+    """
+    from coordharness.usage import routing
+    from coordharness.usage.ledger import UsageLedger
+
+    path = Path(str(usage_db or "").strip()).expanduser()
+    if not str(usage_db or "").strip():
+        raise ValueError("route requires usage_db: the path of an existing usage ledger")
+    if not path.exists():
+        raise ValueError(
+            f"route usage_db {str(path)!r} does not exist; this tool only reads a "
+            "ledger and will not create one"
+        )
+    parsed_budgets = _parse_route_budgets(budgets)
+    ledger = UsageLedger(path)
+    try:
+        advice = routing.advise_from_ledger(
+            ledger,
+            parsed_budgets,
+            days=int(days),
+            require_complete=bool(require_complete),
+        )
+    finally:
+        ledger.close()
+    payload = advice.as_dict()
+    # "complete" only when there is something to be complete ABOUT and every
+    # provider met the strict test. An empty advice -- no rows, or no declared
+    # budget -- is unknown, because absence of evidence is not evidence of full
+    # coverage. This mirrors ProviderUsage.complete, which returns False for an
+    # empty coverage_states map for exactly the same reason.
+    verdicts = list(advice.verdicts)
+    payload["coverage_state"] = (
+        "complete"
+        if verdicts and all(verdict.usage.complete for verdict in verdicts)
+        else "unknown"
+    )
+    payload["usage_db"] = str(path)
+    payload["days"] = int(days)
+    payload["require_complete"] = bool(require_complete)
+    payload["budgets"] = dict(sorted(parsed_budgets.items()))
+    payload["read_only"] = True
+    payload["advisory"] = True
+    payload["lifecycle_mutation"] = False
+    payload["rendered"] = routing.render(advice)
+    return payload
+
+
 def _tool_runs(
     work_id: str | None = None,
     session_id: str | None = None,
@@ -2959,9 +3250,18 @@ def _tool_note(
     refs: list[str] | None = None,
     actor: str | None = None,
     session_id: str | None = None,
+    to_session_id: str | None = None,
     db_path: str | None = None,
     env: dict | None = None,
 ) -> dict[str, Any]:
+    """Post one neutral, lifecycle-free note about an existing row.
+
+    ``to_session_id`` narrows the address from a lane to one live session. The
+    default is unchanged -- the opposite lane -- because that is what a note
+    across the pen split means; the session address exists for the case the lane
+    address cannot express, which is a fleet of same-lane sessions where
+    ``actor:claude`` reaches all of them and is acted on by none.
+    """
     clean_work_id = str(work_id or "").strip()
     if not clean_work_id:
         raise ValueError("note requires an existing work_id")
@@ -2984,12 +3284,23 @@ def _tool_note(
     if resolved_actor not in {"claude", "codex"}:
         raise ValueError("note actor must be claude or codex")
     opposite_lane = "codex" if resolved_actor == "claude" else "claude"
+    clean_target_session = str(to_session_id or "").strip()
+    # Provisional: the session target is only validated against the database
+    # below, and an unknown or dead session refuses rather than posting. The
+    # selector is fixed here because it is part of the idempotency hash, so two
+    # identical calls -- lane-addressed and session-addressed -- stay distinct
+    # requests rather than the second replaying the first.
+    to_selector = (
+        f"session:{clean_target_session}"
+        if clean_target_session
+        else f"actor:{opposite_lane}"
+    )
     request = {
         "schema_version": 1,
         "work_id": clean_work_id,
         "actor": resolved_actor,
         "session_id": resolved_sid,
-        "to_selector": f"actor:{opposite_lane}",
+        "to_selector": to_selector,
         "title": clean_title,
         "body": clean_body,
         "refs": clean_refs,
@@ -3023,12 +3334,18 @@ def _tool_note(
             raise ValueError(
                 f"note work_id not found: {clean_work_id}; notes attach to existing rows"
             )
+        if clean_target_session:
+            # Refuses an unknown or expired session rather than writing a
+            # selector nobody will ever match. The same check the CLI runs, in
+            # coord_db, so the two surfaces cannot disagree about who is
+            # addressable.
+            coord_db.resolve_note_session_target(conn, clean_target_session)
         event_id = coord_db.post_event(
             conn,
             kind="note",
             actor=resolved_actor,
             session_id=resolved_sid,
-            to_selector=f"actor:{opposite_lane}",
+            to_selector=to_selector,
             work_id=clean_work_id,
             title=clean_title,
             body=clean_body,
@@ -3051,8 +3368,13 @@ def _tool_note(
             "verb": "note",
             "work_id": clean_work_id,
             "event_id": event_id,
-            "to_selector": f"actor:{opposite_lane}",
+            "to_selector": to_selector,
+            # target_lane keeps naming the opposite lane whether or not a
+            # session was addressed, so a caller that only ever read this field
+            # keeps reading the same thing; target_session says which of that
+            # lane's sessions was named, and is null when none was.
             "target_lane": opposite_lane,
+            "target_session": clean_target_session or None,
             "actor": resolved_actor,
             "session_id": resolved_sid,
             "replayed": replayed,
@@ -4356,7 +4678,13 @@ def _tool_knowledge_search(
         "index_stats": compact_index_stats,
         "index_refresh": {
             "automatic": False,
-            "command": "coordharness/.venv/bin/python coordharness/scripts/rebuild_knowledge_index.py",
+            # There is no rebuild script and no module entry point; naming one
+            # sent readers after a file no checkout contains. Name the callable
+            # that actually does it.
+            "command": (
+                'python -c "from coordharness.knowledge.kfts import rebuild_index; '
+                'print(rebuild_index())"'
+            ),
         },
         "byte_budget": profile_config.max_packet_bytes,
         "transport_reserve_bytes": _KNOWLEDGE_TRANSPORT_RESERVE_BYTES,
@@ -4781,13 +5109,14 @@ def build_server(
         depends_on: list[str] | None = None,
         done_signal: str | None = None,
         priority: int | None = None,
+        write_scopes: list[str] | None = None,
     ) -> dict:
         return _tool_claim(work_id=work_id, step=step, tier=tier, actor=actor,
                            session_id=session_id, db_path=db_path,
                            parent=parent, module=module, sublane=sublane, note=note,
                            display=display, title=title, acceptance=acceptance,
                            depends_on=depends_on, done_signal=done_signal,
-                           priority=priority)
+                           priority=priority, write_scopes=write_scopes)
 
     @mcp.tool()
     def classify_blocked(
@@ -5079,6 +5408,59 @@ def build_server(
         )
 
     @mcp.tool()
+    def declare_write_set(
+        claim_id: str,
+        scopes: list[str],
+        actor: str | None = None,
+        session_id: str | None = None,
+    ) -> dict:
+        """Declare which scopes a held claim intends to write.
+
+        Scopes are "path=PREFIX", "table=NAME" or "service=NAME"; a bare value
+        is a path. Advisory: this reports overlaps, it never blocks a claim.
+        """
+        return _tool_declare_write_set(
+            claim_id=claim_id,
+            scopes=scopes,
+            actor=actor,
+            session_id=session_id,
+            db_path=db_path,
+        )
+
+    @mcp.tool()
+    def route(
+        usage_db: str,
+        budgets: dict[str, int] | None = None,
+        days: int = 7,
+        require_complete: bool = False,
+    ) -> dict:
+        """Which provider has headroom, on measured usage. Read-only advice.
+
+        Reads the usage ledger at usage_db; writes nothing, and refuses a path
+        that does not exist rather than creating a ledger. Returns
+        coverage_state "unknown" whenever coverage is not provably complete,
+        and recommended null with a reason when it cannot advise at all.
+        """
+        return _tool_route(
+            usage_db=usage_db,
+            budgets=budgets,
+            days=days,
+            require_complete=require_complete,
+        )
+
+    @mcp.tool()
+    def write_set_conflicts(include_expired: bool = False) -> dict:
+        """Which currently-held claims declare overlapping write scopes.
+
+        Read-only. Names the specific rows, sessions and overlapping scopes;
+        claims that declared nothing are listed as undeclared, not as clean.
+        """
+        return _tool_write_set_conflicts(
+            include_expired=include_expired,
+            db_path=db_path,
+        )
+
+    @mcp.tool()
     def note(
         work_id: str,
         body: str,
@@ -5086,7 +5468,15 @@ def build_server(
         refs: list[str] | None = None,
         actor: str | None = None,
         session_id: str | None = None,
+        to_session_id: str | None = None,
     ) -> dict:
+        """Neutral mid-flight message about an existing row.
+
+        Addressed to the opposite lane by default. Pass to_session_id to
+        address one live session instead, which is the only way to reach a
+        single member of a same-lane fleet; a dead or unknown session is
+        refused rather than posted into a void.
+        """
         return _tool_note(
             work_id=work_id,
             body=body,
@@ -5094,6 +5484,7 @@ def build_server(
             refs=refs,
             actor=actor,
             session_id=session_id,
+            to_session_id=to_session_id,
             db_path=db_path,
         )
 

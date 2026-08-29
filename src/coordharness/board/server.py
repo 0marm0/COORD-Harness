@@ -158,10 +158,18 @@ def build_documents(db_path: str | None) -> tuple[dict[str, Any], ...]:
     without opening SQLite independently.
     """
     source = db_path if db_path is not None else config.coord_db_path()
+    # The telemetry root is resolved from the database the operator named, not
+    # from the private copy: the copy lives in a temporary directory that has
+    # no sidecars at all, and resolving there would empty the Jobs surface on
+    # the default path. Resolving it from the ambient state tree instead --
+    # which is what this did -- assembled one screen out of two unrelated
+    # directories, so a database served from elsewhere showed job rows
+    # belonging to whatever tree the process was standing in.
+    sidecars = config.job_progress_dir_for_database(source)
     with stable_copy(source) as frozen:
         path = str(frozen)
-        snapshot = build_snapshot(path)
-        graph = build_graph(path)
+        snapshot = build_snapshot(path, job_progress_dir=sidecars)
+        graph = build_graph(path, job_progress_dir=sidecars)
         context = build_context(path)
         timeline = build_timeline(path)
         pulse = build_pulse(path)

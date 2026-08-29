@@ -73,14 +73,6 @@ generalizes across predicates and which stays predicate-specific — that's
 worth thinking through once rather than getting wrong twice. See
 "Provenance-bound graph edges as a general pattern."
 
-**Declared write sets and a read-only conflict query.** The field and the
-query are near-sized on their own; they're staged here because they're
-only worth building once there's a real place to point contributors who
-want to try it against a live fleet, and because the honest first version
-ships with zero blocking behavior — the interesting design question (when
-does an overlap actually matter) needs real data this doesn't have yet.
-See "Conflict detection from declared write sets."
-
 ## Someday
 
 **Multi-machine coordination past the `host_id` column** — the actual

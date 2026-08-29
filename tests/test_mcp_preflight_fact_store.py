@@ -12,9 +12,15 @@ from pathlib import Path
 
 import pytest
 
-from coordharness.bootstrap import bootstrap_database
-from coordharness.coord import mcp_coord_server
-from coordharness.knowledge import facts
+pytest.importorskip(
+    "mcp",
+    reason="the MCP server surface under test needs the optional [mcp] extra; "
+    "without it this module is skipped rather than failing collection for the whole suite",
+)
+
+from coordharness.bootstrap import bootstrap_database  # noqa: E402
+from coordharness.coord import mcp_coord_server  # noqa: E402
+from coordharness.knowledge import facts  # noqa: E402
 
 
 def _ready_store(path: Path) -> Path:

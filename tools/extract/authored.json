@@ -312,6 +312,7 @@
     "tests/safety/test_doctor_readonly_wrapper.py": "safety doctor read-only wrapper regression tests",
     "tests/safety/test_git_guard.py": "Git safety guard regression tests",
     "tests/safety/test_safety_doctor.py": "safety doctor regression tests",
+    "tests/safety/test_shell_scripts_ship_runnable.py": "published shell-script interpreter line, index mode, and non-Darwin memory-gate refusal regressions written fresh",
     "tests/test_agent_onboarding.py": "fresh-clone onboarding configuration and doctor regression tests",
     "tests/test_board.py": "written fresh for this repository",
     "tests/test_board_action_registry.py": "preview-only action availability, safety veto, and human-reason contract tests written fresh",
@@ -324,7 +325,9 @@
     "tests/test_board_readability_browser.py": "responsive board typography, overflow, empty-state, and detail continuity browser regressions written fresh",
     "tests/test_board_readonly.py": "adversarial proof that every board route remains a coherent read-only projection",
     "tests/test_board_semantic_query.py": "canonical query, predicate, display separation, performance-shape, and omission receipt tests written fresh",
+    "tests/test_board_session_identity.py": "board rows naming the holding session, not only the lane, written fresh",
     "tests/test_board_shell_coherence_browser.py": "coherent bundle refresh, stale-generation, command-palette, and mobile-shell browser regressions written fresh",
+    "tests/test_board_telemetry_source_binding.py": "regressions binding board job telemetry to the served database's own state root, with the default-layout and private-copy ablations, written fresh",
     "tests/test_board_transient_panels_browser.py": "transient panel dismissal and focus browser regressions written fresh",
     "tests/test_board_work_layout_browser.py": "board work-layout density and responsive hierarchy browser regressions written fresh",
     "tests/test_cli_error_boundary.py": "regressions for the CLI error boundary: refusals as one line on stderr, the unknown-work-id message, --traceback, and unanticipated errors still crashing",
@@ -339,6 +342,8 @@
     "tests/test_coordination_map_typography_browser.py": "computed-style coordination-map type and control floor regressions written fresh",
     "tests/test_doctor_first_run.py": "regression coverage for the first-run doctor path",
     "tests/test_documentation_validation.py": "adversarial local-link, JSON, SVG accessibility, visual-provenance, and bounded-report regressions written fresh",
+    "tests/test_entry_first_command.py": "first-command read-only entry point regressions written fresh",
+    "tests/test_getting_started_reproducible_clock.py": "frozen-seed-clock lease expiry and getting-started accuracy regressions written fresh",
     "tests/test_graph_envelope.py": "adversarial graph omission, collision, cap, and determinism tests",
     "tests/test_imports.py": "guards against dangling references to packages the extraction left behind",
     "tests/test_lifecycle_diagram.py": "deterministic source-drift and unknown-status regression tests",
@@ -347,6 +352,7 @@
     "tests/test_loop_contracts_verify_command.py": "regressions pinning the loop contract's verify command to a subcommand the package actually ships, and to the shared constant every emission site reads",
     "tests/test_mcp_generic_preflight.py": "fresh-database generic MCP preflight next-work and context regression tests",
     "tests/test_mcp_preflight_fact_store.py": "regression coverage for the MCP fact-store bootstrap",
+    "tests/test_mcp_route_tool.py": "read-only MCP usage-routing tool coverage and coverage-refusal regressions written fresh",
     "tests/test_mlx_runner_preflight.py": "local runner preflight regression tests",
     "tests/test_model_catalog_authority.py": "model catalog authority regression tests",
     "tests/test_model_productization.py": "model productization regression tests",
@@ -368,6 +374,11 @@
     "tests/test_privacy_hygiene.py": "opaque publication privacy gate regressions",
     "tests/test_product_runtime.py": "written fresh for this repository",
     "tests/test_public_generalization.py": "public generalization regression tests",
+    "tests/test_reaper_console_and_dry_run.py": "reaper console-script resolution and dry-run-vs-real-release regressions written fresh",
+    "tests/test_reaper_console_script.py": "installed-wheel coord-reaper console-script resolution regressions written fresh",
+    "tests/test_reaper_launchd_template.py": "opt-in reaper LaunchAgent template and install.sh flag regressions written fresh",
+    "tests/test_session_addressed_notes.py": "session-addressed note writer, lane-default preservation, and dead-target refusal regressions written fresh",
+    "tests/test_setup_macos_client_registration.py": "opt-in MCP client registration gating regressions for the CLI-only setup path, written fresh",
     "tests/test_shared_shell_operations_atlas_label_browser.py": "shared shell and Operations Atlas naming coherence browser regressions written fresh",
     "tests/test_skill_packages.py": "paired public skill package regression tests",
     "tests/test_snapshot_readonly_wal.py": "read-only WAL snapshot safety regression tests",
@@ -380,10 +391,12 @@
     "tests/test_usage_dashboard_browser.py": "provider usage dashboard behavior, responsiveness, and disclosure browser regressions written fresh",
     "tests/test_usage_dashboard_route.py": "provider usage route, cache, and schema-boundary regressions written fresh",
     "tests/test_usage_routing.py": "tests for the usage routing advisor",
+    "tests/test_write_set_declaration.py": "declared write-set reachability, schema bootstrap, read-only conflict query, and ungrantable-scope refusal regressions written fresh",
     "tests/usage/test_account_actions.py": "account-action forwarding, validation, and secret-redaction regressions written fresh",
     "tests/usage/test_dashboard_proxy.py": "bounded provider usage proxy validation, cache, and redaction regressions written fresh",
     "tests/usage/test_local_cache.py": "atomic local usage cache regression tests",
     "tests/usage/test_local_foundation.py": "standalone provider account history routing and management regression tests",
+    "tests/usage/test_probe_platform_support.py": "unsupported-platform provider probe detection regressions written fresh",
     "tests/usage/test_provider_management.py": "provider-management forwarding and response-sanitization regressions written fresh",
     "tests/usage/test_repository_privacy.py": "repository-level provider state and credential publication regressions written fresh",
     "tools/capture_board_screens.py": "clean-room dashboard screenshot capture helper, written fresh",
@@ -517,8 +530,8 @@
     },
     "scripts/set_mode.sh": {
       "origin": "ported, then extended in this repository",
-      "reason": "The single sanctioned way to switch a machine-wide resource mode (full/medium/light/pause/auto): validates the mode name against resource_modes.json, atomically writes resource_mode.txt, drops a trigger file so a running governor daemon re-enforces within ~30s instead of waiting a full poll cycle, and supports a manual-override hold plus an idle+AC-power auto-resolve. This is the operator/dashboard-facing half of the 'resource-mode governor' contract.",
-      "reviewed_sha256": "8d61e080059da6bcac7a0f8f59e5fe434279a4bd8592dcdd679ccfa78b8ba8bd"
+      "reason": "The single sanctioned way to switch a machine-wide resource mode (full/medium/light/pause/auto): validates the mode name against resource_modes.json, atomically writes resource_mode.txt, drops a trigger file so a running governor daemon re-enforces within ~30s instead of waiting a full poll cycle, and supports a manual-override hold plus an idle+AC-power auto-resolve. This is the operator/dashboard-facing half of the 'resource-mode governor' contract. Re-reviewed after the file was made runnable: a shebang line and the execute bit in the index. Git shipped it mode 100644 with no interpreter line, so the invocation the operators' handbook documents failed with Permission denied in every clone. No change to what the script does.",
+      "reviewed_sha256": "8b99777595c071bc82eba6f09174919d6551e3249e758acc4ccbbd112680ad71"
     },
     "src/coordharness/board/security.py": {
       "origin": "ported, then extended in this repository",
@@ -537,18 +550,18 @@
     },
     "src/coordharness/coord/cli.py": {
       "origin": "ported, then extended in this repository",
-      "reason": "Re-reviewed after adding standalone onboarding, generated client configuration, exact work-context reads, and typed fenced handoff commands; lifecycle writes remain explicit and database-scoped. Re-reviewed again after the CLI error-boundary pass: `--traceback` is declared for help text only, a claim collision is translated to a sentence naming the holder that the code reads back rather than infers, `work-context` now takes the not-found branch that `_work_row`'s empty-dict return had made unreachable, and `route` refuses a `--usage-db` path that is absent. No new write path and no change to any domain message.",
-      "reviewed_sha256": "fe43a3cd9d3fe26596b48c2f0646183f6f02340975c8666abf02cb63895f5f9f"
+      "reason": "Re-reviewed after adding standalone onboarding, generated client configuration, exact work-context reads, and typed fenced handoff commands; lifecycle writes remain explicit and database-scoped. Re-reviewed again after the CLI error-boundary pass: `--traceback` is declared for help text only, a claim collision is translated to a sentence naming the holder that the code reads back rather than infers, `work-context` now takes the not-found branch that `_work_row`'s empty-dict return had made unreachable, and `route` refuses a `--usage-db` path that is absent. No new write path and no change to any domain message. Re-reviewed after four client-surface additions: --write-scope on claim plus declare-write-set and conflicts, so the write-set overlap query the agent system prompt already instructs agents to use is reachable; owner session fields emitted beside the unchanged assignee; --to-session on note; and inbox binding to the reading session so a session-addressed note is visible from the shell. Existing output shapes gained fields and lost none.",
+      "reviewed_sha256": "5655ed6008a24aef65e0308d724262b9b766f1d96d8d6492be883f9cfbb8a5de"
     },
     "src/coordharness/coord/coord_db.py": {
       "origin": "ported, then extended in this repository",
-      "reason": "import closure of the coordination control plane (coordharness.coord.coord_db). Re-reviewed after splitting the inbox into its directed and broadcast legs: `unread_inbox_counts` reports both plus their sum, `unread_inbox_count` now returns that sum so existing callers read the same figure, `read_inbox` labels every row `directed`, and its new `directed_only` argument is opt-in so the default reading returns the same SET of messages it always did. No new write path, no change to which events are recorded. Prior review of `post_note`, the `newest_first` option, and the session-close memory-proposal hook stands. Re-reviewed again after `claim_work` gained a pre-INSERT refusal for a work id that is not on the board: it replaces a foreign-key error with the id and where to look, cannot fire on the create-and-claim path that passes work_fields, and changes no other outcome. Re-reviewed again after `board_rows` began refusing a `group_by` that names no field on a work row: the old behaviour sorted every row into \"(ungrouped)\" and exited zero, so a typo and a real grouping were indistinguishable in the output. The refusal names the groupable fields. Read path only; no write path and no schema change.",
-      "reviewed_sha256": "e81f9356165d752e160c6465aebbe97ec724a78c7a5ade1a7ff92eebb63a5a1b"
+      "reason": "import closure of the coordination control plane (coordharness.coord.coord_db). Re-reviewed after splitting the inbox into its directed and broadcast legs: `unread_inbox_counts` reports both plus their sum, `unread_inbox_count` now returns that sum so existing callers read the same figure, `read_inbox` labels every row `directed`, and its new `directed_only` argument is opt-in so the default reading returns the same SET of messages it always did. No new write path, no change to which events are recorded. Prior review of `post_note`, the `newest_first` option, and the session-close memory-proposal hook stands. Re-reviewed again after `claim_work` gained a pre-INSERT refusal for a work id that is not on the board: it replaces a foreign-key error with the id and where to look, cannot fire on the create-and-claim path that passes work_fields, and changes no other outcome. Re-reviewed again after `board_rows` began refusing a `group_by` that names no field on a work row: the old behaviour sorted every row into \"(ungrouped)\" and exited zero, so a typo and a real grouping were indistinguishable in the output. The refusal names the groupable fields. Read path only; no write path and no schema change. Re-reviewed after the session-granularity work: resolve_note_session_target validates a note's session target exists and is live and refuses a dead one; post_note accepts it with the lane default unchanged; board rows carry the owner session the v_work_owner view already computed. Also the successor pointer emitted at closeout now names a module a clone can run rather than a coordharness/scripts path no checkout contains.",
+      "reviewed_sha256": "d8fa4a9b91d1ad33be6d551ff538e89716b872ee06ee2eb10fd72f4edceb64e1"
     },
     "src/coordharness/coord/create_schema.py": {
       "origin": "ported, then extended in this repository",
-      "reason": "import closure of the coordination control plane (coordharness.coord.create_schema)",
-      "reviewed_sha256": "1af0c465bd3202d8b0426746c7e8d90ce16bb8582324839bea96071d79eeef9f"
+      "reason": "import closure of the coordination control plane (coordharness.coord.create_schema) Re-reviewed after the write-set tables joined the verified table inventory, so a bootstrap that silently omits them is caught rather than deferred to the first caller.",
+      "reviewed_sha256": "117d8bd80debdff02219e3c9235106cceaccee632bb2765a98d35ff39f8b97a1"
     },
     "src/coordharness/coord/ingest.py": {
       "origin": "ported, then extended in this repository",
@@ -562,8 +575,8 @@
     },
     "src/coordharness/coord/mcp_coord_server.py": {
       "origin": "ported, then extended in this repository",
-      "reason": "Re-reviewed after making preflight, next-work, work-context, knowledge reads, and typed handoff generic to the caller project and exact database rather than any private installation, and again after correcting the inbox tool: it now reads newest-first like the CLI, acknowledges the maximum event in the window it actually returned instead of the last list element, keeps an explicit backlog mode, and reports the directed/broadcast split plus what the acknowledgement swept past. Reads and one cursor write only.",
-      "reviewed_sha256": "ac75a763f806a3180b41cc5e8849966a2a43362b1c803c3789b78beef3bf2e56"
+      "reason": "Re-reviewed after making preflight, next-work, work-context, knowledge reads, and typed handoff generic to the caller project and exact database rather than any private installation, and again after correcting the inbox tool: it now reads newest-first like the CLI, acknowledges the maximum event in the window it actually returned instead of the last list element, keeps an explicit backlog mode, and reports the directed/broadcast split plus what the acknowledgement swept past. Reads and one cursor write only. Re-reviewed after three tools were added -- declare_write_set, write_set_conflicts and a read-only route -- and note gained a session target. route passes the ledger's own coverage refusal through rather than re-deriving it, writes nothing, and refuses a usage database that does not exist instead of minting a second accounting store. The knowledge index_refresh command now names a callable that exists; it named a script absent from the repository.",
+      "reviewed_sha256": "17917c77176320517c8e32a623fa3b425d70a879b5623b0b37aedbce3304aec8"
     },
     "src/coordharness/coord/modeld_lite.py": {
       "origin": "ported, then substantially adapted for standalone publication",
@@ -582,8 +595,8 @@
     },
     "src/coordharness/coord/work_contracts.py": {
       "origin": "ported, then substantially adapted for standalone publication",
-      "reason": "Write-scope exclusions use neutral state-directory paths rather than a deployment-specific runtime topology. Re-reviewed after the claim-required refusal stopped citing a section number in a private contract file and stated the rule itself instead. Message wording only; the refusal and its conditions are unchanged.",
-      "reviewed_sha256": "35bb624c9a241c22897f9b9f964ee54bd2240201bfcc7daba01bf54b060b5541"
+      "reason": "Write-scope exclusions use neutral state-directory paths rather than a deployment-specific runtime topology. Re-reviewed after the claim-required refusal stopped citing a section number in a private contract file and stated the rule itself instead. Message wording only; the refusal and its conditions are unchanged. Re-reviewed after the conflict query was made safe to call: read paths use a read-only helper instead of the lazy create, which raised 'attempt to write a readonly database' on any read-only connection for a table the caller never named. The report gained schema_present so an empty finding list cannot be read as proof of no conflicts when the query never ran.",
+      "reviewed_sha256": "ed6780564ad5f14d0dec7ea957acc902af2aee147f7fe00df0f1995a126714a6"
     },
     "src/coordharness/jobs/diagnostic_marker.py": {
       "origin": "ported, then extended in this repository",
