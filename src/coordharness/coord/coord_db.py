@@ -9069,7 +9069,7 @@ def read_inbox(
         )
         params.append(cursor)
     rows = conn.execute(
-        f"SELECT * FROM ("
+        "SELECT * FROM ("
         + "  UNION ALL".join(legs)
         + f") ORDER BY event_id {direction} LIMIT ?",
         (*params, limit),

@@ -198,6 +198,7 @@
     "docs/visual-atlas.md": "index of the diagram assets",
     "docs/web-board.md": "written fresh for this repository",
     "pyproject.toml": "written fresh for this repository",
+    "scripts/check.sh": "local runner for the checks CI performs, in CI's order; refuses to report an extraction-gate result on unstaged changes and refuses to pass with the browser suite skipping for a missing dependency",
     "scripts/demo.sh": "written fresh for this repository",
     "scripts/friend_acceptance.sh": "isolated synthetic install, MCP, service, native-build, and data-preserving uninstall acceptance runner written fresh",
     "scripts/native_context_bridge.py": "read-only bridge answering the native cockpit's context palette",
@@ -542,7 +543,7 @@
     "src/coordharness/coord/coord_db.py": {
       "origin": "ported, then extended in this repository",
       "reason": "import closure of the coordination control plane (coordharness.coord.coord_db). Re-reviewed after splitting the inbox into its directed and broadcast legs: `unread_inbox_counts` reports both plus their sum, `unread_inbox_count` now returns that sum so existing callers read the same figure, `read_inbox` labels every row `directed`, and its new `directed_only` argument is opt-in so the default reading returns the same SET of messages it always did. No new write path, no change to which events are recorded. Prior review of `post_note`, the `newest_first` option, and the session-close memory-proposal hook stands. Re-reviewed again after `claim_work` gained a pre-INSERT refusal for a work id that is not on the board: it replaces a foreign-key error with the id and where to look, cannot fire on the create-and-claim path that passes work_fields, and changes no other outcome. Re-reviewed again after `board_rows` began refusing a `group_by` that names no field on a work row: the old behaviour sorted every row into \"(ungrouped)\" and exited zero, so a typo and a real grouping were indistinguishable in the output. The refusal names the groupable fields. Read path only; no write path and no schema change.",
-      "reviewed_sha256": "5ff138a62a82987c9e6196d2fc4f07a753ac34ebc305a6d745f8570908c45b9f"
+      "reviewed_sha256": "e81f9356165d752e160c6465aebbe97ec724a78c7a5ade1a7ff92eebb63a5a1b"
     },
     "src/coordharness/coord/create_schema.py": {
       "origin": "ported, then extended in this repository",
