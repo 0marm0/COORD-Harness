@@ -59,7 +59,12 @@ if [ "$FAST" = 1 ]; then
   step "browser suite: skipped (--fast)"
 else
   step "browser suite, batched"
-  mapfile -t browser_files < <(ls tests/*browser*.py 2>/dev/null || true)
+  # Built with a glob loop, not mapfile: macOS ships bash 3.2, where mapfile
+  # does not exist. This script must run on a stock machine.
+  browser_files=()
+  for browser_file in tests/*browser*.py; do
+    [ -e "$browser_file" ] && browser_files+=("$browser_file")
+  done
   if [ "${#browser_files[@]}" -eq 0 ]; then
     echo "    no browser tests found"
   elif ! "$PY" -c 'import playwright' 2>/dev/null; then
