@@ -117,6 +117,100 @@ def _review_identity(ident: dict, *, session: str | None, action: str) -> tuple[
     return actor, sid
 
 
+class OperatorConsentUnavailable(ValueError):
+    """No human could be asked, so no sign-off can be recorded."""
+
+
+def _read_controlling_terminal_confirmation(prompt: str) -> str:
+    """Put a question to this process's controlling terminal and read the answer.
+
+    This is the whole human-only mechanism, so it is worth being exact about why
+    it is a terminal and not a flag, an actor, or an environment variable.
+
+    Every other refusal in this file guards agents from each other, and for that
+    a declared identity is enough: both lanes are cooperating, and the record
+    only has to be honest. ``operator_ok`` is the opposite case. It overrides the
+    cross-lane review gate, so the party it guards against is the party running
+    the command -- and a guard that party can satisfy by *choosing a value*
+    (``--i-am-human``, ``COORD_OPERATOR=1``, ``--actor operator``) is not a
+    guard, it is a spelling. An agent sets an environment variable as easily as
+    it types a subcommand.
+
+    A controlling terminal is not a value; it is a capability of the process. An
+    agent invoking this CLI through a pipe or an MCP client does not have one --
+    ``open("/dev/tty")`` fails outright with ``ENXIO``/``Device not configured``
+    rather than returning something wrong. Reading from ``/dev/tty`` rather than
+    ``stdin`` matters as much as the check: it means the answer cannot be piped
+    in, so ``yes | coord sign-off`` and a heredoc are both simply ignored.
+
+    The honest limit, stated because leaving it out would be the more dangerous
+    documentation: an agent that can allocate a pty, or open the database file,
+    is outside anything an in-process check can reach -- as it is for every other
+    guard in this repository. What this buys is that the override is unreachable
+    through the product's own surfaces (it is absent from MCP, and ``post_event``
+    and ``upsert_work`` both refuse the field), unreachable by accident, and
+    unreachable by an agent that is merely following the documentation. Anything
+    past that is not a mistake anyone could make. It is impersonation, and it
+    has to be spelled that way.
+    """
+    try:
+        terminal = open("/dev/tty", "r+", buffering=1)  # noqa: SIM115 -- closed below
+    except OSError as exc:
+        raise OperatorConsentUnavailable(
+            "coord sign-off needs a controlling terminal and this process has "
+            f"none ({exc.strerror or exc}). It records a human override of the "
+            "review gate, so it asks a person directly and reads the answer from "
+            "the terminal, never from stdin -- a piped or scripted answer is not "
+            "a person. Run it from a shell you are sitting at. If you are an "
+            "agent and you are stuck at a review gate, this verb is not yours: "
+            "ask the opposite lane for a verdict, or ask the operator to sign."
+        ) from exc
+    with terminal:
+        if not os.isatty(terminal.fileno()):
+            raise OperatorConsentUnavailable(
+                "coord sign-off opened /dev/tty and it is not a terminal; "
+                "refusing to treat it as a person"
+            )
+        terminal.write(prompt)
+        terminal.flush()
+        answer = terminal.readline()
+    return str(answer or "").strip()
+
+
+def _sign_off_prompt(work: dict, *, reason: str, refs: list[str]) -> str:
+    """What the person is shown before they can sign anything.
+
+    Shows the fields the receipt digest is taken over, so the thing typed back
+    is bound to the row that was actually read rather than to a work id
+    remembered from earlier in the session.
+    """
+    lines = [
+        "",
+        "  coord sign-off -- operator override of the review gate",
+        "",
+        f"    work        {work.get('work_id')}",
+        f"    title       {work.get('title') or '(none)'}",
+        f"    assignee    {work.get('assignee') or '(unassigned)'}",
+        f"    tier        {work.get('effective_tier')} (effective)",
+        f"    state       {work.get('intent_state') or '(none)'}",
+        f"    version     {work.get('version')}",
+        f"    done signal {work.get('done_signal') or '(none)'}",
+        f"    contract    {str(work.get('contract_sha256') or '')[:16]}",
+        "",
+        f"    reason      {reason}",
+    ]
+    for index, ref in enumerate(refs):
+        lines.append(f"    {'evidence   ' if index == 0 else '           '} {ref}")
+    lines += [
+        "",
+        "  This substitutes for an independent lane's verdict. It is recorded as",
+        "  an operator decision and is attributable to no agent.",
+        "",
+        "  Type the work id to sign, anything else to abort: ",
+    ]
+    return "\n".join(lines)
+
+
 def _clean_refs(refs, *, action: str) -> list[str]:
     cleaned = [str(ref).strip() for ref in (refs or []) if str(ref).strip()]
     if not cleaned:
@@ -346,6 +440,14 @@ def main(argv=None) -> int:
         default="released",
         choices=sorted(coord_db.RELEASABLE_CLAIM_STATUSES),
     )
+    # The storage layer has always required this for a blocked release and this
+    # surface had no way to supply it, so every documented `--status blocked`
+    # call refused. MCP reaches the same parameter through `block(step=...)`;
+    # naming it `--reason` here matches `release(reason=...)`, the MCP tool this
+    # verb is the twin of, and matches the parameter it lands in.
+    p.add_argument("--reason", default=None,
+                   help="why execution stopped, naming the criterion; required "
+                        "with --status blocked")
     p.add_argument("--next-step", default=None)
     p.add_argument("--resume-when", default=None)
     release_trigger = p.add_mutually_exclusive_group()
@@ -432,6 +534,21 @@ def main(argv=None) -> int:
     p.add_argument("--acceptance", default=None)
     p.add_argument("--session", default=None,
                    help="assert the requesting session id; must match this process")
+    p = sub.add_parser(
+        "sign-off",
+        help="record a human override of the review gate on one row",
+    )
+    p.add_argument("work_id", help="the row whose review gate is being overridden")
+    p.add_argument("--reason", required=True,
+                   help="what you accepted and why, in your own words")
+    p.add_argument("--ref", action="append", required=True, default=[], dest="refs",
+                   help="pointer to what you actually read; repeatable, at least one")
+    p.add_argument("--operation-id", required=True,
+                   help="stable id for this sign-off; re-running with the same id "
+                        "replays the existing receipt instead of signing twice")
+    p.add_argument("--expected-version", type=int, default=None,
+                   help="assert the row version you are signing; defaults to the "
+                        "version shown in the confirmation prompt")
     p = sub.add_parser("heartbeat-claim")
     p.add_argument("claim_id")
     p.add_argument("--step", default=None)
@@ -814,6 +931,14 @@ def main(argv=None) -> int:
         elif args.cmd == "release":
             next_step = args.next_step
             resume_when = args.resume_when
+            if args.status == "blocked" and not str(args.reason or "").strip():
+                # coord_db refuses this too, and its wording is the contract.
+                # Repeated here only to name the flag, which the storage layer
+                # cannot know about.
+                raise ValueError(
+                    "coord release --status blocked requires --reason naming the "
+                    "criterion that is not met"
+                )
             if args.status == "paused":
                 next_step, resume_when = require_park_resume_contract(
                     next_step=next_step,
@@ -835,6 +960,7 @@ def main(argv=None) -> int:
                 payload={
                     "status": args.status,
                     "claim_id": args.claim_id,
+                    "reason": args.reason,
                     "next_step": next_step,
                     "resume_when": resume_when,
                     "resume_predicate_json": canonical_resume_predicate,
@@ -844,6 +970,7 @@ def main(argv=None) -> int:
                 conn,
                 args.claim_id,
                 status=args.status,
+                reason=args.reason,
                 next_step=next_step,
                 resume_when=resume_when,
                 resume_predicate_json=args.resume_predicate,
@@ -1108,6 +1235,63 @@ def main(argv=None) -> int:
                 "replayed": bool(result.get("replayed")),
                 "work": result.get("work"),
                 "policy": policy,
+            })
+
+        elif args.cmd == "sign-off":
+            # No lane identity is resolved and no lifecycle policy is run. Both
+            # read the ambient actor, and the ambient actor here is whatever
+            # shell the operator happens to be sitting in -- attributing an
+            # operator decision to it would put an agent's name on a human's
+            # signature. The receipt records the operator and nothing else.
+            refs = _clean_refs(args.refs, action="coord sign-off")
+            reason = str(args.reason or "").strip()
+            if not reason:
+                raise ValueError(
+                    "coord sign-off requires a non-empty --reason naming what you "
+                    "accepted"
+                )
+            work = _work_row(conn, args.work_id)
+            if not work:
+                raise ValueError(
+                    f"coord sign-off work_id not found: {args.work_id}; a sign-off "
+                    "is an event on an existing row (coord board lists them)"
+                )
+            work["effective_tier"] = coord_db.effective_review_tier_for_work(
+                conn, args.work_id, row=work
+            )
+            work["contract_sha256"] = coord_db.operator_authority_contract_sha256(work)
+            typed = _read_controlling_terminal_confirmation(
+                _sign_off_prompt(work, reason=reason, refs=refs)
+            )
+            if typed != str(work.get("work_id") or ""):
+                raise ValueError(
+                    "coord sign-off aborted: the confirmation did not match the "
+                    "work id shown. Nothing was recorded."
+                )
+            result = coord_db.record_operator_sign_off(
+                conn,
+                work_id=args.work_id,
+                reason=reason,
+                refs=refs,
+                operation_id=args.operation_id,
+                expected_version=(
+                    args.expected_version
+                    if args.expected_version is not None
+                    else int(work.get("version") or 0)
+                ),
+            )
+            _emit({
+                "ok": True,
+                "verb": "sign_off",
+                "work_id": result["work_id"],
+                "event_id": result["event_id"],
+                "version": result["version"],
+                "operation_id": args.operation_id,
+                "refs": refs,
+                "replayed": bool(result.get("replayed")),
+                "binding_backfilled": bool(result.get("binding_backfilled")),
+                "superseded_event_id": result.get("superseded_event_id"),
+                "authority_channel": coord_db.OPERATOR_AUTHORITY_CHANNEL,
             })
 
         elif args.cmd == "request-audit":
