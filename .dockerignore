@@ -1,0 +1,54 @@
+# Keeps the build context small and, more importantly, keeps a few things
+# that must never end up baked into an image out of it entirely: a local
+# database, a virtualenv, build output, and git history. See
+# docs/containers.md for the rationale.
+
+# Git history and any worktree metadata -- never ship history into an image.
+.git/
+.gitignore
+
+# Python virtualenv and caches. The image builds its own environment; a
+# copied-in .venv would carry this machine's absolute paths and platform
+# wheels.
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Local coordination state. This is the harness's own database and job
+# telemetry for whatever machine built the image -- copying it in would ship
+# one machine's board as another's, defeating the point of a fresh seeded
+# demo.
+/.coordharness/
+*.db
+*.db-wal
+*.db-shm
+/var/
+
+# Build output and packaging scratch.
+/build/
+/dist/
+
+# macOS native app sources and their build products are unrelated to the
+# Linux/CI container this image serves.
+apps/
+
+# Editor/agent-local config that is specific to the machine that checked the
+# repo out, not to the package itself.
+.DS_Store
+.env
+.env.*
+!.env.example
+
+# CI/agent local scratch dirs already excluded from version control.
+/docs/_audit/
+/docs/_review/
+/.playwright-cli/
+/output/playwright/
+
+# The .devcontainer directory does not need to copy itself into its own
+# build context.
+.devcontainer/
