@@ -1,7 +1,6 @@
 
 from __future__ import annotations
 
-import fcntl
 import hashlib
 import json
 import os
@@ -12,6 +11,11 @@ import time
 import uuid
 from pathlib import Path
 from typing import Any, Mapping
+
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - exercised on non-POSIX installs
+    fcntl = None
 
 
 SCHEMA_PLAN = "coordharness.console-release-retention-plan.v1"
@@ -261,6 +265,21 @@ def apply_retention_plan(
     confirm_plan_sha256: str,
 ) -> dict[str, Any]:
 
+    if fcntl is None:
+        # apply_retention_plan() deletes release directories under an
+        # exclusive activation lock that guards against a concurrent
+        # apply racing the same runtime root -- there is no non-POSIX
+        # substitute for that lock, and running the deletion unlocked
+        # would be a correctness trap (two racing applies could both
+        # pass their identity checks and then double-delete or delete a
+        # release the other just repointed). Refuse outright rather than
+        # degrade silently; build_retention_plan() itself does not need
+        # fcntl and remains available on every platform.
+        raise RetentionError(
+            "operating-system file locks are unavailable on this platform; "
+            "apply_retention_plan() requires the activation lock and cannot "
+            "run safely without it"
+        )
     plan = dict(plan)
     if plan.get("schema") != SCHEMA_PLAN:
         raise RetentionError("retention plan schema mismatch")

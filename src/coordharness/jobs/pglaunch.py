@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import fcntl
 import hashlib
 import json
 import os
@@ -14,6 +13,11 @@ import sys
 import tempfile
 import time
 from pathlib import Path
+
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - exercised on non-POSIX installs
+    fcntl = None
 
 
 _CUSTODY_SCHEMA = "coordharness.tracked-job-custody.v1"
@@ -321,12 +325,32 @@ def _release_child_gate(release_write: int, wrapper_pid: int) -> bool:
     return not wrapper_pid or _wrapper_parent_alive(wrapper_pid)
 
 
+_fcntl_unavailable_logged = False
+
+
 def _terminalize_wrapper_loss(
     progress_file: str, payload: dict[str, object], *, exit_code: int = 125
 ) -> bool:
 
     lock_path = str(payload.get("canonical_control_lock_path") or "")
     if not progress_file or not lock_path:
+        return False
+    if fcntl is None:
+        # This recovery path mutates the shared progress-file sidecar
+        # under an exclusive lock so a concurrent wrapper/launcher pair
+        # cannot race the same write. Without the lock there is no way
+        # to make that write safe, so we report "did not terminalize"
+        # (the same outcome callers already handle on any other failure
+        # to acquire/verify the lock) rather than writing unprotected.
+        global _fcntl_unavailable_logged
+        if not _fcntl_unavailable_logged:
+            _fcntl_unavailable_logged = True
+            print(
+                "_tracked_pglaunch: 'fcntl' is unavailable on this platform; "
+                "wrapper-loss terminalization cannot safely mutate the "
+                "progress file and will be skipped",
+                file=sys.stderr,
+            )
         return False
     try:
         os.makedirs(os.path.dirname(lock_path) or ".", exist_ok=True)
