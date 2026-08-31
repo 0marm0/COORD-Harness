@@ -35,8 +35,22 @@ runner exposes a stable id (a CI job id, a host session id), prefer it.
 # .venv/bin/coord onboard --register-clients
 ```
 
-Expect `PASS`. A missing installed-client registration reports `BLOCKED` with the
-exact idempotent remediation command; an absent client is `SKIPPED`, not a failure.
+Expect `BLOCKED` with exit code 2 the first time, not `PASS` — the default install
+deliberately leaves installed-client MCP registration opt-in, because
+`--register-clients` writes to a config file outside this clone (your installed
+Claude/Codex client settings). A `BLOCKED` finding named
+`onboarding.claude_client_registration` (or `codex`, on the other lane) with
+every other finding `PASS` is the expected, correct default state, not a
+failure to chase. An absent client reports `SKIPPED`, which is also not a
+failure.
+
+Reaching a full `PASS` is two steps, not one flag: `.venv/bin/coord onboard
+--register-clients` creates the missing entry (idempotent — safe to re-run),
+but Claude project servers also need a one-time interactive trust choice that
+no flag can make for you. If the finding's detail carries
+`approval_pending=true`, run `claude` from this clone, approve `coordharness`
+when it asks, exit, and re-run `coord onboard`. See
+[docs/agent-onboarding.md](../../docs/agent-onboarding.md) for the full walk-through.
 
 ## 3. Read the board before reading the code
 

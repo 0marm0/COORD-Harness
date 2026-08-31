@@ -54,9 +54,15 @@ python -m coordharness.coord.create_schema --db /path/to/your/project/.coordharn
 ```
 
 Running bootstrap again is safe and preserves existing data. Database creation alone does not
-satisfy the repository-coupled exact-authority and locked-layout checks: fresh generic and
-strict-profile `board` and `preflight` both remain Preview and currently fail closed. The server
-catalog is testable, but no standalone MCP profile is accepted end-to-end.
+satisfy the repository-coupled exact-authority and locked-layout checks — but the two profiles
+differ in what that costs. A fresh **generic** `coord.db` needs nothing else: `board` and
+`preflight` answer over stdio as soon as bootstrap has run (verified directly with a raw MCP
+stdio call against a just-created database — `isError` false on both). **Strict** profile is
+the one that still fails closed on a fresh database: it additionally enforces the locked
+data-local alias, its physical target, and the Git index/sparse-checkout guards
+(`locked_paths.py`), and a database with none of that set up gets a stdio error naming exactly
+which check failed. The server catalog is testable in both profiles, but only generic is
+accepted end-to-end without further repository setup.
 
 ## The tool surface
 
