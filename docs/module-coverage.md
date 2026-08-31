@@ -25,7 +25,7 @@ metadata.
 | Family | Standalone state | Evidence and boundary |
 |---|---|---|
 | SQLite lifecycle, schema, migrations, claims, leases, proof, events | **Present** | `src/coordharness/coord/coord_db.py`, schema, migrations, policy, and tests |
-| CLI, Python, and MCP convergence | **Partial** | One core is present; MCP declares 34 tools and exposes 33 in the default profile, while the public CLI intentionally exposes a smaller operator set |
+| CLI, Python, and MCP convergence | **Partial** | One core is present; MCP declares 37 tools and exposes 36 in the default profile, while the public CLI intentionally exposes a smaller operator set |
 | Bounded board context, facts, full-text retrieval, accepted memory | **Present, derived-read contract** | Fresh generic capsule/lens reads are accepted; strict reads retain exact-authority gates. Facts, KFTS, and accepted memory remain derived recall, never lifecycle authority |
 | Source-bound dependency and evidence graph | **Present, Preview contract** | Web graph names the source field for every edge and exposes missing targets |
 | Causal provenance activation and rollback runtime | **Reimplement** | Tables exist, but import, CAS activation, rollback, and coverage receipts do not yet ship |
