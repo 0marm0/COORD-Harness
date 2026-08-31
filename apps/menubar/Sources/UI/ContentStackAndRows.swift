@@ -176,9 +176,7 @@ final class AppKitContentStack: ContentStack {
                 showUsed: config.usageBarsShowUsed
             ),
             collapsed: config.usagePeekCollapsed,
-            warningMarkerPercent: config.usageWarningMarkersVisible
-                ? (config.usageBarsShowUsed ? 100 - config.usageWarningThreshold : config.usageWarningThreshold)
-                : nil,
+            paceMarkersVisible: config.usageWarningMarkersVisible,
             barPalette: UsageBarPalette.resolve(config.usageBarPalette),
             onOpen: { [weak self] in self?.onAction?(.openUsage) },
             onToggle: { [weak self] in
@@ -621,7 +619,7 @@ final class UsagePeekRow: RowView {
     init(
         _ presentation: UsagePopoverPeekPresentation,
         collapsed: Bool,
-        warningMarkerPercent: Double? = nil,
+        paceMarkersVisible: Bool = true,
         barPalette: UsageBarPalette = .colored,
         onOpen: @escaping () -> Void,
         onToggle: @escaping () -> Void
@@ -689,15 +687,15 @@ final class UsagePeekRow: RowView {
 
             var row = 0
             if provider.hasSession {
-                addQuotaRow(label: "S", fullLabel: "Session", remaining: provider.sessionRemainingPercent, timing: provider.sessionTiming, color: color, warningMarkerPercent: warningMarkerPercent, y: providerY + CGFloat(row) * Self.quotaRowHeight)
+                addQuotaRow(label: "S", fullLabel: "Session", remaining: provider.sessionRemainingPercent, timing: provider.sessionTiming, color: color, paceMarkersVisible: paceMarkersVisible, y: providerY + CGFloat(row) * Self.quotaRowHeight)
                 row += 1
             }
             if provider.hasWeekly {
-                addQuotaRow(label: "W", fullLabel: "Weekly", remaining: provider.weeklyRemainingPercent, timing: provider.weeklyTiming, color: color, warningMarkerPercent: warningMarkerPercent, y: providerY + CGFloat(row) * Self.quotaRowHeight)
+                addQuotaRow(label: "W", fullLabel: "Weekly", remaining: provider.weeklyRemainingPercent, timing: provider.weeklyTiming, color: color, paceMarkersVisible: paceMarkersVisible, y: providerY + CGFloat(row) * Self.quotaRowHeight)
                 row += 1
             }
             if provider.hasFable {
-                addQuotaRow(label: "F", fullLabel: "Fable", remaining: provider.fableRemainingPercent, timing: provider.fableTiming, color: color, warningMarkerPercent: warningMarkerPercent, y: providerY + CGFloat(row) * Self.quotaRowHeight)
+                addQuotaRow(label: "F", fullLabel: "Fable", remaining: provider.fableRemainingPercent, timing: provider.fableTiming, color: color, paceMarkersVisible: paceMarkersVisible, y: providerY + CGFloat(row) * Self.quotaRowHeight)
             }
 
             let summaryY = providerY + CGFloat(rowCount) * Self.quotaRowHeight
@@ -764,7 +762,7 @@ final class UsagePeekRow: RowView {
         remaining: Double?,
         timing: UsageCompactQuotaTiming,
         color: NSColor,
-        warningMarkerPercent: Double?,
+        paceMarkersVisible: Bool,
         y: CGFloat
     ) {
         let labelView = UI.label(label, size: 9.5, weight: .semibold, color: Tokens.Color.lightGray, align: .right)
@@ -786,7 +784,7 @@ final class UsagePeekRow: RowView {
             fill.layer?.backgroundColor = quotaColor.cgColor
             track.addSubview(fill)
         }
-        if let markerPercent = warningMarkerPercent {
+        if paceMarkersVisible, let markerPercent = timing.paceMarkerPercent {
             let marker = NSView(frame: NSRect(
                 x: min(track.bounds.width - 1, max(0, track.bounds.width * CGFloat(markerPercent) / 100)),
                 y: -1,
@@ -794,7 +792,8 @@ final class UsagePeekRow: RowView {
                 height: track.bounds.height + 2
             ))
             marker.wantsLayer = true
-            marker.layer?.backgroundColor = NSColor.systemRed.withAlphaComponent(0.95).cgColor
+            marker.layer?.backgroundColor = (timing.paceMarkerIsDeficit ? NSColor.systemRed : NSColor.systemGreen)
+                .withAlphaComponent(0.95).cgColor
             track.addSubview(marker)
         }
 

@@ -137,8 +137,8 @@ enum RingRenderer {
                 y: rowCenter - 1.5,
                 width: UsageStatusLayout.quotaBarWidth,
                 color: quotaColor,
-                warningMarkerPercent: usage.warningMarkerPercent,
-                warningMarkerColor: warningMarkerColor(for: palette)
+                paceMarkerPercent: usage.paceMarker(for: selection?.window)?.percent,
+                paceMarkerColor: usage.paceMarker(for: selection?.window)?.isDeficit == true ? .systemRed : .systemGreen
             )
             drawText(
                 quotaPercent(usage.displayPercent(selection?.window)),
@@ -213,8 +213,8 @@ enum RingRenderer {
         y: CGFloat,
         width: CGFloat,
         color: NSColor,
-        warningMarkerPercent: Double? = nil,
-        warningMarkerColor: NSColor = .systemRed
+        paceMarkerPercent: Double? = nil,
+        paceMarkerColor: NSColor = .systemGreen
     ) {
         let track = NSBezierPath(roundedRect: NSRect(x: x, y: y, width: width, height: 3), xRadius: 1.5, yRadius: 1.5)
         NSColor.labelColor.withAlphaComponent(0.25).setFill()
@@ -224,9 +224,9 @@ enum RingRenderer {
         let fill = NSBezierPath(roundedRect: NSRect(x: x, y: y, width: fillWidth, height: 3), xRadius: 1.5, yRadius: 1.5)
         color.setFill()
         fill.fill()
-        if let warningMarkerPercent {
-            let markerX = x + width * CGFloat(min(100, max(0, warningMarkerPercent))) / 100
-            warningMarkerColor.withAlphaComponent(0.95).setStroke()
+        if let paceMarkerPercent {
+            let markerX = x + width * CGFloat(min(100, max(0, paceMarkerPercent))) / 100
+            paceMarkerColor.withAlphaComponent(0.95).setStroke()
             let marker = NSBezierPath()
             marker.move(to: NSPoint(x: markerX, y: y - 1))
             marker.line(to: NSPoint(x: markerX, y: y + 4))
@@ -282,10 +282,6 @@ enum RingRenderer {
     static func quotaPercent(_ remaining: Double?) -> String {
         guard let remaining else { return "—" }
         return "\(Int(min(max(remaining, 0), 100).rounded()))"
-    }
-
-    static func warningMarkerColor(for palette: UsageBarPalette) -> NSColor {
-        palette == .colored ? .white : .systemRed
     }
 
     private static func drawFreshness(
