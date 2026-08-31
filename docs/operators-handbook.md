@@ -815,6 +815,43 @@ Where each capability actually exists. Blank means it does not.
 | Safety and integrity checks | — | `coord doctor` | yes | — |
 | Serve the projection | — | `coord-board` | yes | — |
 
+### 5.7 Doctor as a CI gate
+
+`coord doctor` emits exactly one JSON document on the stable
+`coordharness.doctor.v1` schema. Its overall `status` and every finding are
+either `PASS` or `BLOCKED` — nothing else — and the CLI exits `0` only when
+every finding is `PASS`; a `BLOCKED` report exits `2` ([`cli.py`](../src/coordharness/coord/cli.py),
+[safety doctor](safety-doctor.md)). That means a plain `run:` step already
+fails the job on its own: GitHub Actions runs `run:` steps under `bash -eo
+pipefail`, so `coord doctor`'s own exit code stops the job without a
+separate `if [ $? -ne 0 ]` check.
+
+The exit-code recipe, run against a database this run seeds itself so the
+gate is not judging leftover local state:
+
+```bash
+python -m pip install -e '.[dev]'
+python -m coordharness.demo --db "$RUNNER_TEMP/ci-demo/coord.db" --quiet
+coord --db "$RUNNER_TEMP/ci-demo/coord.db" doctor
+```
+
+As a GitHub Actions step:
+
+```yaml
+      - name: Seed a fresh demo board and run the safety doctor
+        run: |
+          python -m pip install --upgrade pip 'setuptools>=83'
+          python -m pip install -e '.[dev]'
+          python -m coordharness.demo --db "$RUNNER_TEMP/ci-demo/coord.db" --quiet
+          coord --db "$RUNNER_TEMP/ci-demo/coord.db" doctor
+```
+
+Point `--db` at a real project's database instead of a freshly seeded one
+only when that database has an empty live SQLite WAL — `doctor` blocks
+rather than open a source with a non-empty WAL, so a CI gate against a
+database another process is actively writing needs a checkpointed snapshot,
+not the live file ([safety doctor](safety-doctor.md)).
+
 ---
 
 ## 6. Environment
