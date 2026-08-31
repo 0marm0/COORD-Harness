@@ -7,6 +7,8 @@ This is the product and operator documentation for `coordharness`. Capability cl
 | If you want to… | Start with | Then read |
 |---|---|---|
 | Try the product | [Getting started](getting-started.md) | [Coordination model](coordination-model.md) |
+| Try it with no local Python setup | [Containers](containers.md) | [Standalone setup](standalone-setup.md), [getting started](getting-started.md) |
+| Install this repository's skill and commands as a Claude Code plugin | [Claude Code plugin](claude-code-plugin.md) | [Agent skills](skills.md) |
 | Connect an agent | [MCP integration](mcp-integration.md) | [Agent skills](skills.md), [MCP server reference](mcp-server.md) |
 | Run several agents or jobs | [Multi-agent patterns](multi-agent-patterns.md) | [Jobs and runs](jobs-and-runs.md), [review tiers](review-tiers.md) |
 | Run a local model | [Local models](local-models.md) | [Jobs and runs](jobs-and-runs.md), [safety doctor](safety-doctor.md) |
@@ -29,6 +31,7 @@ This is the product and operator documentation for `coordharness`. Capability cl
 - [Design notes](design-notes.md) — rationale and trade-offs.
 - [Component map](component-map.md) — source modules by capability.
 - [Feature status](feature-status.json) — machine-readable maturity contract.
+- [Static demo board](static-demo.md) — the same fictional board as a self-contained static export, nothing to install or run.
 
 ## Operations and integrations
 
@@ -57,6 +60,7 @@ This is the product and operator documentation for `coordharness`. Capability cl
 - [Module coverage](module-coverage.md) — forensic source-to-standalone capability ledger.
 - [Safety doctor](safety-doctor.md) — read-only schema, lifecycle, job, path, Git, and MCP checks.
 - [Security and privacy](security-and-privacy.md) — local trust model and publication boundaries.
+- [Threat model](threat-model.md) — the untrusted-actor guard audit: which existing guards would survive a second, adversarial writer, and what a hosted or shared profile would still require.
 - [Governance](governance.md) — decision ownership and change classes.
 - [Compatibility](compatibility.md) — Python, SQLite, MCP, snapshot, and native compatibility.
 - [Releasing](releasing.md) — exact-candidate distribution gate and provenance checks.
