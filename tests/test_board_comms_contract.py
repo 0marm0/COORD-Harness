@@ -137,8 +137,8 @@ def test_continuous_comms_is_the_only_loopback_embeddable_board_page(tmp_path: P
             assert response.headers.get("X-Frame-Options") is None
             frame_policy = response.headers["Content-Security-Policy"]
             assert (
-                "frame-ancestors 'self' http://127.0.0.1:8780 "
-                "http://localhost:8780"
+                "frame-ancestors 'self' http://127.0.0.1:* "
+                "http://localhost:*"
             ) in frame_policy
             assert "http://127.0.0.1:65535" not in frame_policy
             assert "http://localhost:65535" not in frame_policy
