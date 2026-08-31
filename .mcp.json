@@ -1,11 +1,7 @@
 {
   "mcpServers": {
     "coordharness": {
-      "args": [
-        "-m",
-        "coordharness.coord.mcp_coord_server"
-      ],
-      "command": "./.venv/bin/python",
+      "command": "./scripts/coord-mcp-launch.sh",
       "env": {
         "COORD_ACTOR": "claude",
         "COORD_DB": ".coordharness/coord.db",
