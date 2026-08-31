@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 from pathlib import Path
 import subprocess
@@ -26,10 +27,16 @@ ROOT = Path(__file__).resolve().parents[1]
 def test_tracked_configs_are_portable_generator_outputs() -> None:
     assert (ROOT / ".codex" / "config.toml").read_text() == codex_config_text()
     assert (ROOT / ".mcp.json").read_text() == claude_config_text()
+    assert (ROOT / ".codex" / "templates" / "codex-config.toml").read_text() == codex_config_text()
+    assert (ROOT / ".codex" / "templates" / "claude-mcp.json").read_text() == claude_config_text()
     rendered = codex_config_text() + claude_config_text()
-    assert "./.venv/bin/python" in rendered
+    assert "./scripts/coord-mcp-launch.sh" in rendered
     assert str(ROOT) not in rendered
     assert "COORD_DEPLOYMENT_PROFILE" in rendered
+    launcher = (ROOT / "scripts" / "coord-mcp-launch.sh").read_text()
+    assert "./.venv/bin/python" in launcher
+    assert "coordharness.coord.mcp_coord_server" in launcher
+    assert os.access(ROOT / "scripts" / "coord-mcp-launch.sh", os.X_OK)
 
 
 def test_config_writer_creates_only_missing_files(tmp_path: Path) -> None:
@@ -55,6 +62,10 @@ def _materialize_ready_clone(root: Path, *, include_runtime: bool = True) -> Non
         shutil.copy2(ROOT / name, root / name)
     for client in (".agents", ".claude"):
         shutil.copytree(ROOT / client, root / client)
+    (root / "scripts").mkdir()
+    shim = root / "scripts" / "coord-mcp-launch.sh"
+    shutil.copy2(ROOT / "scripts" / "coord-mcp-launch.sh", shim)
+    shim.chmod(0o755)
     docs = root / "docs"
     docs.mkdir()
     for name in (
@@ -105,8 +116,8 @@ def test_onboarding_doctor_blocks_before_runtime_bootstrap(tmp_path: Path) -> No
     assert report["status"] == BLOCKED
     finding = next(item for item in report["findings"] if item["id"] == "onboarding.agent_configs")
     assert finding["details"]["problem_codes"] == [
-        "command_unavailable:.codex/config.toml",
-        "command_unavailable:.mcp.json",
+        "runtime_missing:.codex/config.toml",
+        "runtime_missing:.mcp.json",
     ]
 
 
@@ -123,10 +134,12 @@ def test_onboarding_doctor_blocks_missing_instruction_root(tmp_path: Path) -> No
 
 
 def test_mac_setup_and_docs_share_clone_authority_and_port() -> None:
-    setup = (ROOT / "scripts" / "setup-macos.sh").read_text()
+    # scripts/setup-macos.sh is now a thin shim (see test_setup_script.py); the
+    # venv/db/config + native-app logic this test pins lives in scripts/setup.sh.
+    setup = (ROOT / "scripts" / "setup.sh").read_text()
     assert 'DB_PATH="$ROOT/.coordharness/coord.db"' in setup
     assert 'export COORD_DB="$DB_PATH"' in setup
-    assert '"$ROOT/apps/install.sh" "$@" --db "$DB_PATH"' in setup
+    assert '"$ROOT/apps/install.sh" "${PASSTHROUGH_ARGS[@]+"${PASSTHROUGH_ARGS[@]}"}" --db "$DB_PATH"' in setup
     assert "command -v xcodebuild" in setup
     assert "xcodebuild -version" in setup
     assert "command -v xcodegen" in setup
@@ -147,41 +160,38 @@ def test_mac_setup_and_docs_share_clone_authority_and_port() -> None:
     )
     assert "7871" not in docs
     assert "http://127.0.0.1:7870" in docs
-    assert "./scripts/setup-macos.sh" in docs
+    # ./scripts/setup.sh is the current canonical reference (docs/getting-started.md,
+    # docs/agent-onboarding.md, AGENTS.md, CLAUDE.md already use it). The old name still
+    # appears too, since scripts/setup-macos.sh remains a working shim to it
+    # (docs/standalone-setup.md links that path deliberately).
+    assert "./scripts/setup.sh" in docs
     assert "XcodeGen" in docs
 
 
-def test_mac_setup_help_is_side_effect_free(tmp_path: Path) -> None:
+def test_setup_sh_help_is_side_effect_free(tmp_path: Path) -> None:
+    """`--help` must exit before the venv/pip/coord lane runs -- no python
+    invocation, no `.venv`, no `.coordharness/`."""
     clone = tmp_path / "clone"
     scripts = clone / "scripts"
-    apps = clone / "apps"
     scripts.mkdir(parents=True)
-    apps.mkdir()
-    shutil.copy2(ROOT / "scripts" / "setup-macos.sh", scripts / "setup-macos.sh")
-    shutil.copy2(ROOT / "apps" / "install.sh", apps / "install.sh")
+    shutil.copy2(ROOT / "scripts" / "setup.sh", scripts / "setup.sh")
+    (scripts / "setup.sh").chmod(0o755)
 
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
     marker = tmp_path / "python-was-called"
-    tools = {
-        "uname": "#!/bin/sh\nprintf 'Darwin\n'\n",
-        "xcodebuild": "#!/bin/sh\nexit 0\n",
-        "xcodegen": "#!/bin/sh\nexit 0\n",
-        "python3": "#!/bin/sh\ntouch \"$COORD_MUTATION_MARKER\"\nexit 97\n",
-    }
-    for name, body in tools.items():
-        executable = fake_bin / name
-        executable.write_text(body)
-        executable.chmod(0o755)
+    python3 = fake_bin / "python3"
+    python3.write_text("#!/bin/sh\ntouch \"$COORD_MUTATION_MARKER\"\nexit 97\n")
+    python3.chmod(0o755)
 
     home = tmp_path / "home"
     result = subprocess.run(
-        ["/bin/bash", str(scripts / "setup-macos.sh"), "--help"],
+        ["/bin/bash", str(scripts / "setup.sh"), "--help"],
         cwd=clone,
         env={
             "HOME": str(home),
             "PATH": f"{fake_bin}:/usr/bin:/bin",
-            "COORD_PYTHON": str(fake_bin / "python3"),
+            "COORD_PYTHON": str(python3),
             "COORD_MUTATION_MARKER": str(marker),
         },
         capture_output=True,
@@ -190,8 +200,9 @@ def test_mac_setup_help_is_side_effect_free(tmp_path: Path) -> None:
     )
 
     assert result.returncode == 0
-    assert "Usage: apps/install.sh" in result.stdout
-    assert "--no-launch" in result.stdout
+    assert "Usage: scripts/setup.sh" in result.stdout
+    assert "--native" in result.stdout
+    assert "--register-clients" in result.stdout
     assert result.stderr == ""
     assert not marker.exists()
     assert not (clone / ".venv").exists()
@@ -199,42 +210,35 @@ def test_mac_setup_help_is_side_effect_free(tmp_path: Path) -> None:
     assert not home.exists()
 
 
-def test_mac_setup_no_native_help_is_side_effect_free(tmp_path: Path) -> None:
-    """--no-native paired with --help must stay side-effect free even though
-    --help is not $1 -- this is the "closest non-destructive probe" a
-    stranger without Xcode/XcodeGen is expected to run, and it must never
-    fall through into the mutating setup path (venv creation, pip install,
-    apps/install.sh)."""
+def test_setup_sh_native_help_is_side_effect_free(tmp_path: Path) -> None:
+    """`--native --help` must stay side-effect free even though `--native` is
+    not the last flag -- this is the closest non-destructive probe a stranger
+    without Xcode/XcodeGen is expected to run, and it must never fall through
+    into the mutating setup path (venv creation, pip install, the
+    Xcode/XcodeGen checks, or apps/install.sh)."""
     clone = tmp_path / "clone"
     scripts = clone / "scripts"
-    apps = clone / "apps"
     scripts.mkdir(parents=True)
-    apps.mkdir()
-    shutil.copy2(ROOT / "scripts" / "setup-macos.sh", scripts / "setup-macos.sh")
-    shutil.copy2(ROOT / "apps" / "install.sh", apps / "install.sh")
+    shutil.copy2(ROOT / "scripts" / "setup.sh", scripts / "setup.sh")
+    (scripts / "setup.sh").chmod(0o755)
+    # No apps/ dir, no xcodebuild/xcodegen on PATH at all: --native --help must
+    # never need them.
 
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
     marker = tmp_path / "python-was-called"
-    tools = {
-        "uname": "#!/bin/sh\nprintf 'Darwin\n'\n",
-        # No xcodebuild/xcodegen on PATH at all: --no-native must never need them,
-        # including on the help path.
-        "python3": "#!/bin/sh\ntouch \"$COORD_MUTATION_MARKER\"\nexit 97\n",
-    }
-    for name, body in tools.items():
-        executable = fake_bin / name
-        executable.write_text(body)
-        executable.chmod(0o755)
+    python3 = fake_bin / "python3"
+    python3.write_text("#!/bin/sh\ntouch \"$COORD_MUTATION_MARKER\"\nexit 97\n")
+    python3.chmod(0o755)
 
     home = tmp_path / "home"
     result = subprocess.run(
-        ["/bin/bash", str(scripts / "setup-macos.sh"), "--no-native", "--help"],
+        ["/bin/bash", str(scripts / "setup.sh"), "--native", "--help"],
         cwd=clone,
         env={
             "HOME": str(home),
             "PATH": f"{fake_bin}:/usr/bin:/bin",
-            "COORD_PYTHON": str(fake_bin / "python3"),
+            "COORD_PYTHON": str(python3),
             "COORD_MUTATION_MARKER": str(marker),
         },
         capture_output=True,
@@ -243,7 +247,7 @@ def test_mac_setup_no_native_help_is_side_effect_free(tmp_path: Path) -> None:
     )
 
     assert result.returncode == 0
-    assert "--no-native" in result.stdout
+    assert "Usage: scripts/setup.sh" in result.stdout
     assert result.stderr == ""
     assert not marker.exists()
     assert not (clone / ".venv").exists()

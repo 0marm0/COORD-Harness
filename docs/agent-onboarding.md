@@ -9,7 +9,7 @@ Xcode with its command-line tools selected, and XcodeGen (`brew install xcodegen
 then runs one command:
 
 ```bash
-./scripts/setup-macos.sh
+./scripts/setup.sh
 ```
 
 It coordinates this clone, owns `.coordharness/coord.db`, registers installed MCP
@@ -17,6 +17,13 @@ clients, invokes `apps/install.sh`, and starts the single service on
 `http://127.0.0.1:7870`. MCP clients use the clone's `.venv`; the service keeps its
 separate installed runtime but reads the same database. Continue below only for the
 CLI-only/manual equivalent or for verification after the wrapper.
+
+Before that first `./scripts/setup.sh` run, an agent client (Claude Code, Codex) that
+launches the checked-in MCP server sees `scripts/coord-mcp-launch.sh` fail closed with
+one line on stderr — `coordharness: this clone is not set up yet. Run
+./scripts/setup.sh, then restart this session.` — instead of a raw
+`ENOENT` for the missing `.venv`. That line is the whole first-contact contract: run
+setup, then start a new session so the client re-launches the server.
 
 ## 1. Install into the project virtual environment
 
@@ -36,11 +43,16 @@ profile adds custody gates for a specific installation and is not a clean-room s
 ## 2. Configure Codex and Claude without private paths
 
 The checked-in `.codex/config.toml` and `.mcp.json` invoke
-`./.venv/bin/python -m coordharness.coord.mcp_coord_server`. They do not depend on an
-activated shell, a GUI application's PATH, or an original developer's absolute path.
-The byte-identical copyable templates live in `.codex/templates/`.
+`./scripts/coord-mcp-launch.sh`, a ~10-line shim that `exec`s
+`./.venv/bin/python -m coordharness.coord.mcp_coord_server` (passing the configured
+environment through unchanged) when the clone's virtual environment exists, and
+otherwise prints the one-line setup instruction above and exits `1`. Claude Code reads
+`.mcp.json` and launches this server before it reads `CLAUDE.md`, so the shim — not the
+instructions file — is what a genuinely fresh clone hits first. Neither config depends
+on an activated shell, a GUI application's PATH, or an original developer's absolute
+path. The byte-identical copyable templates live in `.codex/templates/`.
 
-Those relative paths — `./.venv/bin/python`, `COORD_PROJECT_ROOT="."`, and
+Those relative paths — `./scripts/coord-mcp-launch.sh`, `COORD_PROJECT_ROOT="."`, and
 `COORD_DB=".coordharness/coord.db"` — resolve against the client's working directory,
 so they are correct only for a project-scoped client that launches the server *in* the
 coordinated repository. That is exactly the case these two files cover. Launched from
