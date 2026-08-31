@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
+  "name": "coordharness",
+  "description": "A coordination control plane for fleets of AI coding agents: claim without colliding, hand off bounded context, and finish only when the declared proof exists.",
+  "version": "0.1.0",
+  "author": {
+    "name": "0marm0",
+    "url": "https://github.com/0marm0"
+  },
+  "homepage": "https://github.com/0marm0/COORD-Harness",
+  "repository": "https://github.com/0marm0/COORD-Harness",
+  "license": "MIT",
+  "keywords": ["agent-coordination", "control-plane", "mcp"],
+  "skills": "./.claude/skills",
+  "commands": "./.claude/commands"
+}
