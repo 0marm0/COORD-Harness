@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import fcntl
 import hashlib
 import json
 import math
@@ -14,6 +13,11 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterator, Mapping
+
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - exercised on non-POSIX installs
+    fcntl = None
 
 from coordharness import config as harness_config
 
@@ -85,6 +89,10 @@ def configured_control_dir(*, env: Mapping[str, str] | None = None) -> Path:
         raise ValueError("COORD_JOB_CONTROL_DIR escapes project and state roots")
     return resolved
 _LAUNCH_RE = re.compile(r"^[0-9a-f]{32}$")
+
+
+class WrapperControlLockError(RuntimeError):
+    """Raised when the wrapper control lock cannot be honored on this platform."""
 
 
 @dataclass(frozen=True)
@@ -287,6 +295,19 @@ def _control_lock_path(job_id: str) -> Path:
 
 @contextmanager
 def wrapper_control_lock(job_id: str) -> Iterator[None]:
+    if fcntl is None:
+        # publish_wrapper_control() / _ensure_managed_sentinel() and their
+        # callers in sidecar_writer.py depend on this lock to serialize
+        # concurrent wrapper launches for the same job_id -- without it,
+        # two launches racing the same control record/sentinel pair could
+        # interleave writes and hand out inconsistent custody. There is no
+        # non-POSIX substitute, so refuse rather than let callers write
+        # unprotected.
+        raise WrapperControlLockError(
+            "operating-system file locks are unavailable on this platform; "
+            "wrapper_control_lock() cannot serialize concurrent job-control "
+            "writes without it"
+        )
     path = _control_lock_path(job_id)
     path.parent.mkdir(parents=True, exist_ok=True)
     fd = os.open(path, os.O_CREAT | os.O_RDWR, 0o600)

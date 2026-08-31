@@ -2,12 +2,34 @@ from __future__ import annotations
 
 import logging
 import os
+import shutil
 import subprocess
 from datetime import datetime
 
 _logger = logging.getLogger(__name__)
 
 START_TIME_TOLERANCE_S = 2.0
+
+# 'ps -o lstart=' has no non-POSIX equivalent -- there is no fallback to
+# invent, per the module's own instructions. Probe once at import time
+# rather than on every pid_start_time() call: the answer cannot change
+# within a process's lifetime, and re-probing would mean re-logging.
+PS_LSTART_AVAILABLE: bool = shutil.which("ps") is not None
+_ps_unavailable_logged = False
+
+
+def _log_ps_unavailable_once() -> None:
+    global _ps_unavailable_logged
+    if _ps_unavailable_logged:
+        return
+    _ps_unavailable_logged = True
+    _logger.warning(
+        "process_liveness: 'ps' is not available on this platform; PID "
+        "start-time verification (pid_start_time/pid_matches) is "
+        "permanently unavailable this run, so PID-reuse protection "
+        "degrades to a bare pid_exists() liveness check "
+        "(PS_LSTART_AVAILABLE=False).",
+    )
 
 
 def pid_exists(pid: int | None) -> bool:
@@ -26,6 +48,9 @@ def pid_exists(pid: int | None) -> bool:
 
 def pid_start_time(pid: int | None) -> float | None:
     if not pid:
+        return None
+    if not PS_LSTART_AVAILABLE:
+        _log_ps_unavailable_once()
         return None
     # ps's `lstart` format is locale-dependent (e.g. "Mon Aug 31 ..." only
     # under an English locale); force LC_ALL=C so the strptime format below

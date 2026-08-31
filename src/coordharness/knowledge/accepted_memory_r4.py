@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-import fcntl
 import hashlib
 import json
 import os
@@ -12,6 +11,11 @@ import shutil
 import tempfile
 import time
 from typing import Any
+
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - exercised on non-POSIX installs
+    fcntl = None
 
 
 PLANES = frozenset({"product", "harness", "infrastructure", "shared"})
@@ -825,6 +829,19 @@ def publish_current(
         raise AcceptedMemoryError("publication target is not verified")
     if verified["manifest_sha256"] != sha256_bytes(manifest_raw):
         raise AcceptedMemoryError("publication target post-write verification drifted")
+    if fcntl is None:
+        # The CURRENT pointer swap below is a read-check-write
+        # compare-and-swap; the exclusive lock is what makes two
+        # concurrent publishers agree on which one's "expected_current"
+        # was actually current. Without it, both could read the same old
+        # pointer, both pass their CAS check, and the second write would
+        # silently clobber the first's -- a correctness trap, not a
+        # missing convenience. Refuse rather than publish unlocked.
+        raise AcceptedMemoryError(
+            "operating-system file locks are unavailable on this platform; "
+            "publish_current() requires the pointer lock for a correct "
+            "compare-and-swap and cannot run safely without it"
+        )
     store_root.mkdir(parents=True, exist_ok=True)
     lock_path = store_root / ".pointer.lock"
     with lock_path.open("a+b") as lock:
