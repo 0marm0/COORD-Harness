@@ -42,32 +42,57 @@ strongest portability claim in the matrix above and the one CI actually enforces
 
 ### Windows -- not supported; specific blockers, not a timeline
 
-No CI job runs any part of this package on Windows, and several modules would fail before
-first use. These are the concrete blockers, not an exhaustive list:
+No CI job runs any part of this package on Windows. Two of the original import-time blockers are
+now resolved (below); these are the concrete blockers that remain, not an exhaustive list:
 
-- **Unconditional POSIX-only imports.** `import fcntl` at module load time in
-  `src/coordharness/coord/native_cockpit.py`, `src/coordharness/runtime/console_release_retention.py`,
-  `src/coordharness/knowledge/accepted_memory_r4.py`, `src/coordharness/jobs/pglaunch.py`, and
-  `src/coordharness/jobs/diagnostic_marker.py` raise `ModuleNotFoundError` at import time on
-  Windows, before any platform check runs. `src/coordharness/jobs/resource_lock.py` shows the
-  pattern these five would need: it imports `fcntl` inside a `try/except ImportError`, sets it to
-  `None` on failure, and raises a descriptive `ResourceLockError` only when a lock is actually
-  requested -- the module still imports cleanly.
-- **Process-group and signal semantics.** `os.fork` / `os.setsid` / `os.killpg` in
+- **Unconditional POSIX-only imports -- RESOLVED.** All six modules that use `fcntl` for advisory
+  file locking (`src/coordharness/coord/native_cockpit.py`,
+  `src/coordharness/runtime/console_release_retention.py`,
+  `src/coordharness/knowledge/accepted_memory_r4.py`, `src/coordharness/jobs/pglaunch.py`,
+  `src/coordharness/jobs/diagnostic_marker.py`, and `src/coordharness/jobs/resource_lock.py`, which
+  established the pattern) now import `fcntl` inside a `try/except ImportError` and set it to
+  `None` on failure, so every one of them imports cleanly on a platform without `fcntl`. What
+  happens when a caller then actually needs the lock differs by module, because "no lock" means
+  different things to different call sites:
+  - `console_release_retention.apply_retention_plan()` and `accepted_memory_r4.publish_current()`
+    delete release directories / perform a compare-and-swap pointer publish respectively --
+    running either unlocked is a correctness trap, not a convenience gap, so both raise a
+    descriptive error (`RetentionError` / `AcceptedMemoryError`) immediately and mutate nothing.
+  - `diagnostic_marker.wrapper_control_lock()` guards concurrent job-control writes the same way;
+    entering it raises `WrapperControlLockError` before touching any file.
+  - `native_cockpit.flush_requested_refresh()` only uses its lock to avoid redundant concurrent
+    refreshes (not corruption), so it degrades to running unlocked, exposes that fact via the
+    module-level `FCNTL_AVAILABLE` flag, and logs the degradation once per process.
+  - `pglaunch._terminalize_wrapper_loss()` is a best-effort recovery path; without the lock it
+    reports "did not terminalize" (a return value its other failure branches already produce)
+    rather than mutating the shared progress sidecar unprotected, and also logs once.
+  - Test coverage: `tests/test_portability_guards.py` simulates fcntl's absence via an import hook
+    for all six modules and asserts each import succeeds and degrades as described above.
+- **`ps` as an external dependency -- RESOLVED (explicit, not simulated).**
+  `src/coordharness/coord/process_liveness.py` shells out to the POSIX `ps` binary (via
+  `subprocess`) to read a process's start time (`ps -o lstart=`); there is no Windows equivalent to
+  invoke, and none is faked. The module now probes for the `ps` binary once at import time
+  (`PS_LSTART_AVAILABLE`, via `shutil.which`) instead of discovering its absence on first use, and
+  `pid_start_time()` reports unavailable (`None`) immediately -- logging that once per process
+  rather than on every call -- when it is absent. `pid_matches()` already treated an unresolvable
+  start time as "cannot verify" (conservative `False` when a caller supplied one to check against);
+  that behavior is unchanged, so PID-reuse protection degrades visibly to a bare `pid_exists()`
+  liveness check rather than silently passing. `tests/test_portability_guards.py` covers both the
+  absence path and the pre-existing "cannot verify" semantics.
+- **Process-group and signal semantics -- still open.** `os.fork` / `os.setsid` / `os.killpg` in
   `src/coordharness/jobs/pglaunch.py` (`os.fork()` at line 219, `os.killpg` at lines 159, 194, 204)
   and `src/coordharness/jobs/launch.py` (`_terminate_process_group`, `os.killpg` at lines 261, 269,
-  506) assume a POSIX process-group model with no Windows equivalent in this code path.
+  506) assume a POSIX process-group model with no Windows equivalent in this code path -- unlike
+  the `fcntl` imports, these are used unconditionally rather than behind a capability guard, and
+  fixing them is a separate, larger change than the import-time fix above.
   `os.kill(pid, 0)` as a liveness probe (`src/coordharness/coord/process_liveness.py:17`,
   `src/coordharness/coord/reaper.py:25`, `src/coordharness/jobs/sidecar_writer.py:215,301`) runs
   on Windows but with different signal-0 semantics, and the broad `except OSError` around it would
   silently misreport a live process as dead rather than fail loudly.
-- **`ps` as an external dependency.** `src/coordharness/coord/process_liveness.py` shells out to
-  the POSIX `ps` binary (via `subprocess`) to read process start time; there is no Windows
-  equivalent invoked.
 - **Permission bits that mean something different on Windows.** `os.chmod`/`os.open` mode bits
   such as `0o600` and `0o700` (`src/coordharness/coord/coord_db.py:150,158`,
   `src/coordharness/usage/replica.py` and `src/coordharness/usage/local_profiles.py`,
-  `src/coordharness/jobs/diagnostic_marker.py:225,292,316`) express POSIX owner-only permissions;
+  `src/coordharness/jobs/diagnostic_marker.py:233,313,337`) express POSIX owner-only permissions;
   NTFS ACLs do not map onto them, so these calls would not raise but also would not deliver the
   access control the code assumes.
 - **Bash-only tooling.** `scripts/setup.sh` (this branch's clone-setup entry point) is a
@@ -83,7 +108,8 @@ modules under `src/coordharness` import `pathlib.Path`; only one uses `os.path.j
 two modules that do hardware/platform branching --
 `src/coordharness/coord/modeld_lite.py` and `src/coordharness/coord/runners/mlx_runner.py` -- do
 it with an explicit `sys.platform` / `platform.machine()` check rather than an import-time
-failure, which is the pattern the five `fcntl` imports above do not yet follow.
+failure, which is now also the pattern every `fcntl` import in the package follows (above), and
+the pattern `process_liveness.PS_LSTART_AVAILABLE` follows for the `ps` dependency.
 
 Network filesystems and multiple hosts are excluded on every platform because SQLite file
 locking is not a distributed coordination protocol.
