@@ -100,12 +100,17 @@ library and its three known-bad scenarios. Growing it into something that
 runs across models on every change is ongoing work with no natural
 stopping point, which is exactly why it isn't staged as a single next step.
 
-**Anything resembling a hosted, multi-tenant profile.** Everything in this
-codebase today assumes local trust — whoever can open `coord.db` can write
-to it. The honest first step toward a hosted profile is an audit of which
-existing guards survive an untrusted `actor`, not a login screen; that audit
-hasn't happened, and nothing past it belongs on a roadmap yet. See "What a
-hosted profile would need."
+**Anything resembling a hosted, multi-tenant profile — and any authentication
+or team feature before it.** Everything in this codebase today assumes local
+trust — whoever can open `coord.db` can write to it. The honest first step
+toward a hosted profile is an audit of which existing guards survive an
+untrusted `actor`, not a login screen; that audit is
+[`docs/threat-model.md`](threat-model.md), it exists now, and it must precede
+any authentication, multi-user, or team feature on this list — several guards
+it inventories (lane-based review independence, chief among them) are
+decorative under an untrusted actor today and would need to be rebuilt on a
+verified identity before such a feature could be trusted. See "What a hosted
+profile would need."
 
 ## Continuing themes
 
