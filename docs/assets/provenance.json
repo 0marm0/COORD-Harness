@@ -463,6 +463,20 @@
       ]
     },
     {
+      "path": "docs/assets/proof-gated-done.svg",
+      "purpose": "Animated terminal recording of a real `coord done` run: refused for a missing artifact, refused again for an unstaged one, accepted once `git add` stages it",
+      "source_truth": [
+        "examples/proof-gated-done/run.py",
+        "docs/assets/casts/proof-gated-done.json",
+        "tools/render_terminal_cast.py",
+        "src/coordharness/coord/coord_db.py",
+        "src/coordharness/jobs/status.py"
+      ],
+      "third_party_assets": [
+
+      ]
+    },
+    {
       "path": "docs/assets/screens/board-activity.png",
       "purpose": "Privacy-preserving web activity view over the deterministic fictional board",
       "sha256": "d2085c8ec431df1b6854c3f89db6706fc350aee9c424307cc7d1f1f8ff37ac0d",
