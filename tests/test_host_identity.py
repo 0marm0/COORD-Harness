@@ -8,13 +8,27 @@ on machine A says nothing about a run on machine B, and what it says instead is
 fresh database and arrives on an existing one without disturbing its rows, new
 writes stamp it, and a run recorded on a foreign host is reported UNKNOWN by the
 pid path rather than dead.
+
+A follow-up closes a second gap in that same fix: `socket.gethostname()` is
+not itself stable. A macOS Bonjour/DHCP rename changes it, so every row this
+machine wrote before the rename starts reading as foreign the moment after
+it -- every PID probe for those rows switches off, and a dead local run can
+read as running indefinitely. `stable_host_id()` persists a random id once,
+as a file in the same state directory that holds `coord.db`, and new writes
+stamp that instead; `pid_liveness_is_meaningful` now reads a row as local
+when its `host_id` matches either the current stable id (new writes) or the
+current `socket.gethostname()` (writes made before this existed). The tests
+below in "stable_host_id()" and the two new cases under "Liveness" pin that.
 """
 
 from __future__ import annotations
 
+import logging
 import socket
 import sqlite3
+import stat
 import time
+import uuid
 from pathlib import Path
 
 import pytest
@@ -201,8 +215,8 @@ def test_new_sessions_and_runs_are_stamped_with_the_local_host(project: Path) ->
         run_id = coord_db.appear_run(
             conn, work_id="HOST-002", session_id=LANE_SESSION, runner_kind="local"
         )
-        expected = socket.gethostname()
-        assert coord_db.local_host_id() == expected
+        # Rows stamp the rename-stable id, not the (rename-fragile) hostname.
+        expected = coord_db.stable_host_id()
         assert conn.execute(
             "SELECT host_id FROM agent_sessions WHERE session_id=?", (LANE_SESSION,)
         ).fetchone()[0] == expected
@@ -211,6 +225,60 @@ def test_new_sessions_and_runs_are_stamped_with_the_local_host(project: Path) ->
         ).fetchone()[0] == expected
     finally:
         conn.close()
+
+
+# --------------------------------------------------------------------------
+# stable_host_id(): the rename-stable identity, persisted once per state root
+
+
+def test_stable_host_id_persists_across_calls(project: Path) -> None:
+    first = coord_db.stable_host_id()
+    second = coord_db.stable_host_id()
+    assert first == second
+    on_disk = (project / ".coordharness" / "host_id").read_text(
+        encoding="utf-8"
+    ).strip()
+    assert on_disk == first
+
+
+def test_stable_host_id_file_is_written_once_with_owner_only_permissions(
+    project: Path,
+) -> None:
+    value = coord_db.stable_host_id()
+    id_path = project / ".coordharness" / "host_id"
+    assert id_path.exists()
+    assert stat.S_IMODE(id_path.stat().st_mode) == 0o600
+    # A second call must return the persisted value, not mint a new one.
+    assert coord_db.stable_host_id() == value
+
+
+def test_stable_host_id_does_not_read_the_network_hostname(project: Path) -> None:
+    """The whole point of the fix: unlike `local_host_id()`, this never reads
+    `socket.gethostname()`, so a rename cannot change it. It is a
+    `uuid4().hex`, as documented.
+    """
+    stable = coord_db.stable_host_id()
+    assert stable != coord_db.local_host_id()
+    assert len(stable) == 32
+    uuid.UUID(hex=stable)  # raises ValueError if this is not a uuid hex
+
+
+def test_stable_host_id_falls_back_to_gethostname_when_the_file_is_unreadable(
+    project: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A directory sitting where the id file should be can't be `read_text`'d.
+    This must degrade to `local_host_id()` with a logged warning, never raise
+    -- a locked-down or corrupted state directory must not break every write.
+    """
+    id_path = project / ".coordharness" / "host_id"
+    id_path.parent.mkdir(parents=True, exist_ok=True)
+    id_path.mkdir()  # a directory, not a file
+    with caplog.at_level(logging.WARNING, logger="coordharness.coord.coord_db"):
+        result = coord_db.stable_host_id()
+    assert result == socket.gethostname()
+    assert any(
+        "stable host id" in record.getMessage() for record in caplog.records
+    )
 
 
 # --------------------------------------------------------------------------
@@ -228,9 +296,33 @@ def test_new_sessions_and_runs_are_stamped_with_the_local_host(project: Path) ->
     ],
 )
 def test_pid_liveness_is_meaningful_only_for_local_or_unstated_rows(
-    recorded, meaningful: bool
+    project: Path, recorded, meaningful: bool
 ) -> None:
+    # `project` isolates `stable_host_id()`'s state dir to tmp_path -- this
+    # now calls it internally, and the ambient repo state must never be
+    # touched by a unit test.
     assert coord_db.pid_liveness_is_meaningful(recorded) is meaningful
+
+
+def test_pid_liveness_is_meaningful_true_for_the_current_stable_host_id(
+    project: Path,
+) -> None:
+    """The new code path directly: a row stamped with `stable_host_id()` --
+    not merely a legacy hostname -- is recognised local.
+    """
+    assert coord_db.pid_liveness_is_meaningful(coord_db.stable_host_id()) is True
+
+
+def test_pid_liveness_is_meaningful_false_for_a_foreign_stable_id_shaped_value(
+    project: Path,
+) -> None:
+    """A foreign row need not look like a hostname to be rejected -- a
+    `uuid4().hex` this machine did not mint (the exact shape `stable_host_id`
+    writes) must still answer unknown, not local.
+    """
+    foreign = uuid.uuid4().hex
+    assert foreign != coord_db.stable_host_id()
+    assert coord_db.pid_liveness_is_meaningful(foreign) is False
 
 
 def _seed_running_work(conn, work_id: str, *, host_id: str | None) -> str:
