@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import re
 from typing import Mapping
 
@@ -8,14 +9,46 @@ from coordharness.jobs.status import canonical_id, dedup_key
 __all__ = ["canonical_id", "dedup_key", "norm_name",
            "bind_sidecar_to_backlog", "dedup_and_merge"]
 
+_logger = logging.getLogger(__name__)
+
 _NOISE_RE = re.compile(
     r"\b(gpu|cpu|ram|job|run|launch|build|the|of|a|an|with|via|tracked|relabel|relabeling)\b")
 _NON_ALNUM = re.compile(r"[^a-z0-9]+")
 
 _GENERIC_PROC_PATTERNS = {"py", "python", "python3", ".py", "run", "sh", "bash", "job", "venv"}
 
+# proc_pattern comes from board rows (roadmap_backlog.json), not a trusted
+# source of regex -- cap it and refuse obviously catastrophic-backtracking
+# shapes before handing it to re.search.
+_MAX_PROC_PATTERN_LEN = 256
+# A quantified group `(...)+`/`(...)*`/`(...){n,}` whose own body already
+# contains a quantifier -- the classic ReDoS shape (e.g. "(x+)+", "(a*)*").
+# Deliberately simple/conservative: it only looks one group deep and does
+# not attempt to parse the full regex grammar.
+_NESTED_QUANTIFIER_RE = re.compile(
+    r"\([^()]*[+*][^()]*\)[+*]|\([^()]*[+*][^()]*\)\{\d*,"
+)
+
+
+def _proc_pattern_is_catastrophic(pattern: str) -> bool:
+    return bool(_NESTED_QUANTIFIER_RE.search(pattern))
+
 
 def _proc_pattern_matches(pattern: str, text: str) -> bool:
+    if len(pattern) > _MAX_PROC_PATTERN_LEN:
+        _logger.warning(
+            "identity: refusing proc_pattern match, pattern length %d exceeds "
+            "cap %d",
+            len(pattern), _MAX_PROC_PATTERN_LEN,
+        )
+        return False
+    if _proc_pattern_is_catastrophic(pattern):
+        _logger.warning(
+            "identity: refusing proc_pattern match, pattern looks like "
+            "catastrophic backtracking (nested quantifier): %r",
+            pattern,
+        )
+        return False
     try:
         return re.search(pattern, text) is not None
     except re.error:

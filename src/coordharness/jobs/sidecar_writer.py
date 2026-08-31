@@ -609,6 +609,14 @@ def _update_locked(job_id: str, roadmap_id: str, *, state: str | None = None,
                      ("proc_pattern", proc_pattern)):
         if val is not None:
             payload[key] = val
+    if pid is not None and _int(cur.get("pid")) != int(pid):
+        # pid changed (or is new) -- (re)stamp pid_started_at so a later PID
+        # reuse can be told apart from this process via process_liveness.
+        # payload already carries any prior pid_started_at forward via
+        # dict(cur) above when the pid is unchanged, so this only runs on a
+        # real transition.
+        from coordharness.coord import process_liveness
+        payload["pid_started_at"] = process_liveness.pid_start_time(pid)
     payload.update(extra)
     payload.setdefault("created_at", now)
     payload["updated_at"] = _iso(now)
@@ -1024,6 +1032,14 @@ def _wrapper_write_locked(job_id: str, roadmap_id: str, *, state: str, step: str
             payload.pop("authoritative_work_status", None)
     if pid is not None:
         payload["pid"] = int(pid)
+        prev_pid = _int(cur.get("pid"))
+        if prev_pid == int(pid) and cur.get("pid_started_at") is not None:
+            # same pid as last write -- reuse the recorded start time rather
+            # than re-shelling out to `ps` on every heartbeat.
+            payload["pid_started_at"] = cur.get("pid_started_at")
+        else:
+            from coordharness.coord import process_liveness
+            payload["pid_started_at"] = process_liveness.pid_start_time(pid)
     if kind:
         payload["kind"] = kind
     if resource_class:
