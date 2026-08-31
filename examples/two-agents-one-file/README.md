@@ -38,7 +38,7 @@ any database that existed before it ran.
    finding independently, naming both work ids, both claim ids, both
    sessions, and both scopes.
 
-## Expected output (captured 2026-08-31, real run against this worktree)
+## Expected output (captured 2026-08-31, real run against this repository at commit `2477d887`)
 
 ```
 [2/4] Codex creates and claims a DIFFERENT row, declaring a file INSIDE that directory

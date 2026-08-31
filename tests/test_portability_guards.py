@@ -228,17 +228,20 @@ def test_native_cockpit_imports_without_fcntl_and_degrades_honestly() -> None:
         with caplog_at(module.__name__) as caplog:
             result = module.flush_requested_refresh(sentinel_conn, force=True, min_interval_s=9.0)
 
-        assert result == {"flushed": True, "pending": False}
-        assert calls == [(sentinel_conn, True, 9.0)]
-        # The honest-degradation path never touches the exclusion lock file.
-        assert not module.PROJECTION_MAINTENANCE_EXCLUSION.exists()
-        assert "FCNTL_AVAILABLE=False" in caplog.text
+            assert result == {"flushed": True, "pending": False}
+            assert calls == [(sentinel_conn, True, 9.0)]
+            # The honest-degradation path never touches the exclusion lock file.
+            assert not module.PROJECTION_MAINTENANCE_EXCLUSION.exists()
+            assert "FCNTL_AVAILABLE=False" in caplog.text
 
-        # A second call must not log again -- degradation is reported once
-        # per process, not once per flush.
-        caplog.clear()
-        module.flush_requested_refresh(sentinel_conn)
-        assert caplog.text == ""
+            # A second call must not log again -- degradation is reported once
+            # per process, not once per flush. This has to run while the
+            # handler is still attached: once `caplog_at` exits, no call can
+            # ever add to caplog.text again, and the assertion below would be
+            # true by construction rather than by the guard actually holding.
+            caplog.clear()
+            module.flush_requested_refresh(sentinel_conn)
+            assert caplog.text == ""
 
 
 def test_apply_retention_plan_refuses_without_fcntl() -> None:
@@ -385,11 +388,15 @@ def test_ps_lstart_available_is_false_and_logged_once_when_ps_binary_is_absent(
 
         with caplog_at(module.__name__) as caplog:
             assert module.pid_start_time(12345) is None
-        assert "PS_LSTART_AVAILABLE=False" in caplog.text
+            assert "PS_LSTART_AVAILABLE=False" in caplog.text
 
-        caplog.clear()
-        assert module.pid_start_time(6789) is None
-        assert caplog.text == ""  # logged once, not per call
+            # Must run inside the same block: once caplog_at exits, its
+            # handler is detached and no later call can ever add to
+            # caplog.text, which would make this pass whether or not the
+            # once-per-process guard actually holds.
+            caplog.clear()
+            assert module.pid_start_time(6789) is None
+            assert caplog.text == ""  # logged once, not per call
 
 
 def test_pid_matches_treats_unavailable_start_time_as_cannot_verify(

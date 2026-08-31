@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -7,13 +8,21 @@ from pathlib import Path
 
 # This lint module runs its whole indexing pass as module-level code on
 # import (no main()/__main__ guard), and computes its DOCS root from
-# coordharness.config.project_root() -- i.e. Path.cwd() by default. Running
-# it via subprocess with cwd pinned to a throwaway project keeps it from
-# ever writing into the real repo's docs/guide/INDEX.md.
+# coordharness.config.project_root(), which prefers the COORD_PROJECT_ROOT
+# environment variable over cwd. Pinning cwd to a throwaway project is NOT
+# enough on its own: a subprocess inherits the parent process's environment
+# by default, so if COORD_PROJECT_ROOT is set in the environment running this
+# test suite -- the documented normal configuration for an MCP setup -- that
+# value wins over cwd and the lint indexes (and writes into) the real repo's
+# docs/guide/INDEX.md instead of the fixture. Passing an explicit env= that
+# pins COORD_PROJECT_ROOT to the fixture path (rather than merely leaving it
+# unset in *this* process) is what actually keeps every run contained to
+# project_root, regardless of what the ambient environment carries.
 def _run(project_root: Path) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [sys.executable, "-m", "coordharness.lints.docs_findability_index"],
         cwd=project_root,
+        env={**os.environ, "COORD_PROJECT_ROOT": str(project_root)},
         capture_output=True,
         text=True,
         timeout=30,
