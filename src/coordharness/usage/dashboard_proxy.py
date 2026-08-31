@@ -253,6 +253,15 @@ def _sanitize_quota_pace(value: Any) -> dict[str, Any]:
     for field in ("basis", "source"):
         if value.get(field) is not None:
             clean[field] = _safe_string(value[field], pattern=_SAFE_TOKEN)
+    if value.get("marker_remaining_percent") is not None:
+        clean["marker_remaining_percent"] = _safe_number(
+            value["marker_remaining_percent"], maximum=100
+        )
+    if value.get("marker_kind") is not None:
+        marker_kind = _safe_string(value["marker_kind"], pattern=_SAFE_TOKEN)
+        if marker_kind not in {"reserve", "on_pace", "deficit"}:
+            raise UsageDashboardError("invalid_contract")
+        clean["marker_kind"] = marker_kind
     return clean
 
 

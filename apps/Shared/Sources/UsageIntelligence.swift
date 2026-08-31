@@ -574,6 +574,8 @@ struct UsageQuotaPace: Codable, Equatable, Sendable {
     let advisory: Bool?
     let basis: String?
     let source: String?
+    let markerRemainingPercent: Double?
+    let markerKind: String?
 
     enum CodingKeys: String, CodingKey {
         case state, advisory, basis, source
@@ -581,6 +583,8 @@ struct UsageQuotaPace: Codable, Equatable, Sendable {
         case expectedUsedPercent = "expected_used_percent"
         case willLastToReset = "will_last_to_reset"
         case secondsToExhaustion = "seconds_to_exhaustion"
+        case markerRemainingPercent = "marker_remaining_percent"
+        case markerKind = "marker_kind"
     }
 
     var provenanceLabel: String {
@@ -1424,13 +1428,32 @@ struct UsageStatusQuotaSelection: Equatable, Sendable {
     let window: UsageQuotaWindow?
 }
 
+struct UsageQuotaPaceMarker: Equatable, Sendable {
+    let percent: Double
+    let isDeficit: Bool
+
+    static func make(from window: UsageQuotaWindow?, showUsed: Bool = false) -> Self? {
+        guard let pace = window?.pace,
+              let expected = pace.expectedUsedPercent,
+              expected.isFinite,
+              ["reserve", "deficit"].contains(pace.state)
+        else { return nil }
+        let remaining = pace.markerRemainingPercent.map { min(max($0, 0), 100) } ?? (100 - min(max(expected, 0), 100))
+        guard pace.markerKind == nil || ["reserve", "on_pace", "deficit"].contains(pace.markerKind) else { return nil }
+        return Self(
+            percent: showUsed ? 100 - remaining : remaining,
+            isDeficit: pace.markerKind == "deficit" || pace.state == "deficit"
+        )
+    }
+}
+
 struct UsageStatusPresentation: Equatable, Sendable {
     let providers: [UsageCompactProviderSummary]
     let selections: [UsageStatusQuotaSelection]
     let stale: Bool
     let unavailable: Bool
     let showsUsed: Bool
-    let warningMarkerPercent: Double?
+    let paceMarkersVisible: Bool
 
     static func make(
         from state: UsageDashboardState,
@@ -1440,6 +1463,7 @@ struct UsageStatusPresentation: Equatable, Sendable {
         warningMarkersVisible: Bool = true,
         warningThreshold: Double = 20
     ) -> Self {
+        _ = warningThreshold
         let summaries = UsageCompactProviderSummary.summaries(from: state.snapshot)
             .filter { ["claude", "codex"].contains($0.id.lowercased()) }
         let mode = UsageMetricMode.resolve(metricMode)
@@ -1457,14 +1481,17 @@ struct UsageStatusPresentation: Equatable, Sendable {
             stale: state.stale || state.snapshot?.isProducerStale == true,
             unavailable: summaries.isEmpty,
             showsUsed: showUsed,
-            warningMarkerPercent: warningMarkersVisible
-                ? min(100, max(0, showUsed ? 100 - warningThreshold : warningThreshold))
-                : nil
+            paceMarkersVisible: warningMarkersVisible
         )
     }
 
     func displayPercent(_ window: UsageQuotaWindow?) -> Double? {
         window?.resolvedRemainingPercent.map { showsUsed ? 100 - $0 : $0 }
+    }
+
+    func paceMarker(for window: UsageQuotaWindow?) -> UsageQuotaPaceMarker? {
+        guard paceMarkersVisible else { return nil }
+        return UsageQuotaPaceMarker.make(from: window, showUsed: showsUsed)
     }
 
     var accessibilityLabel: String {
@@ -1652,15 +1679,20 @@ struct UsageCompactQuotaTiming: Equatable, Sendable {
     let resetLabel: String
     let runoutLabel: String
     let accessibilityLabel: String
+    let paceMarkerPercent: Double?
+    let paceMarkerIsDeficit: Bool
 
     static let unavailable = Self(
         resetLabel: "—",
         runoutLabel: "—",
-        accessibilityLabel: "reset unavailable; run-out unavailable"
+        accessibilityLabel: "reset unavailable; run-out unavailable",
+        paceMarkerPercent: nil,
+        paceMarkerIsDeficit: false
     )
 
-    static func make(from window: UsageQuotaWindow?) -> Self {
+    static func make(from window: UsageQuotaWindow?, showUsed: Bool = false) -> Self {
         guard let window else { return .unavailable }
+        let marker = UsageQuotaPaceMarker.make(from: window, showUsed: showUsed)
         let reset = window.countdownSeconds.flatMap(compactDuration)
         let runoutSeconds = validRunoutSeconds(for: window)
         let runout = runoutSeconds.flatMap(compactDuration)
@@ -1670,10 +1702,20 @@ struct UsageCompactQuotaTiming: Equatable, Sendable {
         let runoutAccessibility = runoutSeconds.map {
             "run-out in \(UsageFormat.duration($0))"
         } ?? "run-out unavailable"
+        let paceAccessibility: String
+        if marker?.isDeficit == true {
+            paceAccessibility = "usage exceeds expected pace"
+        } else if marker != nil {
+            paceAccessibility = "usage is on or below expected pace"
+        } else {
+            paceAccessibility = "pace unavailable"
+        }
         return Self(
             resetLabel: reset ?? "—",
             runoutLabel: runout ?? "—",
-            accessibilityLabel: "\(resetAccessibility); \(runoutAccessibility)"
+            accessibilityLabel: [resetAccessibility, runoutAccessibility, paceAccessibility].joined(separator: "; "),
+            paceMarkerPercent: marker?.percent,
+            paceMarkerIsDeficit: marker?.isDeficit ?? false
         )
     }
 
@@ -1810,7 +1852,9 @@ private extension UsageCompactQuotaTiming {
         Self(
             resetLabel: reset ? resetLabel : "",
             runoutLabel: runout ? runoutLabel : "",
-            accessibilityLabel: accessibilityLabel
+            accessibilityLabel: accessibilityLabel,
+            paceMarkerPercent: paceMarkerPercent,
+            paceMarkerIsDeficit: paceMarkerIsDeficit
         )
     }
 }

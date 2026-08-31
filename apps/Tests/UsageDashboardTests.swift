@@ -808,6 +808,35 @@ final class UsageDashboardTests: XCTestCase {
         XCTAssertLessThanOrEqual(UsageStatusLayout.quotaPercentX + UsageStatusLayout.percentWidth, 56)
     }
 
+    func testPaceMarkerUsesExpectedRemainingGeometryAndSuppressesOnPace() throws {
+        let snapshot = try decoder().decode(UsageIntelligenceSnapshot.self, from: Data(#"""
+        {
+          "schema":"coordharness.usage-intelligence.v1",
+          "providers":{"claude":{"quota_groups":[{"key":"account","label":"Account","windows":[
+            {"kind":"session","remaining_percent":55,"pace":{"state":"reserve","expected_used_percent":40,"will_last_to_reset":true,"marker_remaining_percent":60,"marker_kind":"reserve"}},
+            {"kind":"weekly","remaining_percent":45,"pace":{"state":"deficit","expected_used_percent":60,"will_last_to_reset":false,"seconds_to_exhaustion":900,"marker_remaining_percent":40,"marker_kind":"deficit"}},
+            {"kind":"monthly","remaining_percent":50,"pace":{"state":"on_pace","expected_used_percent":50,"will_last_to_reset":true,"marker_remaining_percent":50,"marker_kind":"on_pace"}}
+          ]}]}}
+        }
+        """#.utf8))
+        let windows = try XCTUnwrap(snapshot.providers["claude"]?.quotaGroups.first?.windows)
+
+        let reserve = try XCTUnwrap(UsageQuotaPaceMarker.make(from: windows[0]))
+        XCTAssertEqual(reserve.percent, 60)
+        XCTAssertFalse(reserve.isDeficit)
+        XCTAssertEqual(UsageQuotaPaceMarker.make(from: windows[0], showUsed: true)?.percent, 40)
+        let deficit = try XCTUnwrap(UsageQuotaPaceMarker.make(from: windows[1]))
+        XCTAssertEqual(deficit.percent, 40)
+        XCTAssertTrue(deficit.isDeficit)
+        XCTAssertNil(UsageQuotaPaceMarker.make(from: windows[2]))
+
+        let timing = UsageCompactQuotaTiming.make(from: windows[1])
+        XCTAssertEqual(timing.paceMarkerPercent, 40)
+        XCTAssertTrue(timing.paceMarkerIsDeficit)
+        XCTAssertEqual(timing.runoutLabel, "15m")
+        XCTAssertTrue(timing.accessibilityLabel.contains("usage exceeds expected pace"))
+    }
+
     func testStatusBadgeRendererPaletteAndWidthContract() throws {
         let projectRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -820,8 +849,11 @@ final class UsageDashboardTests: XCTestCase {
         XCTAssertTrue(renderer.contains("static func quotaPercent"))
         XCTAssertTrue(renderer.contains("return \"\\(Int(min(max(remaining, 0), 100).rounded()))\""))
         XCTAssertFalse(renderer.contains("return \"\\(Int(min(max(remaining, 0), 100).rounded()))%\""))
-        XCTAssertTrue(renderer.contains("warningMarkerColor: warningMarkerColor(for: palette)"))
-        XCTAssertTrue(renderer.contains("palette == .colored ? .white : .systemRed"))
+        XCTAssertTrue(renderer.contains("paceMarkerPercent"))
+        XCTAssertTrue(renderer.contains("paceMarkerColor"))
+        XCTAssertTrue(renderer.contains(".systemGreen"))
+        XCTAssertTrue(renderer.contains(".systemRed"))
+        XCTAssertFalse(renderer.contains("warningMarkerColor"))
         XCTAssertTrue(renderer.contains("Tokens.Color.claudeOrange"))
         XCTAssertLessThanOrEqual(UsageStatusLayout.quotaPercentX + UsageStatusLayout.percentWidth, UsageStatusLayout.baseWidth(mode: .bars))
     }
