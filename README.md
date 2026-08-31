@@ -55,7 +55,7 @@ door.
 
 <!-- D1 -->
 <p align="center">
-  <img src="docs/assets/birdseye.svg" alt="Different kinds of agents use lifecycle clients such as CLI, MCP, and Python to call fenced operations on one coord.db authority. Work advances through claim and heartbeat, but done is refused until the declared artifact is committed; web, macOS, and iOS projections remain read-only." width="100%">
+  <img src="docs/assets/birdseye.svg" alt="Different kinds of agents use lifecycle clients such as CLI, MCP, and Python to call fenced operations on one coord.db authority. Work advances through claim and heartbeat, but done against a Markdown proof is refused until the declared artifact is staged in git; web, macOS, and iOS projections remain read-only." width="100%">
 </p>
 
 <p align="center"><sub>One database owns lifecycle truth. CLI, MCP, and Python are clients of its fenced operation contract, never parallel authorities. Claims prevent collisions, heartbeats renew ownership, completion is proof-gated, and every viewer is a read-only projection.</sub></p>
@@ -666,7 +666,8 @@ agent is the one operation that moves ownership out from under a live holder.
 > docs will hit. Only `orient` fails closed on a fresh checkout: it
 > requires an enforced exact-authority policy that a fresh checkout does not activate. The
 > remaining lifecycle writers refuse by contract until their preconditions hold: `complete`
-> demands the declared artifact in Git's index, `verdict` refuses a same-lane pass, and
+> demands the declared Markdown artifact in Git's index (non-Markdown proofs are
+> accepted on existence alone — see `docs/comparison.md`), `verdict` refuses a same-lane pass, and
 > `request_audit` refuses T2/T1 rows that self-verify. The strict deployment profile adds
 > repository-custody and exact-authority gates that a public checkout cannot satisfy — it is for
 > a deployment that has done its own authority activation, and its refusals there are working as
