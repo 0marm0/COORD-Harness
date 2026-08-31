@@ -108,6 +108,12 @@ The stable finding IDs are:
   environment values are redacted. Literal secret-like values, shell commands,
   unpinned package launchers, invalid files, and config paths outside the
   project/state roots block the report.
+- `doctor.board_port`: a cheap bind probe of the configured `coord-board` port
+  on the loopback interface. The port is read the same way `coord-board`
+  reads it (`COORD_BOARD_PORT`, falling back to its packaged default) — never
+  hardcoded. Only a bind failure whose errno is address-in-use blocks the
+  report; any other bind failure (a permission-denied low port, no loopback
+  route) is not treated as a port conflict.
 
 ### What `doctor.public_paths` counts
 
