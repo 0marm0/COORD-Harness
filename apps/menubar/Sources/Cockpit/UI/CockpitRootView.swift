@@ -126,6 +126,28 @@ private final class CockpitGlowButton: CockpitButton {
     }
 }
 
+private final class CockpitUsageStripBridge: ObservableObject {
+    @Published var presentationEpoch = 0
+    var onExpandedChange: ((Bool) -> Void)?
+}
+
+private struct InstalledCockpitUsageStrip: View {
+    @ObservedObject var usageStore: InstalledUsageStore
+    @ObservedObject var telemetryStore: SystemTelemetryStore
+    @ObservedObject var bridge: CockpitUsageStripBridge
+
+    var body: some View {
+        UsageCompactBoardStrip(
+            state: usageStore.state,
+            systemTelemetry: telemetryStore.snapshot,
+            showSystemTelemetry: true,
+            showDisk: true,
+            onExpandedChange: bridge.onExpandedChange
+        )
+        .id(bridge.presentationEpoch)
+    }
+}
+
 final class CockpitRootView: NSView, NSTextFieldDelegate, NSSearchFieldDelegate {
     weak var delegate: CockpitRootViewDelegate?
 
@@ -183,8 +205,12 @@ final class CockpitRootView: NSView, NSTextFieldDelegate, NSSearchFieldDelegate 
     private let tableController = CockpitTableController()
     private var mapView: CockpitMapWebView?
     private var usageView: NSHostingView<InstalledUsageDashboardView>?
+    private var usageStripView: NSHostingView<InstalledCockpitUsageStrip>!
     private let usageStore: InstalledUsageStore
+    private let telemetryStore: SystemTelemetryStore
     private let usageManagedExternally: Bool
+    private let usageStripBridge = CockpitUsageStripBridge()
+    private var usageStripExpanded = false
     private let diagnostics = CockpitDiagnosticsView()
     private let inspector = CockpitInspectorView()
     private let statusLabel = CockpitUI.label("", size: 11, weight: .medium, color: CockpitTokens.Color.muted)
@@ -274,15 +300,22 @@ final class CockpitRootView: NSView, NSTextFieldDelegate, NSSearchFieldDelegate 
     }
 
     override convenience init(frame frameRect: NSRect) {
-        self.init(frame: frameRect, usageStore: InstalledUsageStore(), usageManagedExternally: false)
+        self.init(
+            frame: frameRect,
+            usageStore: InstalledUsageStore(),
+            telemetryStore: SystemTelemetryStore(),
+            usageManagedExternally: false
+        )
     }
 
     init(
         frame frameRect: NSRect,
         usageStore: InstalledUsageStore,
+        telemetryStore: SystemTelemetryStore,
         usageManagedExternally: Bool = false
     ) {
         self.usageStore = usageStore
+        self.telemetryStore = telemetryStore
         self.usageManagedExternally = usageManagedExternally
         super.init(frame: frameRect)
         wantsLayer = true
@@ -294,10 +327,20 @@ final class CockpitRootView: NSView, NSTextFieldDelegate, NSSearchFieldDelegate 
         glass.alphaValue = 0.055
         addSubview(glass)
 
+        usageStripBridge.onExpandedChange = { [weak self] expanded in
+            self?.setUsageStripExpanded(expanded)
+        }
+        usageStripView = NSHostingView(rootView: InstalledCockpitUsageStrip(
+            usageStore: usageStore,
+            telemetryStore: telemetryStore,
+            bridge: usageStripBridge
+        ))
+
         addSubview(topBar)
         addSubview(toolbar)
         addSubview(tableFrame)
         addSubview(tableController.scrollView)
+        addSubview(usageStripView)
         addSubview(diagnostics)
         addSubview(inspector)
         addSubview(contextPalette)
@@ -338,6 +381,19 @@ final class CockpitRootView: NSView, NSTextFieldDelegate, NSSearchFieldDelegate 
         window?.makeFirstResponder(self)
     }
 
+    func prepareForPresentation() {
+        usageStripExpanded = false
+        usageStripBridge.presentationEpoch &+= 1
+        needsLayout = true
+    }
+
+    private func setUsageStripExpanded(_ expanded: Bool) {
+        guard usageStripExpanded != expanded else { return }
+        usageStripExpanded = expanded
+        needsLayout = true
+        layoutSubtreeIfNeeded()
+    }
+
     override func keyDown(with event: NSEvent) {
         guard let command = CockpitKeyboardCommandResolver.resolve(CockpitKeyboardShortcut(event: event)) else {
             super.keyDown(with: event)
@@ -356,6 +412,7 @@ final class CockpitRootView: NSView, NSTextFieldDelegate, NSSearchFieldDelegate 
         let toolbarHeight = currentToolbarHeight
         let toolbarChromeHeight: CGFloat = showsLowerToolbarRow ? 80 : 44
         toolbar.isHidden = !cockpitVisible
+        usageStripView.isHidden = !cockpitVisible
         tableFrame.isHidden = !cockpitVisible
         tableController.scrollView.isHidden = !cockpitVisible
         tableController.setProgressAnimationsEnabled(cockpitAnimationsEnabled && cockpitVisible)
@@ -367,17 +424,29 @@ final class CockpitRootView: NSView, NSTextFieldDelegate, NSSearchFieldDelegate 
             usageView.isHidden = !usageVisible
             usageView.frame = mapFrame
         }
+        let boardX: CGFloat = 34
+        let boardWidth = max(120, bounds.width - panelW - 52)
         toolbar.frame = NSRect(
-            x: 34,
+            x: boardX,
             y: CockpitTokens.topbarHeight + 8,
-            width: max(CGFloat(120), bounds.width - 52),
+            width: boardWidth,
             height: toolbarChromeHeight
         )
+        let usageStripY = CockpitTokens.topbarHeight + toolbarHeight
+        let usageStripHeight: CGFloat = usageStripExpanded ? 194 : 38
+        let expandedGap: CGFloat = 8
+        usageStripView.frame = NSRect(
+            x: boardX,
+            y: usageStripY,
+            width: boardWidth,
+            height: usageStripHeight
+        )
+        let boardY = usageStripY + usageStripHeight + expandedGap
         let tableFrameRect = NSRect(
-            x: 34,
-            y: CockpitTokens.topbarHeight + toolbarHeight,
-            width: max(120, bounds.width - panelW - 52),
-            height: max(120, bounds.height - CockpitTokens.topbarHeight - toolbarHeight - 16)
+            x: boardX,
+            y: boardY,
+            width: boardWidth,
+            height: max(120, bounds.height - boardY - 16)
         )
         tableFrame.frame = tableFrameRect
         tableController.scrollView.frame = tableFrameRect.insetBy(dx: 1, dy: 1)
@@ -2178,6 +2247,7 @@ final class CockpitRootView: NSView, NSTextFieldDelegate, NSSearchFieldDelegate 
     private func openSurface(path: String) {
         let wasMapVisible = activeSurface.isEmbeddedWeb
         if let surface = Surface(rawValue: path), surface.isEmbeddedWeb {
+            let retryingSameSurface = activeSurface == surface
             activeSurface = surface
             setRightPanel(.none)
             updateSurfaceButtons()
@@ -2190,6 +2260,8 @@ final class CockpitRootView: NSView, NSTextFieldDelegate, NSSearchFieldDelegate 
                 view.render(mapState)
             } else if surface == .map {
                 delegate?.cockpitRootViewDidRequestMapRefresh(self)
+            } else if retryingSameSurface {
+                view.retrySurface()
             } else {
                 view.activate()
             }

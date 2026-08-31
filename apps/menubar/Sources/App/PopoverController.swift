@@ -7,6 +7,7 @@ enum PopoverNavigationDestination: Equatable {
     case settings
     case providerAccounts
     case usage
+    case battery
 }
 
 struct PopoverNavigationState {
@@ -17,9 +18,11 @@ struct PopoverNavigationState {
     mutating func showSettings() { destination = .settings }
     mutating func showProviderAccounts() { destination = .providerAccounts }
     mutating func showUsage() { destination = .usage }
+    mutating func showBattery() { destination = .battery }
     mutating func reset() { destination = .main }
 }
 
+@MainActor
 final class PopoverController {
 
     var onWantsRefresh: (() -> Void)?
@@ -38,18 +41,26 @@ final class PopoverController {
 
 
     private var clickMonitor: Any?
+    private var openedAt: TimeInterval?
     private var content = FlippedView()
     private var boardScrollView: NSScrollView?
     private var pinnedFooter: FooterView?
     private var anchorScreenFrame: NSRect?
     private let stack: ContentStack
     private let usageStore: InstalledUsageStore
+    private let localPowerController: LocalPowerController
+    private var localBattery = LocalBatterySnapshot.unavailable
+    private var caffeineActive = false
     private var renderedStateSignature: Data?
 
-    init(config: Config, usageStore: InstalledUsageStore) {
+    init(config: Config, usageStore: InstalledUsageStore, localPowerController: LocalPowerController) {
         self.config = config
         self.stack = AppKitContentStack(config: config)
         self.usageStore = usageStore
+        self.localPowerController = localPowerController
+        self.localBattery = localPowerController.battery
+        self.caffeineActive = localPowerController.caffeineActive
+        self.stack.updateLocalPower(battery: self.localBattery, caffeineActive: self.caffeineActive)
 
         glass.configure(material: config.glassMaterial, alpha: config.glassAlpha)
         glass.autoresizingMask = [.width, .height]
@@ -88,13 +99,16 @@ final class PopoverController {
             let inWindow = button.convert(button.bounds, to: nil)
             anchorScreenFrame = window.convertToScreen(inWindow)
         }
+        localPowerController.refreshBattery()
         forceUsageRefresh()
         if config.panelDetached {
             showDetachedWindow()
             return
         }
         attachGlassToPopover()
+        openedAt = ProcessInfo.processInfo.systemUptime
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+        MenubarLog.info("primary popover shown")
         installClickMonitor()
     }
 
@@ -107,22 +121,33 @@ final class PopoverController {
         resetNavigationToMain(renderMain: false)
         stack.resetSystemTelemetryDisclosure()
         removeClickMonitor()
-        popover.close()
-        detachedWindow?.orderOut(nil)
-        (NSApp.delegate as? AppDelegate)?.popoverDidClose()
+        openedAt = nil
+        if popover.isShown {
+            // The NSPopover delegate owns the attached-panel close callback.
+            popover.close()
+        } else if detachedWindow?.isVisible == true {
+            // orderOut does not invoke NSWindowDelegate.windowWillClose.
+            detachedWindow?.orderOut(nil)
+            (NSApp.delegate as? AppDelegate)?.popoverDidClose()
+        }
     }
 
 
     private func installClickMonitor() {
         removeClickMonitor()
         guard !config.stayOpen else { return }
-        clickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]) { [weak self] _ in
+        clickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]) { [weak self] event in
             guard let self, self.popover.isShown else { return }
+            let screenLocation = event.window.map {
+                $0.convertPoint(toScreen: event.locationInWindow)
+            } ?? event.locationInWindow
             guard PopoverClickPolicy.shouldCloseGlobalClick(
-                location: NSEvent.mouseLocation,
+                location: screenLocation,
                 anchorFrame: self.anchorScreenFrame,
-                stayOpen: self.config.stayOpen
+                stayOpen: self.config.stayOpen,
+                openedAt: self.openedAt
             ) else { return }
+            MenubarLog.info("primary popover closing after outside click x=\(screenLocation.x) y=\(screenLocation.y)")
             self.close()
         }
     }
@@ -144,6 +169,31 @@ final class PopoverController {
         stack.updateSystemTelemetry(snapshot)
     }
 
+    func updateLocalPower(battery: LocalBatterySnapshot, caffeineActive: Bool) {
+        localBattery = battery
+        self.caffeineActive = caffeineActive
+        stack.updateLocalPower(battery: battery, caffeineActive: caffeineActive)
+        guard isShown else { return }
+        if navigation.destination == .battery {
+            showBatteryDetails()
+        } else if navigation.isMain, let lastState {
+            invalidateBoardRender()
+            render(lastState)
+        }
+    }
+
+    func showControlOutcome(ok: Bool, message: String) {
+        if !ok {
+            NSSound.beep()
+            let alert = NSAlert()
+            alert.alertStyle = .warning
+            alert.messageText = "COORD action failed"
+            alert.informativeText = message
+            alert.addButton(withTitle: "OK")
+            alert.runModal()
+        }
+    }
+
     func updateUsage(_ state: UsageDashboardState) {
         stack.updateUsage(state)
         guard isShown, navigation.isMain, let lastState else { return }
@@ -162,7 +212,7 @@ final class PopoverController {
         let detachedSize = detachedVisible ? detachedWindow?.contentView?.bounds.size : nil
         let w = max(Tokens.Layout.popoverWidth, detachedSize?.width ?? Tokens.Layout.popoverWidth)
         let docH = max(1, stack.contentHeight)
-        let footerH: CGFloat = 30
+        let footerH = Tokens.Layout.footerHeight
         let h = detachedVisible
             ? max(260, detachedSize?.height ?? min(docH + footerH, availablePopoverHeight()))
             : min(docH + footerH, availablePopoverHeight())
@@ -279,7 +329,8 @@ final class PopoverController {
     private func showSettings() {
         navigation.showSettings()
         invalidateBoardRender()
-        let v = SettingsView(config: config)
+        let height = max(420, min(660, availablePopoverHeight()))
+        let v = SettingsView(config: config, height: height)
         v.onClose = { [weak self] in self?.exitSettings() }
         v.onChange = { [weak self] cfg in
             self?.applyConfig(cfg)
@@ -292,25 +343,18 @@ final class PopoverController {
         }
         v.onQuit = { NSApp.terminate(nil) }
         v.onOpenProviderAccounts = { [weak self] in self?.showProviderAccountsFromSettings() }
-        let newContent = FlippedView(); newContent.autoresizingMask = [.width]
-        newContent.addSubview(v)
-        let w = Tokens.Layout.popoverWidth, h = v.contentHeight
-        newContent.frame = NSRect(x: 0, y: 0, width: w, height: h)
-        let viewportHeight = min(h, availablePopoverHeight())
-        let scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: w, height: viewportHeight))
-        scroll.drawsBackground = false
-        scroll.hasVerticalScroller = h > viewportHeight
-        scroll.hasHorizontalScroller = false
-        scroll.autohidesScrollers = true
-        scroll.borderType = .noBorder
-        scroll.documentView = newContent
+        v.onOpenPower = { [weak self] in self?.showBatteryDetails() }
+        v.onOpenCockpit = { (NSApp.delegate as? AppDelegate)?.openCockpitWindow() }
+        let w = Tokens.Layout.popoverWidth, h = height
+        v.frame = NSRect(x: 0, y: 0, width: w, height: h)
+        let route = FlippedView(frame: NSRect(x: 0, y: 0, width: w, height: h))
+        route.addSubview(v)
         CATransaction.begin(); CATransaction.setDisableActions(true)
-        glass.addSubview(scroll)
+        glass.addSubview(route)
         boardScrollView?.removeFromSuperview(); boardScrollView = nil
         pinnedFooter?.removeFromSuperview(); pinnedFooter = nil
-        content.removeFromSuperview(); content = newContent
-        boardScrollView = scroll
-        popover.contentSize = NSSize(width: w, height: viewportHeight)
+        content.removeFromSuperview(); content = route
+        popover.contentSize = NSSize(width: w, height: h)
         CATransaction.commit()
     }
 
@@ -362,6 +406,35 @@ final class PopoverController {
         CATransaction.commit()
     }
 
+    private func showBatteryDetails() {
+        navigation.showBattery()
+        invalidateBoardRender()
+        let view = CoordBatteryDetailsView(snapshot: localBattery)
+        view.onRefresh = { [weak self] in self?.localPowerController.refreshBattery() }
+        view.onClose = { [weak self] in self?.resetNavigationToMain(renderMain: true) }
+        view.onToggleChargeLimit = { [weak self] expected, target in
+            self?.localPowerController.toggleChargeLimit(expected: expected, target: target)
+        }
+        view.onSetEnergyMode = { [weak self] source, mode, expected in
+            self?.localPowerController.setEnergyMode(source: source, mode: mode, expected: expected)
+        }
+        let newContent = FlippedView(frame: view.bounds)
+        newContent.addSubview(view)
+        let width = view.bounds.width
+        let height = view.bounds.height
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        glass.addSubview(newContent)
+        boardScrollView?.removeFromSuperview(); boardScrollView = nil
+        pinnedFooter?.removeFromSuperview(); pinnedFooter = nil
+        content.removeFromSuperview(); content = newContent
+        if detachedWindow?.isVisible == true {
+            glass.frame = NSRect(origin: .zero, size: NSSize(width: width, height: height))
+        } else {
+            popover.contentSize = NSSize(width: width, height: height)
+        }
+        CATransaction.commit()
+    }
+
     private func showUsage() {
         navigation.showUsage()
         invalidateBoardRender()
@@ -369,9 +442,11 @@ final class PopoverController {
         let detachedVisible = detachedWindow?.isVisible == true
         let detachedSize = detachedVisible ? detachedWindow?.contentView?.bounds.size : nil
         let width = max(500, detachedSize?.width ?? 500)
+        // Usage is an expanded route: give its cards, cost charts, and persistent actions
+        // the same screen-fit height as the installed route instead of capping it at 680 points.
         let height = detachedVisible
             ? max(520, detachedSize?.height ?? 640)
-            : min(680, availablePopoverHeight())
+            : max(42, availablePopoverHeight())
         let newContent = FlippedView(frame: NSRect(x: 0, y: 0, width: width, height: height))
         let hosting = NSHostingView(
             rootView: InstalledUsageDashboardView(
@@ -433,8 +508,21 @@ final class PopoverController {
 
     private func perform(_ action: PanelAction) {
         switch action {
-        case .setMode(let m):           HarnessControl.setMode(m)
-        case .pauseAll(let ids):        HarnessControl.pauseAll(jobIds: ids)
+        case .setMode(let m):
+                                        HarnessControl.setMode(m) { [weak self] outcome in
+                                            DispatchQueue.main.async { self?.handleHarnessOutcome(outcome) }
+                                        }
+        case .pauseAll(let ids):
+                                        HarnessControl.pauseAll(jobIds: ids) { [weak self] outcome in
+                                            DispatchQueue.main.async { self?.handleHarnessOutcome(outcome) }
+                                        }
+        case .toggleCaffeine:           localPowerController.toggleCaffeine()
+        case .openBatteryDetails:       showBatteryDetails()
+        case let .toggleChargeLimit(expected, target):
+                                        localPowerController.toggleChargeLimit(
+                                            expected: expected,
+                                            target: target
+                                        )
         case .pauseResume(let id, let resume):
                                         HarnessControl.request(job: id, action: resume ? "resume" : "pause")
         case .kill(let id):             HarnessControl.request(job: id, action: "kill")
@@ -462,6 +550,11 @@ final class PopoverController {
                                         }
         }
 
+        onWantsRefresh?()
+    }
+
+    private func handleHarnessOutcome(_ outcome: HarnessControlOutcome) {
+        showControlOutcome(ok: outcome.ok, message: outcome.message)
         onWantsRefresh?()
     }
 

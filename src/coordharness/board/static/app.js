@@ -651,7 +651,7 @@ function indexEdges(graph){
 let continuousCommsFrameBound=false;
 const continuousCommsFrames=new WeakSet();
 function resizeContinuousCommsFrame(frame,height){
-  const value=Math.ceil(Math.max(420,Math.min(8000,Number(height)||0)));
+  const value=Math.ceil(Math.max(280,Math.min(8000,Number(height)||0)));
   const previous=Number(frame.dataset.commsHeight||0);
   if(!value||Math.abs(value-previous)<2)return;
   frame.dataset.commsHeight=String(value);
@@ -659,6 +659,10 @@ function resizeContinuousCommsFrame(frame,height){
 }
 function bindContinuousCommsFrames(){
   const frames=[...document.querySelectorAll("[data-comms-continuous]")];
+  const requestFleetStatus=frame=>{
+    if(frame.dataset.commsFrame!=="fleet")return;
+    frame.contentWindow?.postMessage({type:"coord.continuous-comms.request-status"},location.origin);
+  };
   for(const frame of frames){
     if(continuousCommsFrames.has(frame))continue;
     continuousCommsFrames.add(frame);
@@ -671,16 +675,34 @@ function bindContinuousCommsFrames(){
           observer.observe(root);
         }
       }catch(_error){}
+      requestFleetStatus(frame);
     });
   }
-  if(continuousCommsFrameBound)return;
+  if(continuousCommsFrameBound){
+    frames.forEach(requestFleetStatus);
+    return;
+  }
   continuousCommsFrameBound=true;
   addEventListener("message",event=>{
-    if(event.origin!==location.origin||event.data?.type!=="coord.continuous-comms.height")return;
+    if(event.origin!==location.origin)return;
     const target=[...document.querySelectorAll("[data-comms-continuous]")]
       .find(frame=>frame.contentWindow===event.source);
-    if(target)resizeContinuousCommsFrame(target,event.data.height);
+    if(!target)return;
+    if(event.data?.type==="coord.continuous-comms.height"){
+      resizeContinuousCommsFrame(target,event.data.height);
+      return;
+    }
+    if(event.data?.type!=="coord.continuous-comms.fleet-status"||target.dataset.commsFrame!=="fleet")return;
+    const count=Number(event.data.runningCount);
+    if(!Number.isInteger(count)||count<0)return;
+    const receipt=document.querySelector("[data-comms-fleet-status]");
+    if(!receipt)return;
+    receipt.textContent=count===0
+      ?"No rows are recorded running in this projection."
+      :`${formatCount(count)} ${count===1?"row is":"rows are"} recorded running in this projection.`;
+    receipt.hidden=false;
   });
+  frames.forEach(requestFleetStatus);
 }
 
 const COMMS_TRAFFIC={lane:"",actor:"",kind:"",selected:""};
@@ -770,37 +792,58 @@ function renderComms(){
       <aside class="comms-plane comms-detail" aria-label="Selected event and thread detail"><header><h2>Selected event / thread</h2><span>Published metadata only</span></header>${eventDetail}<p class="comms-detail-truth">Event bodies and per-event receipt claims are withheld from this public projection.</p></aside>
     </div>`;
   // Polling refreshes update the summary in place. Replacing this subtree
-  // would destroy the canonical Map browsing context every five seconds.
-  if(root.querySelector('[data-comms-frame="fleet"]')){
+  // would destroy the three canonical Map browsing contexts every five seconds
+  // and would duplicate event listeners in the native embed.
+  if(root.querySelector(".comms-shell")){
     const values=[counts.events||0,routed,handoffs,audits,counts.sessions_live||0]
       .map(formatCount);
     root.querySelectorAll(".comms-kpi b").forEach((node,index)=>{
       if(values[index]!==undefined)node.textContent=values[index];
     });
-    const workspace=root.querySelector("[data-comms-traffic]");
+    const workspace=root.querySelector("[data-comms-traffic-body]");
     if(workspace)workspace.innerHTML=trafficHtml;
     bindContinuousCommsFrames();
     return;
   }
-  root.innerHTML=`<div class="comms-shell">
-    <section class="comms-continuous" aria-label="Full Fleet intelligence" data-comms-surface="fleet">
+  const continuousSurfaces={
+    fleet:`<section class="comms-continuous" id="comms-fleet" aria-label="Full Fleet intelligence" data-comms-surface="fleet">
       <iframe class="comms-continuous-frame" data-comms-continuous
         data-comms-frame="fleet" src="/map?embedded=1&continuous=1&section=fleet" title="Full Fleet"
         loading="eager"></iframe>
-    </section>
-    <div class="comms-kpis">
-      <div class="comms-kpi"><b>${formatCount(counts.events||0)}</b><span>recorded events</span></div>
-      <div class="comms-kpi"><b>${formatCount(routed)}</b><span>routed acts</span></div>
-      <div class="comms-kpi"><b>${formatCount(handoffs)}</b><span>handoffs</span></div>
-      <div class="comms-kpi"><b>${formatCount(audits)}</b><span>audit exchanges</span></div>
-      <div class="comms-kpi"><b>${formatCount(counts.sessions_live||0)}</b><span>live sessions</span></div>
-    </div>
-    <section class="comms-traffic-workspace" data-comms-traffic aria-label="Recorded coordination traffic">${trafficHtml}</section>
-    <section class="comms-continuous" aria-label="Full Pulse intelligence" data-comms-surface="pulse">
+    </section>`,
+    deps:`<section class="comms-continuous" id="comms-dependencies" aria-label="Full Dependencies intelligence" data-comms-surface="deps">
+      <iframe class="comms-continuous-frame" data-comms-continuous
+        data-comms-frame="deps" src="/map?embedded=1&continuous=1&section=deps" title="Full Dependencies"
+        loading="eager"></iframe>
+    </section>`,
+    pulse:`<section class="comms-continuous" id="comms-pulse" aria-label="Full Pulse intelligence" data-comms-surface="pulse">
       <iframe class="comms-continuous-frame" data-comms-continuous
         data-comms-frame="pulse" src="/map?embedded=1&continuous=1&section=pulse" title="Full Pulse"
         loading="eager"></iframe>
+    </section>`,
+  };
+  root.innerHTML=`<div class="comms-shell">
+    <nav class="comms-jump" aria-label="Comms page sections">
+      <span>Comms</span>
+      <button type="button" data-comms-jump="#comms-fleet">Fleet</button>
+      <button type="button" data-comms-jump="#comms-traffic">Traffic</button>
+      <button type="button" data-comms-jump="#comms-dependencies">Dependencies</button>
+      <button type="button" data-comms-jump="#comms-pulse">Pulse</button>
+    </nav>
+    ${continuousSurfaces.fleet}
+    <section class="comms-traffic-workspace" id="comms-traffic" data-comms-traffic aria-label="Recorded coordination traffic">
+      <div class="comms-kpis">
+        <div class="comms-kpi"><b>${formatCount(counts.events||0)}</b><span>recorded events</span></div>
+        <div class="comms-kpi"><b>${formatCount(routed)}</b><span>routed acts</span></div>
+        <div class="comms-kpi"><b>${formatCount(handoffs)}</b><span>handoffs</span></div>
+        <div class="comms-kpi"><b>${formatCount(audits)}</b><span>audit exchanges</span></div>
+        <div class="comms-kpi"><b>${formatCount(counts.sessions_live||0)}</b><span>live sessions</span></div>
+      </div>
+      <div data-comms-traffic-body>${trafficHtml}</div>
     </section>
+    ${continuousSurfaces.deps}
+    ${continuousSurfaces.pulse}
+    <footer class="comms-fleet-status" data-comms-fleet-status hidden></footer>
   </div>`;
   root.addEventListener("change",event=>{
     const filter=event.target.closest?.("[data-comms-filter]");
@@ -810,6 +853,11 @@ function renderComms(){
     renderComms();
   });
   root.addEventListener("click",event=>{
+    const jump=event.target.closest?.("[data-comms-jump]");
+    if(jump){
+      root.querySelector(jump.dataset.commsJump)?.scrollIntoView({block:"start"});
+      return;
+    }
     if(event.target.closest?.("[data-comms-reset]")){
       Object.assign(COMMS_TRAFFIC,{lane:"",actor:"",kind:"",selected:""});
       renderComms();

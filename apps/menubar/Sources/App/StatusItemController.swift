@@ -112,7 +112,9 @@ final class StatusItemController {
             warningMarkersVisible: usageWarningMarkersVisible,
             warningThreshold: usageWarningThreshold
         )
-        let telemetry = showSystemTelemetry ? systemTelemetryPresentations() : []
+        // Stats own an independently dockable status item. Keep the primary item
+        // quota-only so enabling Stats never paints the same metrics twice.
+        let telemetry: [RingRenderer.TelemetryPresentation] = []
         button.imagePosition = .imageOnly
         button.title = ""
         button.attributedTitle = NSAttributedString()
@@ -129,11 +131,10 @@ final class StatusItemController {
         button.image = resolvedImage
         item.length = resolvedImage?.size.width ?? NSStatusItem.variableLength
         let workWarning = lastState?.hasProjectionWarning == true ? "Work projection stale. " : ""
-        let telemetryCopy = showSystemTelemetry ? " " + systemTelemetryAccessibilityLabel() : ""
-        let accessibility = workWarning + usage.accessibilityLabel + telemetryCopy
+        let accessibility = workWarning + usage.accessibilityLabel
         button.toolTip = accessibility
         button.setAccessibilityLabel(accessibility)
-        button.setAccessibilityHelp("Open COORD tasks, usage, and system stats.")
+        button.setAccessibilityHelp("Open COORD tasks and usage.")
     }
 
     private func systemTelemetryPresentations() -> [RingRenderer.TelemetryPresentation] {
@@ -153,7 +154,7 @@ final class StatusItemController {
         )
         return values.compactMap { label, percent in
             guard metricEnabled(label) else { return nil }
-            let value = stale ? "N/A" : percent.map { "\(Int($0.rounded()))%" } ?? "N/A"
+            let value = stale ? "N/A" : percent.map { "\(Int($0.rounded()))" } ?? "N/A"
             return RingRenderer.TelemetryPresentation(
                 label: label,
                 value: value,
@@ -167,7 +168,8 @@ final class StatusItemController {
         case "CPU": systemTelemetryShowCPU
         case "GPU": systemTelemetryShowGPU
         case "RAM": systemTelemetryShowRAM
-        default: systemTelemetryShowDisk
+        case "DSK": systemTelemetryShowDisk
+        default: false
         }
     }
 
@@ -200,8 +202,14 @@ final class StatusItemController {
 
         let modeItem = NSMenuItem(title: "Mode", action: nil, keyEquivalent: "")
         let modeMenu = NSMenu()
-        for (label, key) in [("Light", "light"), ("Medium", "medium"), ("Full", "full")] {
+        let pauseMode = makeItem("Pause", #selector(menuPauseAll), enabled: !liveIds.isEmpty)
+        pauseMode.identifier = NSUserInterfaceItemIdentifier("coord.menu.mode.pause")
+        pauseMode.representedObject = "pause"
+        pauseMode.state = lastState?.displayMode == "pause" ? .on : .off
+        modeMenu.addItem(pauseMode)
+        for (label, key) in [("Medium", "medium"), ("Full", "full")] {
             let mi = makeItem(label, #selector(menuMode(_:)))
+            mi.identifier = NSUserInterfaceItemIdentifier("coord.menu.mode." + key)
             mi.representedObject = key
             if lastState?.displayMode == key { mi.state = .on }
             modeMenu.addItem(mi)
@@ -232,7 +240,7 @@ final class StatusItemController {
 
         let statsItem = NSMenuItem(title: "System stats", action: nil, keyEquivalent: "")
         let statsMenu = NSMenu()
-        let visible = makeItem("Show persistently", #selector(menuSystemTelemetryVisibility(_:)))
+        let visible = makeItem("Show separate menu-bar item", #selector(menuSystemTelemetryVisibility(_:)))
         visible.state = showSystemTelemetry ? .on : .off
         statsMenu.addItem(visible)
         statsMenu.addItem(.separator())
@@ -251,9 +259,9 @@ final class StatusItemController {
         menu.addItem(statsItem)
         menu.addItem(.separator())
         menu.addItem(makeItem("Settings…", #selector(menuOpenSettings)))
-        menu.addItem(makeItem("Open cockpit", #selector(menuOpenCockpit)))
+        menu.addItem(makeItem("Open Full Cockpit Window…", #selector(menuOpenCockpit)))
         menu.addItem(.separator())
-        menu.addItem(makeItem("Quit COORDHARNESS", #selector(menuQuit)))
+        menu.addItem(makeItem("Quit COORD", #selector(menuQuit)))
 
         menu.popUp(positioning: nil, at: NSPoint(x: 0, y: b.bounds.height + 4), in: b)
     }
@@ -285,7 +293,13 @@ final class StatusItemController {
     @objc private func menuSystemTelemetryMetric(_ sender: NSMenuItem) {
         guard let key = sender.representedObject as? String else { return }
         let selected: Bool
-        switch key { case "cpu": selected = systemTelemetryShowCPU; case "gpu": selected = systemTelemetryShowGPU; case "ram": selected = systemTelemetryShowRAM; default: selected = systemTelemetryShowDisk }
+        switch key {
+        case "cpu": selected = systemTelemetryShowCPU
+        case "gpu": selected = systemTelemetryShowGPU
+        case "ram": selected = systemTelemetryShowRAM
+        case "disk": selected = systemTelemetryShowDisk
+        default: return
+        }
         onSystemTelemetryMetricChange?(key, !selected)
     }
     @objc private func menuSystemTelemetryProfile(_ sender: NSMenuItem) {
@@ -314,7 +328,11 @@ final class StatusItemController {
         afterMenuDismissal { [weak self] in self?.onOpenSettings?() }
     }
     @objc private func menuOpenCockpit() {
-        afterMenuDismissal { (NSApp.delegate as? AppDelegate)?.openCockpitWindow() }
+        afterMenuDismissal {
+            Task { @MainActor in
+                (NSApp.delegate as? AppDelegate)?.openCockpitWindow()
+            }
+        }
     }
     @objc private func menuQuit() {
         afterMenuDismissal { NSApp.terminate(nil) }

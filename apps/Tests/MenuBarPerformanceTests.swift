@@ -19,12 +19,11 @@ final class MenuBarPerformanceTests: XCTestCase {
         let telemetryUpdate = try XCTUnwrap(
             popover.range(of: "func updateSystemTelemetry(_ snapshot: SystemTelemetrySnapshot?)")
         )
-        let usageUpdate = try XCTUnwrap(popover.range(of: "func updateUsage(", range: telemetryUpdate.upperBound..<popover.endIndex))
-        let telemetryBody = String(popover[telemetryUpdate.lowerBound..<usageUpdate.lowerBound])
+        let nextUpdate = try XCTUnwrap(popover.range(of: "func updateLocalPower(", range: telemetryUpdate.upperBound..<popover.endIndex))
+        let telemetryBody = String(popover[telemetryUpdate.lowerBound..<nextUpdate.lowerBound])
 
-        XCTAssertTrue(content.contains("private weak var systemTelemetryRow: SystemTelemetryRow?"))
+        XCTAssertTrue(content.contains("FooterTelemetryBridge.shared.update(snapshot: snapshot)"))
         XCTAssertTrue(content.contains("private weak var inlineSystemTelemetryDetail: InlineSystemTelemetryDetailView?"))
-        XCTAssertTrue(content.contains("systemTelemetryRow?.update(snapshot: snapshot"))
         XCTAssertTrue(content.contains("inlineSystemTelemetryDetail?.update(snapshot: snapshot"))
         XCTAssertFalse(telemetryBody.contains("render(lastState)"))
         XCTAssertFalse(telemetryBody.contains("swapIn"))
@@ -70,8 +69,8 @@ final class MenuBarPerformanceTests: XCTestCase {
         XCTAssertTrue(status.contains("button.imagePosition = .imageOnly"))
         XCTAssertTrue(status.contains("item.length = resolvedImage?.size.width"))
         XCTAssertTrue(content.contains("private static let telemetryFollowupGap: CGFloat = 4"))
-        XCTAssertTrue(row.contains("height: 30"))
-        XCTAssertTrue(row.contains("private static let metricGap: CGFloat = 14"))
+        XCTAssertTrue(row.contains("height: Tokens.Layout.footerHeight"))
+        XCTAssertTrue(row.contains("private static let metricGap: CGFloat = 8"))
         XCTAssertTrue(detail.contains("static let moduleHeight: CGFloat = 236"))
         XCTAssertTrue(detail.contains("height: Self.moduleHeight + 4"))
         XCTAssertEqual(detail.components(separatedBy: "height: 50").count - 1, 2)
@@ -90,7 +89,7 @@ final class MenuBarPerformanceTests: XCTestCase {
             1
         )
         let telemetryStart = try XCTUnwrap(popover.range(of: "func updateSystemTelemetry"))
-        let telemetryEnd = try XCTUnwrap(popover.range(of: "func updateUsage", range: telemetryStart.upperBound..<popover.endIndex))
+        let telemetryEnd = try XCTUnwrap(popover.range(of: "func updateLocalPower", range: telemetryStart.upperBound..<popover.endIndex))
         XCTAssertEqual(
             String(popover[telemetryStart.lowerBound..<telemetryEnd.lowerBound])
                 .components(separatedBy: "render(").count - 1,

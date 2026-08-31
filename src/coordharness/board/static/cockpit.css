@@ -6,10 +6,11 @@
 .mapbody.continuous-comms .shell-subnav,
 .mapbody.continuous-comms #maptabs,
 .mapbody.continuous-comms #global-search { display: none !important; }
+.mapbody.continuous-comms { min-height: 0; }
 .mapbody.continuous-comms main {
   display: grid;
-  gap: 1rem;
-  padding: .25rem 0 1rem;
+  gap: .45rem;
+  padding: 0;
 }
 .mapbody.continuous-comms main > .panel.active { display: grid; }
 .mapbody.continuous-comms #pulse { margin-top: .25rem; }
@@ -38,17 +39,7 @@
 .mapbody.continuous-comms .projection-receipt-compact .projection-detail {
   max-width: min(760px, calc(100vw - 2rem));
 }
-.mapbody.continuous-comms .continuous-fleet-label {
-  display: flex;
-  align-items: baseline;
-  gap: .6rem;
-  margin-bottom: .35rem;
-}
-.mapbody.continuous-comms .continuous-fleet-label span {
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: 500;
-}
+.mapbody.continuous-comms.continuous-section-fleet .card { border-radius: 0; }
 
 .mapbody .mast { align-items: center; }
 .mapbody .maphead .meta { margin: 0; font-size: .8rem; }

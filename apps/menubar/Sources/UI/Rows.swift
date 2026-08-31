@@ -131,7 +131,7 @@ final class RunningLocalRow: RowView {
 
         if showIcon {
             let apple = UI.appleMark(size: L.leadIconW, filled: row.isGPU)
-            apple.frame = NSRect(x: L.rowPadL, y: 8, width: L.leadIconW, height: L.leadIconW); addSubview(apple)
+            apple.frame = NSRect(x: L.rowPadL, y: 6, width: L.leadIconW, height: L.leadIconW); addSubview(apple)
 
 
             let driver = AgentMarks.lane(from: row.ownerSessionLabel) ?? {
@@ -144,10 +144,10 @@ final class RunningLocalRow: RowView {
             }
         }
         let title = UI.label(row.title, size: 12, weight: .bold, color: Tokens.Color.white.withAlphaComponent(0.92))
-        title.frame = NSRect(x: L.titleX, y: 8, width: W - L.titleX - 38, height: 18); addSubview(title)
+        title.frame = NSRect(x: L.titleX, y: 5, width: W - L.titleX - 38, height: 18); addSubview(title)
 
 
-        let pause = NSButton(frame: NSRect(x: W - Tokens.Layout.rowPadR - 24, y: 22, width: 24, height: 22))
+        let pause = NSButton(frame: NSRect(x: W - Tokens.Layout.rowPadR - 24, y: 14, width: 24, height: 22))
         pause.title = (row.paused == true) ? "▶" : "⏸"; pause.isBordered = false; pause.font = .systemFont(ofSize: 13)
         pause.contentTintColor = Tokens.Color.dimGray
         let jid = row.jobId ?? row.id; let resume = (row.paused == true)
@@ -158,7 +158,7 @@ final class RunningLocalRow: RowView {
 
     override func draw(_ dirty: NSRect) {
         typealias L = Tokens.Layout
-        let by: CGFloat = 32, bh: CGFloat = 4
+        let by: CGFloat = 27, bh: CGFloat = 4
         let baseBx = L.titleX + 14
         let pctSlot: CGFloat = 28, etaSlot: CGFloat = 42, etaGap: CGFloat = 5
         let rightEdge = bounds.width - 66
@@ -204,7 +204,7 @@ final class RunningLocalRow: RowView {
             s.draw(at: NSPoint(x: bx + bw + etaGap, y: by + bh/2 - s.size().height/2))
         }
 
-        let subY = by + bh + 5, subInset: CGFloat = 6
+        let subY = by + bh + 3, subInset: CGFloat = 6
         let subAttr: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 8.5), .foregroundColor: Tokens.Color.gray(0.62, 0.85)]
         let gap: CGFloat = 16
         var rateRun: NSAttributedString?
@@ -250,12 +250,12 @@ final class RunningAgentRow: RowView {
         typealias L = Tokens.Layout
         if showIcon {
             let icon = UI.ownerIcon(row.iconOwnerKind, size: L.leadIconW)
-            icon.frame = NSRect(x: L.rowPadL, y: 4, width: L.leadIconW, height: L.leadIconW); addSubview(icon)
+            icon.frame = NSRect(x: L.rowPadL, y: 3, width: L.leadIconW, height: L.leadIconW); addSubview(icon)
         }
 
 
         let title = UI.label(row.title, size: 11.5, color: Tokens.Color.gray(0.74, 0.88))
-        title.frame = NSRect(x: L.titleX, y: 4, width: bounds.width - L.titleX - L.rowPadR, height: 16); addSubview(title)
+        title.frame = NSRect(x: L.titleX, y: 3, width: bounds.width - L.titleX - L.rowPadR, height: 16); addSubview(title)
 
     }
     required init?(coder: NSCoder) { nil }

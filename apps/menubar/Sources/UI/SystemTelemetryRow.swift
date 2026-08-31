@@ -1,19 +1,32 @@
 import AppKit
 
+final class FooterTelemetryBridge {
+    static let shared = FooterTelemetryBridge()
+    var snapshot: SystemTelemetrySnapshot?
+    var config = Config()
+    var expanded = false
+    var onToggle: (() -> Void)?
+    weak var row: SystemTelemetryRow?
+
+    func update(snapshot: SystemTelemetrySnapshot?) {
+        self.snapshot = snapshot
+        row?.update(snapshot: snapshot, config: config, expanded: expanded)
+    }
+}
+
 final class SystemTelemetryRow: RowView {
-    private static let metricWidth: CGFloat = 44
-    private static let metricGap: CGFloat = 14
+    private static let metricWidth: CGFloat = 66
+    private static let metricGap: CGFloat = 8
     private var valueLabels: [NSTextField] = []
-    private var disclosureLabel: NSTextField!
     private var config: Config
     private var expanded: Bool
 
     static func metricFrames(metricCount: Int, panelWidth: CGFloat) -> [NSRect] {
         guard metricCount > 0 else { return [] }
         let count = CGFloat(metricCount)
-        let contentWidth = panelWidth - Tokens.Layout.rowPadL - Tokens.Layout.rowPadR
+        let contentWidth = panelWidth
         let groupWidth = count * metricWidth + CGFloat(max(0, metricCount - 1)) * metricGap
-        let groupX = Tokens.Layout.rowPadL + max(0, (contentWidth - groupWidth) / 2)
+        let groupX = max(0, (contentWidth - groupWidth) / 2)
         return (0..<metricCount).map { index in
             NSRect(
                 x: groupX + CGFloat(index) * (metricWidth + metricGap),
@@ -24,17 +37,17 @@ final class SystemTelemetryRow: RowView {
         }
     }
 
-    init(snapshot: SystemTelemetrySnapshot?, config: Config, expanded: Bool = false, onOpen: @escaping () -> Void = {}) {
+    init(snapshot: SystemTelemetrySnapshot?, config: Config, expanded: Bool = false, panelWidth: CGFloat = Tokens.Layout.popoverWidth, onOpen: @escaping () -> Void = {}) {
         self.config = config
         self.expanded = expanded
-        super.init(frame: NSRect(x: 0, y: 0, width: Tokens.Layout.popoverWidth, height: 30))
+        super.init(frame: NSRect(x: 0, y: 0, width: panelWidth, height: Tokens.Layout.footerHeight))
         toolTip = "Open system stats"
 
         let metrics = Self.metrics(snapshot)
         let metricFrames = Self.metricFrames(metricCount: metrics.count, panelWidth: bounds.width)
         for (metric, frame) in zip(metrics, metricFrames) {
             let name = UI.label(metric.0, size: 8.5, weight: .semibold, color: Tokens.Color.sectionGray, align: .center)
-            name.frame = NSRect(x: frame.minX, y: 2, width: frame.width, height: 12)
+            name.frame = NSRect(x: frame.minX, y: 4, width: frame.width, height: 11)
             addSubview(name)
             let value = UI.label(
                 "N/A",
@@ -44,14 +57,12 @@ final class SystemTelemetryRow: RowView {
                 align: .center
             )
             value.font = .monospacedDigitSystemFont(ofSize: 11, weight: .bold)
-            value.frame = NSRect(x: frame.minX, y: 14, width: frame.width, height: 14)
+            value.frame = NSRect(x: frame.minX, y: 17, width: frame.width, height: 13)
             addSubview(value)
             valueLabels.append(value)
         }
-        disclosureLabel = UI.label(expanded ? "⌄" : "›", size: 17, weight: .medium, color: Tokens.Color.dimGray, align: .right)
-        disclosureLabel.frame = NSRect(x: bounds.width - 25, y: 6, width: 13, height: 18)
-        addSubview(disclosureLabel)
         let button = TelemetryOpenButton(frame: bounds, onOpen: onOpen)
+        button.identifier = NSUserInterfaceItemIdentifier("coord.footer.telemetry")
         button.autoresizingMask = [.width, .height]
         addSubview(button)
         setAccessibilityElement(true)
@@ -71,7 +82,6 @@ final class SystemTelemetryRow: RowView {
             valueLabel.stringValue = metric.1.map { "\(Int($0.rounded()))%" } ?? "N/A"
             valueLabel.textColor = Self.color(for: policy.severity(for: metric.1))
         }
-        disclosureLabel.stringValue = self.expanded ? "⌄" : "›"
         setAccessibilityLabel(metrics.map { "\($0.0) \($0.1.map { "\(Int($0.rounded())) percent" } ?? "unavailable")" }.joined(separator: ", "))
         setAccessibilityHelp(self.expanded ? "Collapses inline CPU, GPU, memory, and disk statistics" : "Expands inline CPU, GPU, memory, and disk statistics")
     }

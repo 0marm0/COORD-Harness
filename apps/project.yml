@@ -58,12 +58,16 @@ targets:
       - path: menubar/Sources/Cockpit/Data/CoordSQLite.swift
       - path: menubar/Sources/Cockpit/Presentation/CockpitChromeLayout.swift
       - path: menubar/Sources/App/StatusItemClickRouting.swift
+      - path: menubar/Sources/Cockpit/Core/MenuBarPanelPolicy.swift
       - path: menubar/Sources/App/DeferredCoalescedValue.swift
       - path: menubar/Sources/Data/Models.swift
       - path: menubar/Sources/Data/ETAFormat.swift
       - path: menubar/Sources/Data/ConfigPersistence.swift
       - path: menubar/Sources/Data/SystemTelemetryDisplayPolicy.swift
       - path: menubar/Sources/App/HarnessEndpoint.swift
+      - path: menubar/Sources/App/LocalPowerControls.swift
+      - path: menubar/Sources/App/DesignTokens.swift
+      - path: menubar/Sources/UI/ModeSlider.swift
       - path: Shared/Sources/SystemTelemetry.swift
       - path: Fixtures
         buildPhase: resources
@@ -113,6 +117,7 @@ targets:
       - path: menubar/Sources/App/DesignTokens.swift
       - path: menubar/Sources/App/HarnessEndpoint.swift
       - path: menubar/Sources/App/AgentMarks.swift
+      - path: menubar/Sources/App/LocalPowerControls.swift
       - path: menubar/Sources/App/Diagnostics.swift
       - path: menubar/Sources/Data
       - path: menubar/Sources/UI
@@ -145,6 +150,16 @@ targets:
         SWIFT_VERSION: "5.0"
 
 schemes:
+  CoordCockpitMac:
+    build:
+      targets:
+        CoordCockpitMac: all
+        CoordCockpitTests: [test]
+    test:
+      gatherCoverageData: false
+      targets:
+        - CoordCockpitTests
+
   CoordCockpitIOS:
     build:
       targets:
