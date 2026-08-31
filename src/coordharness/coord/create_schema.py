@@ -11,6 +11,7 @@ from .config import (
     _validate_existing_db_file,
     configured_lanes as _configured_lanes,
     connect,
+    enforce_db_file_modes,
 )
 
 _SCHEMA_FILE = Path(__file__).resolve().parent / "schema.sql"
@@ -217,6 +218,10 @@ def apply_schema(db_path: Path | str | None = None) -> dict:
         }
     finally:
         conn.close()
+        # After the close, so the database is at its final size and the sidecars
+        # are gone: the mode that matters from here is the database's, because
+        # SQLite copies it onto every sidecar it creates later.
+        enforce_db_file_modes(db_path or DEFAULT_DB_PATH)
 
 
 def main() -> None:

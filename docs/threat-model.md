@@ -426,7 +426,137 @@ which becomes a first-class authentication target the moment a second person can
 write, and which this audit does not cover in depth (see
 [Open questions](#8-open-questions)).
 
-### 2.11 Guards this audit deliberately does not count
+### 2.11 File modes on the database and its sidecars — *Survives (with a named residual)*
+
+**Where:** `enforce_db_file_modes()` in `src/coordharness/coord/config.py`, called
+from `connect()` and from `apply_schema()` in `coord/create_schema.py`.
+
+**What it defends against:** disclosure of the whole board — acceptance text,
+notes, handoff bodies, session labels — to any other account on the machine. §5
+names the filesystem as the trust boundary, which makes the mode on these files
+the boundary itself.
+
+**What was measured, before the change.** A database created by
+`bootstrap_database()` under the common `022` umask, then written to:
+
+| file | mode |
+|---|---|
+| `coord.db` | `0644` |
+| `coord.db-wal` | `0644` |
+| `coord.db-shm` | `0644` |
+
+Nothing in the codebase set a mode or a umask on any of the three. The `-wal`
+file holds committed page images and `-shm` the shared index into it, so both
+disclose exactly what the database does. All three were world-readable.
+
+**Two further measurements shape the fix**, and both say that a single chmod at
+creation would not have held:
+
+1. SQLite deletes `-wal` and `-shm` on the last clean close of a database and
+   creates them again on the next write. A chmod applied to the sidecars alone
+   is gone after one open/close cycle — measured directly: sidecars set to `0600`
+   came back at `0644`.
+2. SQLite derives the creation mode of a sidecar from the **main database file's**
+   mode. With the database at `0600`, the recreated `-wal` and `-shm` were `0600`
+   without anything chmod-ing them. This is why the enforcement is placed on the
+   database, and why it runs *before* the connection opens as well as after.
+
+**Under an untrusted actor:** survives, in the sense that it is a mode on a file
+and not a check on a caller. It is also the only guard in this document that
+defends against the attacker §5 declares out of scope, which is worth stating
+plainly: it does not make a local user who can write `coord.db` harmless, it
+removes the far larger class of local users who could previously merely *read* it.
+
+**Residual exposure, stated rather than papered over:**
+
+- **Creation is not atomic with the tightening.** The Python DB-API offers no way
+  to open a database file with an explicit mode, so SQLite creates it at the umask
+  default and the chmod follows. A new database is world-readable for the interval
+  between creation and the end of schema application. Measured, and asserted in
+  `tests/test_db_file_modes.py`.
+- **A read-only open does not tighten anything.** `connect_ro()` is a read
+  accessor and remains one, so a process that only ever reads leaves a loose
+  database loose.
+- **A database this process does not own cannot be chmod-ed.** The enforcement
+  reports the refusal rather than raising, because refusing to open the board
+  would be a worse outcome than opening it. Callers that need the guarantee must
+  read the returned report; nothing currently does.
+- **The containing directory's mode is not enforced.** A `0700` parent would close
+  the creation window above; that is a deployment decision this code does not make.
+- **Any pre-existing sidecar of a database opened only through some path that does
+  not call `connect()`** keeps whatever mode it has. The census of such paths was
+  not performed. MODELED.
+
+### 2.12 `operator_ok` authority — *Survives at the writer layer; the channel has a defect*
+
+**Where:** `record_operator_sign_off()` in `src/coordharness/coord/coord_db.py`,
+reachable only from the `sign-off` verb in `coord/cli.py`.
+
+**What it defends against:** an agent minting the one event that substitutes for
+an opposite-lane verdict. §2.10 establishes that the public writer refuses; this
+row is the audit of the writer the trust relocates *to*.
+
+**The census (MEASURED, and pinned in `tests/test_operator_ok_authority.py`).**
+Every `INSERT INTO events` in the codebase — 33 sites — lives in
+`coord/coord_db.py`; no other module writes the table. Of those, exactly one
+spells `operator_ok` as the kind, inside `record_operator_sign_off`. Three write a
+`kind` that is not a literal:
+
+| writer | how its `kind` is chosen | can it be `operator_ok`? |
+|---|---|---|
+| `post_event` | the caller's parameter | No — refused by name, and `trust='system'` is refused separately |
+| `post_typed_controller_source_event` | one of two module constants selected by an `event_type` argument | No — the caller never supplies the kind |
+| `_insert_completion_receipt_unlocked` | `f"{actor}_done"`, actor constrained to the lane set | No — the literal `_done` suffix bounds it |
+
+**A sign-off is the event *plus* the binding.** `_has_valid_operator_ok_unlocked`
+reads `work_items.operator_ok_event_id` and then re-validates the event it points
+at: kind, `actor='operator'`, `trust='system'`, and a payload carrying
+`writer_contract=operator_ok.v1` and a digest over the work row's own identity and
+acceptance. `upsert_work` refuses `operator_ok_event_id` as a typed receipt field.
+So a caller has to forge both halves, and the agent-facing writers can produce
+neither: an agent that mints the most operator-shaped event `post_event` will
+allow, and binds it by hand, still does not hold a sign-off (asserted).
+
+**Could a compromised or merely buggy agent-side caller reach the minter?**
+`record_operator_sign_off` is called from exactly one place in the source tree,
+`coord/cli.py`. It is absent from the MCP server, from `agent_cli.py`, and from
+the board. The MCP surface mentions `operator_ok` only through the read-model
+validator. A *buggy* agent-side caller therefore cannot reach it at all; there is
+no supported surface that leads there. A *compromised* one that can import
+`coord_db` and open the database is outside every guard in this document by §5,
+and this one is no exception — the function itself says so.
+
+**The defect, which is in the channel and not in the writer (MEASURED).** The
+human-only property does not come from the writer, which cannot see who called
+it; it comes from `_read_controlling_terminal_confirmation` in `coord/cli.py`
+asking the controlling terminal. That reader opens `/dev/tty` for updating —
+`open("/dev/tty", "r+", buffering=1)`. **A terminal is not seekable, and a
+buffered read/write stream requires seekability, so this open raises
+`io.UnsupportedOperation` on every terminal** — measured against both a pty
+device node and a genuine controlling terminal obtained via `pty.fork()`. Because
+`io.UnsupportedOperation` subclasses `OSError`, the existing `except OSError`
+converts it into `OperatorConsentUnavailable`: the channel tells a person sitting
+at a real terminal that there is no terminal. Every test of that reader
+substitutes `open`, so the real call has never run against one.
+
+The consequence is fail-closed, not fail-open — nobody can sign, rather than
+anybody can — so it widens no attack surface. But it means the escape hatch
+around the review gate is currently a dead letter on this platform, and any claim
+that "the operator can always override" does not hold. Separate read and write
+handles, or an unbuffered open, would fix it. The fix belongs to `coord/cli.py`
+and is not made here; the measurement is pinned in
+`tests/test_operator_ok_authority.py` as a property of terminals, so it will not
+go red when the reader is repaired.
+
+**The precondition that does hold (MEASURED).** A process the harness spawns for
+an agent has no controlling terminal at all: `open("/dev/tty")` fails with
+`ENXIO` from inside an agent-run subprocess. That is the premise the guard rests
+on, and it is asserted rather than assumed, so a future runner that gives agent
+processes a terminal makes the test fail instead of silently making the guard
+weaker. An agent that allocates its own pty and drives both ends is impersonation,
+and §5 already places it out of scope.
+
+### 2.13 Guards this audit deliberately does not count
 
 `_validate_existing_db_file()` in `src/coordharness/coord/config.py` refuses a
 zero-byte file, a non-SQLite header, a valid SQLite file with no tables at all,
@@ -445,7 +575,7 @@ migration touching live data." Recording which host a session ran on is
 necessary before liveness can mean anything across machines; it is not evidence
 about who that session was.
 
-### 2.12 Summary table
+### 2.14 Summary table
 
 | # | Guard | Where | Verdict |
 |---|---|---|---|
@@ -459,6 +589,8 @@ about who that session was.
 | 2.8 | Read-only projection | `board/server.py`, `board/security.py` | Survives — but two POST routes, and origin is not identity |
 | 2.9 | Policy pipeline | `coord/` + [`policy-pipeline.md`](policy-pipeline.md) | Decorative by configuration — advisory, by design |
 | 2.10 | Reserved event namespaces | `coord/coord_db.py` | Survives — trust relocates to the human-only writer |
+| 2.11 | File modes on the db and sidecars | `coord/config.py`, `coord/create_schema.py` | Survives — measured `0644` before, `0600` now; residuals named |
+| 2.12 | `operator_ok` authority | `coord/coord_db.py`, `coord/cli.py` | Survives at the writer; the terminal channel is inoperable |
 
 ---
 
@@ -665,14 +797,21 @@ prerequisite; this document is the gate that direction has to pass through.
 Listed because reading the code did not settle them, and a confident wrong answer
 in a threat model is worse than an acknowledged gap.
 
-1. **File permissions on `coord.db`.** The trust boundary is the filesystem, and
-   this audit did not establish what mode the database and its WAL files are
-   created with, or whether anything in the codebase sets a umask. This is the
-   single most load-bearing unexamined fact in the document.
-2. **The typed human-only writer.** §2.10 shows the public writer correctly
-   refusing to mint `operator_ok`, and points at a typed human-only writer that
-   can. That writer's own authorization was not traced here, and it is the
-   escape hatch around the review gate — it deserves its own audit.
+1. **~~File permissions on `coord.db`.~~ Answered — see [§2.11](#211-file-modes-on-the-database-and-its-sidecars--survives-with-a-named-residual).**
+   Measured: nothing set a mode or a umask, and the database, `-wal` and `-shm`
+   were all created `0644`. They are now held at `0600`, enforced on the database
+   file because SQLite copies that mode onto the sidecars it recreates. What
+   remains open is narrower and is stated as residual exposure in §2.11: the
+   non-atomic creation window, read-only opens, unowned databases, the containing
+   directory's mode, and any open path that does not route through `connect()`.
+2. **~~The typed human-only writer.~~ Audited — see [§2.12](#212-operator_ok-authority--survives-at-the-writer-layer-the-channel-has-a-defect).**
+   Measured: one minter, one caller, no agent-facing surface reaches it, and a
+   sign-off requires both an event and a binding that the agent-facing writers can
+   produce neither half of. The audit also found that the human-only *channel* is
+   inoperable — the reader opens a terminal in a mode no terminal supports, so it
+   refuses a real operator. That is fail-closed, and the repair belongs to
+   `coord/cli.py`. What remains open: whether the repaired channel should also
+   record which terminal answered, and whether a sign-off should expire.
 3. **Clock handling in the lease and reaper paths.** Expiry comparisons use a
    database-derived timestamp; whether an untrusted writer can influence it, and
    whether skew can cause a live claim to be reaped or an expired one to persist,
