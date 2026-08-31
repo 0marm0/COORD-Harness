@@ -39,3 +39,10 @@ jobs:
           python tools/privacy_hygiene.py --history
           python tools/publication_gate.py --candidate-ref HEAD --require-gitleaks --local-only --compact
           python tools/extract/gate.py --history --ref HEAD
+      - name: Sweep the tracked tree for public-hygiene leaks
+        # No PUBLIC_HYGIENE_VOCAB_FILE/PUBLIC_HYGIENE_VOCAB is configured on
+        # this public workflow, so this runs the generic, pattern-based
+        # checks (home paths, emails, internal work-id grammar) and says so
+        # in its own output rather than claiming full coverage. A maintainer
+        # running this locally can pass --vocabulary for the rest.
+        run: python tools/public_hygiene_sweep.py

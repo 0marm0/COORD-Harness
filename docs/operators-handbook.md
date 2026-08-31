@@ -826,31 +826,48 @@ fails the job on its own: GitHub Actions runs `run:` steps under `bash -eo
 pipefail`, so `coord doctor`'s own exit code stops the job without a
 separate `if [ $? -ne 0 ]` check.
 
+This now runs on every push and pull request, as the `doctor` job in
+[`python.yml`](../.github/workflows/python.yml) — it is a CI gate, not a
+recipe a maintainer runs by hand before merging.
+
 The exit-code recipe, run against a database this run seeds itself so the
 gate is not judging leftover local state:
 
 ```bash
-python -m pip install -e '.[dev]'
-python -m coordharness.demo --db "$RUNNER_TEMP/ci-demo/coord.db" --quiet
-coord --db "$RUNNER_TEMP/ci-demo/coord.db" doctor
+python -m pip install -e .
+export COORD_HOME="$RUNNER_TEMP/coord-doctor-demo"
+python -m coordharness.demo --quiet
+coord doctor
 ```
+
+`COORD_HOME` is what makes this hermetic: it repoints the whole state tree
+— the database, its WAL, and the job-progress sidecars `doctor` cross-checks
+against it — at a runner-private temp directory, so the seed and the doctor
+call agree on where the database lives without an explicit `--db` or
+`--state-root` on either command, and nothing the checkout brought with it
+is read. Passing `--db` to point at a location outside `COORD_HOME` (or
+its default, `.coordharness/` under the project root) fails closed with
+`doctor.schema.outside_state_root` — pass a matching `--state-root`
+alongside it if the database has to live somewhere else.
 
 As a GitHub Actions step:
 
 ```yaml
       - name: Seed a fresh demo board and run the safety doctor
+        env:
+          COORD_HOME: ${{ runner.temp }}/coord-doctor-demo
         run: |
           python -m pip install --upgrade pip 'setuptools>=83'
-          python -m pip install -e '.[dev]'
-          python -m coordharness.demo --db "$RUNNER_TEMP/ci-demo/coord.db" --quiet
-          coord --db "$RUNNER_TEMP/ci-demo/coord.db" doctor
+          python -m pip install -e .
+          python -m coordharness.demo --quiet
+          coord doctor
 ```
 
-Point `--db` at a real project's database instead of a freshly seeded one
-only when that database has an empty live SQLite WAL — `doctor` blocks
-rather than open a source with a non-empty WAL, so a CI gate against a
-database another process is actively writing needs a checkpointed snapshot,
-not the live file ([safety doctor](safety-doctor.md)).
+Point `COORD_HOME` (or `--db`) at a real project's state tree instead of a
+freshly seeded one only when that database has an empty live SQLite WAL —
+`doctor` blocks rather than open a source with a non-empty WAL, so a CI gate
+against a database another process is actively writing needs a
+checkpointed snapshot, not the live file ([safety doctor](safety-doctor.md)).
 
 ---
 

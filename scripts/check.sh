@@ -42,6 +42,7 @@ step "documentation and asset provenance"
 step "publication and extraction gates"
 "$PY" -m pytest -q tests/publication tests/extract
 "$PY" tools/privacy_hygiene.py --history
+"$PY" tools/public_hygiene_sweep.py
 
 # The extraction gate reads Git's index, not the working tree. Running it on
 # unstaged edits reports a clean candidate no matter what those edits contain,
