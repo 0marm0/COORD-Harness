@@ -151,6 +151,36 @@ Before publication:
   [feature-status declarations](feature-status.json).
 - Obtain explicit maintainer approval for each tag, package, signed binary, or store distribution.
 
+## Tag + GitHub release
+
+Once the gates above report `release_status=READY`, the manifest is signed
+where required, and a maintainer has given explicit approval, publication
+itself is a `git tag` push. Pushing a tag matching `v*` (for example
+`v0.1.0`, matching the `version` in `pyproject.toml`) runs
+[`.github/workflows/release.yml`](../.github/workflows/release.yml), which
+builds the wheel and sdist, publishes them to PyPI over Trusted Publishing
+(no stored token), and then creates the GitHub release for that tag and
+attaches the built wheel and sdist to it.
+
+That workflow's header comment carries the two one-time PyPI/GitHub setup
+steps it needs before it can publish anything — it is deliberately inert
+until both are done, so pushing a tag early is safe. It does not read this
+document at runtime and does not know about the manifest.
+
+`candidate-manifest.json` is not one of the attached artifacts, and the
+workflow cannot produce it: `--write-candidate-manifest` above runs against
+a maintainer-only forbidden-vocabulary file that must stay outside this
+repository and therefore outside any CI runner. Generate it locally exactly
+as described earlier in this document, then attach it to the tag's release
+by hand once `release.yml` has created it:
+
+```bash
+gh release upload v0.1.0 "$RELEASE_EVIDENCE/candidate-manifest.json"
+```
+
+The external history receipt and its signature stay off GitHub entirely —
+they are evidence you hold, not a release asset.
+
 ## Versioning and human boundary
 
 Until a stable public release, preview surfaces may change with release notes.
