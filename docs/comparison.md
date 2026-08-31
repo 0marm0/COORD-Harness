@@ -1,9 +1,9 @@
 # Comparison
 
-**COORD's one-sentence differentiator:** completion is refused until the
-declared artifact is in git's index, status is derived at read time and
-never stored, and — for work tiered as needing independent review — a lane
-cannot pass its own work.
+**COORD's one-sentence differentiator:** completion of a Markdown proof
+artifact is refused until it is in git's index, status is derived at read
+time and never stored, and — for work tiered as needing independent
+review — a lane cannot pass its own work.
 
 That is a narrow claim, on purpose. COORD is not an orchestration framework,
 not an agent runtime, and not a task tracker. It is a local SQLite database
@@ -18,10 +18,10 @@ this repository's evidence reaches.
 
 ## The differentiator, with receipts
 
-**1. Completion is refused until the declared artifact is in git's index.**
-`complete_claim` in
+**1. Completion of a Markdown proof artifact is refused until it is in
+git's index.** `complete_claim` in
 [`src/coordharness/coord/coord_db.py`](../src/coordharness/coord/coord_db.py)
-calls `done_signal_satisfied`, which for a Markdown/text proof defers to
+calls `done_signal_satisfied`, which for a Markdown proof defers to
 `done_signal_custodied` in
 [`src/coordharness/jobs/status.py`](../src/coordharness/jobs/status.py) —
 and that function's deciding check is `completion_proof_is_tracked(path,
@@ -29,9 +29,14 @@ root)`, a few lines above it in the same file, which shells out to `git
 ls-files` and checks the artifact's path is in the result. A file that
 exists on disk but was never `git add`ed fails this check; `complete_claim`
 then raises with the exact `git add <path>` command to run, quoted verbatim
-in that function's `raise ValueError(...)` block.
-[`examples/proof-gated-done/`](../examples/proof-gated-done) runs this end
-to end, including the refusal text captured verbatim from a real invocation.
+in that function's `raise ValueError(...)` block. **This custody check is
+scoped to `.md` proofs only** — a declared proof with any other suffix
+(`.txt`, `.json`, `.rst`, ...) is accepted on existence alone, untracked or
+not; see `done_signal_custodied` in `src/coordharness/jobs/status.py` for
+the exact suffix test.
+[`examples/proof-gated-done/`](../examples/proof-gated-done) runs the
+Markdown case end to end, including the refusal text captured verbatim from
+a real invocation.
 
 **2. Status is derived at read time, never stored.** There is no code path
 that writes `status = "running"` into a row and walks away — see
@@ -51,11 +56,9 @@ tiered `T0` (external-facing, irreversible, or served-number changes —
 additionally refuses `done` outright until either that independent verdict
 lands or an explicit human sign-off is recorded.
 
-(Exact line numbers are omitted above on purpose: this file is under active
-edit by concurrent lanes in this worktree as this page is being written, so
-a line number quoted here could be stale within the hour. The function names
-are stable; `grep -n '<name>' src/coordharness/coord/coord_db.py` finds the
-current line faster than trusting one printed on a page.)
+(Line numbers are omitted on purpose: they go stale. The function names are
+stable; `grep -n '<name>' src/coordharness/coord/coord_db.py` finds the
+current line.)
 
 None of this makes COORD an orchestrator, a scheduler, or an agent runtime.
 It has an opinion about exactly one thing — what a shared lifecycle ledger
@@ -120,9 +123,11 @@ portable, and easier to inspect by hand than a SQLite ledger with a fenced
 write API. COORD is a worse choice than a plain task list for a single agent
 working through a checklist with no collision risk and no completion claim
 that needs independent proof. What COORD adds — and what a status column in
-a Markdown table cannot — is that "done" is not just a field someone set: it
-is refused unless the declared proof is actually in git's index
-(`examples/proof-gated-done/`), and "running" is not just a field someone
+a Markdown table cannot — is that "done" against a Markdown proof is not
+just a field someone set: it is refused unless the declared proof is
+actually in git's index (`examples/proof-gated-done/`) — non-Markdown
+proofs are accepted on existence alone (see the differentiator section
+above) — and "running" is not just a field someone
 forgot to update: it is derived from a live, unexpired claim on every read.
 If nothing in your workflow needs either guarantee enforced rather than
 asked-for, the simpler store is the right call.

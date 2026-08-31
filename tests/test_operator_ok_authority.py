@@ -341,19 +341,27 @@ def test_an_agent_run_process_has_no_controlling_terminal():
 
 
 def test_the_reader_opens_a_terminal_in_a_mode_a_terminal_cannot_provide():
-    """MEASURED, and it is a defect in the channel rather than in the guard.
+    """MEASURED: this used to be a defect in the channel, and is now fixed.
 
-    The reader in `cli.py` opens `/dev/tty` for updating (`"r+"`). A terminal is
-    not seekable, and a buffered read/write stream requires seekability, so the
-    open raises before any prompt is written. `io.UnsupportedOperation` subclasses
-    `OSError`, so the existing `except OSError` turns it into
-    `OperatorConsentUnavailable` -- the channel reports "no terminal" to a person
-    who is sitting at one. Every existing test of that reader substitutes `open`,
-    so the real call has never run against a terminal.
+    The reader in `cli.py` used to open `/dev/tty` for updating (`"r+"`). A
+    terminal is not seekable, and a buffered read/write stream requires
+    seekability, so that open raised before any prompt was written.
+    `io.UnsupportedOperation` subclasses `OSError`, so the existing
+    `except OSError` turned it into `OperatorConsentUnavailable` -- the channel
+    reported "no terminal" to a person who was sitting at one. Every test of
+    that reader at the time substituted `open`, so the real call had never run
+    against a terminal -- which is how the defect reached a release undetected.
 
-    Pinned against a pty device node, not against `cli.py`, which this task does
-    not own: the assertion is about what a terminal supports. Separate read and
-    write handles, or an unbuffered/raw open, would fix it.
+    `cli.py:198-200` now opens two one-directional handles (`open(device, "r")`
+    and `open(device, "w")`) instead of one `"r+"`, fixed in commit `c818f79`;
+    `tests/test_operator_sign_off.py::test_a_real_terminal_can_actually_answer`
+    exercises that fix against a real `os.openpty()` terminal.
+
+    This test stays, pinned against a pty device node rather than against
+    `cli.py`: the assertion is a fact about what a terminal supports (`"r+"`
+    is never seekable), not about which handle strategy `cli.py` currently
+    uses, so it documents *why* the two-handle fix was necessary and will
+    catch a future regression back toward a single seekable handle.
     """
     controller, follower = os.openpty()
     try:

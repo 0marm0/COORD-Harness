@@ -286,9 +286,16 @@ critically, the work item must carry a **controller-declared `done_signal`** —
 explicit `artifact_path` is also supplied it must resolve, through `realpath`, to
 the same file. `done_signal_satisfied()` then requires either that a
 `coord:event:<id>` proof names an event that exists, or that the declared file is
-actually present. `done_signal_blocking_declaration()` additionally reads the
-first twelve lines of a Markdown/text proof and refuses a completion whose own
-artifact says `NOT READY`, `FAILED`, `BLOCKED` or `INCOMPLETE`.
+actually present — and, for a proof whose suffix is `.md`, also carried by
+git's index: `done_signal_custodied()` in `src/coordharness/jobs/status.py`
+shells out to `git ls-files` and refuses completion until the file is staged.
+**This custody leg is scoped to `.md` proofs only** — a declared proof with
+any other suffix (`.txt`, `.json`, `.rst`, ...) is accepted on existence
+alone, tracked by git or not (`status.py`'s `path.suffix.lower() != ".md" or
+completion_proof_is_tracked(path, root)` test). `done_signal_blocking_declaration()`
+additionally reads the first twelve lines of a Markdown/text proof and refuses
+a completion whose own artifact says `NOT READY`, `FAILED`, `BLOCKED` or
+`INCOMPLETE`.
 
 **Under an untrusted actor:** the *structure* survives — every one of these
 predicates is a fact about the database or the filesystem, not a caller
@@ -374,15 +381,36 @@ The enforcement is real and layered (MEASURED):
 database* survives, because it is enforced by SQLite rather than by routing. That
 is the right place for it.
 
-**Caveat one:** "read-only" describes `coord.db`, not the process. `do_POST` is
-*not* bound to `_readonly`: two routes, `/api/v1/usage-actions` and
-`/api/v1/provider-management`, accept POST and mutate provider-account and
-profile state. They are hedged carefully — loopback bind *and* loopback `Host`
-*and* a present, matching `Origin`, plus a required `X-Coord-Usage-Action: v1`
-header, a JSON content type, a bounded body, no query string, and an exact
-key-set match against a declared action shape — but they are a write surface on a
-server described as read-only, and any hosted design must account for them
-separately.
+**Caveat one:** "read-only" describes `coord.db`, not the process, and it is
+true only in the server's default configuration. `do_POST` is *not* bound to
+`_readonly`: **three** routes accept POST. Two, `/api/v1/usage-actions` and
+`/api/v1/provider-management`, mutate provider-account and profile state. They
+are hedged carefully — loopback bind *and* loopback `Host` *and* a present,
+matching `Origin`, plus a required `X-Coord-Usage-Action: v1` header, a JSON
+content type, a bounded body, no query string, and an exact key-set match
+against a declared action shape.
+
+The third, `/api/native/action` (`server.py:1494`), is different in kind: it
+is opt-in, gated behind the `COORD_NATIVE_OPERATOR_WRITES=1` environment
+variable (`server.py:283`) and a `0o077`-clean, uid-owned operator-token file,
+and when active it dispatches to `_post_native_operator_action` (`:1567`) →
+`native_operator_action` (`:761`), which opens a **read-write** connection to
+`coord.db` and calls `coord_db.post_operator_reassignment(...)` — a
+coordination-database write from the board process itself, not just
+provider/profile state. It is bearer-token gated
+(`hmac.compare_digest`, `:1604`) and peer-checked with `is_loopback_bind`
+against the bind address, the `Host` header, and the socket peer (`:1574-1576`),
+and it is off by default — the shipped container image's `CMD` never sets the
+flag (`docs/containers.md:18,95`). But when the flag and token are present,
+the macOS menu bar *is* a write client:
+`apps/menubar/Sources/Cockpit/Core/NativeOperatorTokenSource.swift:10` builds
+this exact URL and
+`apps/menubar/Sources/Cockpit/UI/NativeCockpitActionBroker.swift:9,37` POSTs
+to it with the bearer token.
+
+All three POST routes are a write surface on a server described as read-only,
+and any hosted design must account for them separately — "no client writes"
+holds only in the default configuration.
 
 **Caveat two:** none of this is authorization. `host_allowed` and
 `origin_allowed` establish *where the request came from*, never *who sent it*.
@@ -487,7 +515,7 @@ removes the far larger class of local users who could previously merely *read* i
   not call `connect()`** keeps whatever mode it has. The census of such paths was
   not performed. MODELED.
 
-### 2.12 `operator_ok` authority — *Survives at the writer layer; the channel has a defect*
+### 2.12 `operator_ok` authority — *Survives, and the terminal channel is fixed*
 
 **Where:** `record_operator_sign_off()` in `src/coordharness/coord/coord_db.py`,
 reachable only from the `sign-off` verb in `coord/cli.py`.
@@ -526,27 +554,41 @@ no supported surface that leads there. A *compromised* one that can import
 `coord_db` and open the database is outside every guard in this document by §5,
 and this one is no exception — the function itself says so.
 
-**The defect, which is in the channel and not in the writer (MEASURED).** The
-human-only property does not come from the writer, which cannot see who called
-it; it comes from `_read_controlling_terminal_confirmation` in `coord/cli.py`
-asking the controlling terminal. That reader opens `/dev/tty` for updating —
-`open("/dev/tty", "r+", buffering=1)`. **A terminal is not seekable, and a
-buffered read/write stream requires seekability, so this open raises
-`io.UnsupportedOperation` on every terminal** — measured against both a pty
-device node and a genuine controlling terminal obtained via `pty.fork()`. Because
-`io.UnsupportedOperation` subclasses `OSError`, the existing `except OSError`
-converts it into `OperatorConsentUnavailable`: the channel tells a person sitting
-at a real terminal that there is no terminal. Every test of that reader
-substitutes `open`, so the real call has never run against one.
+**The defect, which was in the channel and not in the writer (MEASURED, then
+FIXED).** The human-only property does not come from the writer, which cannot
+see who called it; it comes from `_read_controlling_terminal_confirmation` in
+`coord/cli.py` asking the controlling terminal. That reader used to open
+`/dev/tty` for updating — `open("/dev/tty", "r+", buffering=1)`. **A terminal
+is not seekable, and a buffered read/write stream requires seekability, so
+that open raised `io.UnsupportedOperation` on every terminal** — measured
+against both a pty device node and a genuine controlling terminal obtained via
+`pty.fork()`. Because `io.UnsupportedOperation` subclasses `OSError`, the
+existing `except OSError` converted it into `OperatorConsentUnavailable`: the
+channel told a person sitting at a real terminal that there was no terminal.
+Every test of that reader substituted `open`, so the real call had never run
+against one — which is exactly how the defect reached this branch undetected.
 
-The consequence is fail-closed, not fail-open — nobody can sign, rather than
-anybody can — so it widens no attack surface. But it means the escape hatch
-around the review gate is currently a dead letter on this platform, and any claim
-that "the operator can always override" does not hold. Separate read and write
-handles, or an unbuffered open, would fix it. The fix belongs to `coord/cli.py`
-and is not made here; the measurement is pinned in
-`tests/test_operator_ok_authority.py` as a property of terminals, so it will not
-go red when the reader is repaired.
+The consequence was fail-closed, not fail-open — nobody could sign, rather
+than anybody could — so it widened no attack surface. But it meant the escape
+hatch around the review gate was a dead letter on this platform, and the claim
+that "the operator can always override" did not hold.
+
+**Fixed on this branch, commit `c818f79`, two commits before this document's
+own commit `dec5f4a` first described the defect.** `coord/cli.py:198-200` now
+opens two one-directional handles instead of one `"r+"` — `open(device, "r")`
+for the read, `open(device, "w")` for the write — so neither handle asks for
+seekability and the open no longer raises against a real terminal. No `"r+"`
+open remains in the file. The regression test added in the same commit,
+`test_a_real_terminal_can_actually_answer` in
+`tests/test_operator_sign_off.py`, is deliberately not a mock: it calls
+`os.openpty()` to allocate a real controlling terminal and reads a real
+answer through it, because a mock is exactly what let the original defect
+pass a full test suite undetected — substituting `open` proves the writer's
+logic, not the channel's compatibility with an actual terminal.
+`tests/test_operator_ok_authority.py` separately pins the platform property
+(a terminal opened `"r+"` is not seekable) as a fact about terminals, not
+about `cli.py`, so it stays green regardless of which handle strategy the
+reader uses and documents why the two-handle fix was necessary.
 
 **The precondition that does hold (MEASURED).** A process the harness spawns for
 an agent has no controlling terminal at all: `open("/dev/tty")` fails with
@@ -586,11 +628,11 @@ about who that session was.
 | 2.5 | Lane inequality on review | `coord/coord_db.py`, `coord/review_integrity.py` | **Decorative** — one writer can be both lanes |
 | 2.6 | Proof gate on completion | `coord/coord_db.py` | Survives partially — stops absent proof, not false proof |
 | 2.7 | Deferred-tool handshake | `coord/deferred_tools.py` | **Decorative** — and fail-closed with empty accept-lists |
-| 2.8 | Read-only projection | `board/server.py`, `board/security.py` | Survives — but two POST routes, and origin is not identity |
+| 2.8 | Read-only projection | `board/server.py`, `board/security.py` | Survives, by default — but three POST routes, and origin is not identity |
 | 2.9 | Policy pipeline | `coord/` + [`policy-pipeline.md`](policy-pipeline.md) | Decorative by configuration — advisory, by design |
 | 2.10 | Reserved event namespaces | `coord/coord_db.py` | Survives — trust relocates to the human-only writer |
 | 2.11 | File modes on the db and sidecars | `coord/config.py`, `coord/create_schema.py` | Survives — measured `0644` before, `0600` now; residuals named |
-| 2.12 | `operator_ok` authority | `coord/coord_db.py`, `coord/cli.py` | Survives at the writer; the terminal channel is inoperable |
+| 2.12 | `operator_ok` authority | `coord/coord_db.py`, `coord/cli.py` | Survives — the terminal channel's `"r+"` defect is repaired in `cli.py:198-200` |
 
 ---
 
@@ -709,8 +751,8 @@ This is the price of a login screen — not the login screen. All MODELED.
     acceptance text, notes, handoff bodies, sidecar `owner`/`script`/`step` —
     that callers can fill with anything, per
     [`security-and-privacy.md`](security-and-privacy.md).
-12. Re-examine the two POST routes on the board server (§2.8) under a model where
-    loopback no longer implies trust.
+12. Re-examine the three POST routes on the board server (§2.8) under a model
+    where loopback no longer implies trust.
 
 **Integrity**
 
@@ -804,14 +846,16 @@ in a threat model is worse than an acknowledged gap.
    remains open is narrower and is stated as residual exposure in §2.11: the
    non-atomic creation window, read-only opens, unowned databases, the containing
    directory's mode, and any open path that does not route through `connect()`.
-2. **~~The typed human-only writer.~~ Audited — see [§2.12](#212-operator_ok-authority--survives-at-the-writer-layer-the-channel-has-a-defect).**
+2. **~~The typed human-only writer.~~ Audited and repaired — see [§2.12](#212-operator_ok-authority--survives-and-the-terminal-channel-is-fixed).**
    Measured: one minter, one caller, no agent-facing surface reaches it, and a
    sign-off requires both an event and a binding that the agent-facing writers can
-   produce neither half of. The audit also found that the human-only *channel* is
-   inoperable — the reader opens a terminal in a mode no terminal supports, so it
-   refuses a real operator. That is fail-closed, and the repair belongs to
-   `coord/cli.py`. What remains open: whether the repaired channel should also
-   record which terminal answered, and whether a sign-off should expire.
+   produce neither half of. The audit also found that the human-only *channel*
+   was inoperable — the reader opened a terminal in a mode no terminal supports,
+   so it refused a real operator. That was fail-closed, and the repair (two
+   one-directional handles instead of one `"r+"`) landed on this branch,
+   `cli.py:198-200`, commit `c818f79`. What remains open, as a design question
+   rather than a defect: whether the channel should also record which terminal
+   answered, and whether a sign-off should expire.
 3. **Clock handling in the lease and reaper paths.** Expiry comparisons use a
    database-derived timestamp; whether an untrusted writer can influence it, and
    whether skew can cause a live claim to be reaped or an expired one to persist,
@@ -824,9 +868,12 @@ in a threat model is worse than an acknowledged gap.
 5. **Whether any guard in §2 is currently unexercised in the way §2.7 is.** The
    empty accept-lists were found by grepping for their names. No systematic sweep
    for other constants that make a check unreachable was performed.
-6. **The board's two POST routes.** Their input validation was read and is
-   careful; their downstream effects on provider and profile state were not
-   traced, so §2.8 makes no claim about what a successful call can change.
+6. **The board's POST routes.** All three: their input validation was read and
+   is careful. The downstream effect of the third, `/api/native/action`, is
+   traced in §2.8 (`coord_db.post_operator_reassignment`, a `coord.db` write);
+   the other two's effects on provider and profile state were not traced, so
+   §2.8 makes no claim about what a successful call to either of them can
+   change.
 7. **Whether `roadmap.md` states this document as a hard gate.** The roadmap
    carries the multi-machine direction and the `host_id` prerequisite; a literal
    "the threat model must precede authentication" sentence was not found there.
