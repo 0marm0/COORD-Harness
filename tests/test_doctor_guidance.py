@@ -12,12 +12,31 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import socket
 import sqlite3
 from pathlib import Path
+
+import pytest
 
 from coordharness.bootstrap import bootstrap_database
 from coordharness.coord.config import connect
 from coordharness.safety.doctor import BLOCKED, PASS, REPORT_SCHEMA, run_doctor
+
+
+@pytest.fixture(autouse=True)
+def _isolated_board_port(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`doctor.board_port` probes whatever port is actually configured; a
+    real `coord-board` on this machine's default port would otherwise leak
+    into every doctor report these tests assert on. Point it at a port
+    that was free the instant it was chosen instead -- the two tests that
+    specifically exercise `doctor.board_port` override this with their own
+    `monkeypatch.setenv` after this fixture runs.
+    """
+    probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    probe.bind(("127.0.0.1", 0))
+    free_port = probe.getsockname()[1]
+    probe.close()
+    monkeypatch.setenv("COORD_BOARD_PORT", str(free_port))
 
 
 def _finding(report: dict, finding_id: str) -> dict:
@@ -76,6 +95,8 @@ def test_a_healthy_freshly_bootstrapped_board_still_exits_pass(tmp_path: Path) -
 
     assert report["status"] == PASS
     assert {item["id"]: item["status"] for item in report["findings"]} == {
+        "doctor.board_port": PASS,
+        "doctor.db_file_modes": PASS,
         "doctor.jobs_projection": PASS,
         "doctor.leases_reviews": PASS,
         "doctor.lifecycle_writers": PASS,
@@ -403,6 +424,66 @@ def test_a_claim_not_yet_expired_is_never_flagged_even_with_a_dead_pid(
     assert leases["status"] == PASS
     assert leases["details"]["dead_process_claim_count"] == 0
     assert leases["details"]["expired_claim_count"] == 0
+
+
+# --- state 6: the configured board port is already bound -------------------
+
+
+def test_a_bound_board_port_names_the_holding_process_lookup(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """A real listening socket on the configured port, not a mocked errno --
+    the same `OSError: [Errno 48] Address already in use` `coord-board`
+    itself would hit on `socket.bind`.
+    """
+    project, state = _harness(tmp_path)
+    db = state / "coord.db"
+    bootstrap_database(db)
+
+    holder = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        holder.bind(("127.0.0.1", 0))
+        holder.listen(1)
+        bound_port = holder.getsockname()[1]
+        monkeypatch.setenv("COORD_BOARD_PORT", str(bound_port))
+
+        report = run_doctor(db_path=db, project_root=project, state_root=state, now=2)
+
+        board_port = _finding(report, "doctor.board_port")
+        assert board_port["status"] == BLOCKED
+        assert board_port["code"] == "doctor.board_port.address_in_use"
+        assert board_port["details"]["port"] == bound_port
+        assert str(bound_port) in board_port["remediation"]
+        assert "lsof" in board_port["remediation"]
+        assert board_port["remediations"][0]["code"] == "doctor.board_port.address_in_use"
+    finally:
+        holder.close()
+
+
+def test_an_unheld_port_passes(tmp_path: Path, monkeypatch) -> None:
+    """The ablation: once the holder above releases the port (or one was
+    never bound in the first place), the same check must pass. A held socket
+    is closed then re-probed from a fresh one to pick a port guaranteed free
+    at probe time, avoiding a magic-number guess that might collide with a
+    real process on the machine running this test.
+    """
+    project, state = _harness(tmp_path)
+    db = state / "coord.db"
+    bootstrap_database(db)
+
+    probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    probe.bind(("127.0.0.1", 0))
+    free_port = probe.getsockname()[1]
+    probe.close()
+    monkeypatch.setenv("COORD_BOARD_PORT", str(free_port))
+
+    report = run_doctor(db_path=db, project_root=project, state_root=state, now=2)
+
+    board_port = _finding(report, "doctor.board_port")
+    assert board_port["status"] == PASS
+    assert board_port["code"] == "doctor.board_port.ok"
+    assert board_port["remediation"] is None
+    assert board_port["details"]["port"] == free_port
 
 
 # --- exit-code contract stays exactly what CI gates on ----------------------
