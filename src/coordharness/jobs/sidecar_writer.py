@@ -14,6 +14,10 @@ from typing import Any
 
 from coordharness.jobs import diagnostic_marker as job_authority
 from coordharness import config as harness_config
+from coordharness.coord.process_liveness import (
+    POSIX_LIVENESS_PROBE_AVAILABLE,
+    ProcessLivenessUnsupportedError,
+)
 
 SIDECAR_DIR = harness_config.job_progress_dir()
 
@@ -211,6 +215,14 @@ def _pid_alive(pid: Any) -> bool:
     value = _int(pid)
     if value is None or value <= 0:
         return False
+    if not POSIX_LIVENESS_PROBE_AVAILABLE:
+        # See process_liveness.ProcessLivenessUnsupportedError: on this
+        # platform os.kill(pid, 0) does not perform a POSIX null-signal
+        # existence probe, so refuse rather than misreport liveness.
+        raise ProcessLivenessUnsupportedError(
+            "sidecar_writer._pid_alive() relies on POSIX signal-0 "
+            "null-probe semantics, which this platform does not provide"
+        )
     try:
         os.kill(value, 0)
     except ProcessLookupError:
@@ -297,6 +309,16 @@ def _positive_process_identity(field: str, value: Any) -> int | None:
 
 def _prove_process_identity_absent(field: str, identity: int) -> None:
     target = -identity if field == "pgid" else identity
+    if not POSIX_LIVENESS_PROBE_AVAILABLE:
+        # `target` is negated for pgid, relying on the POSIX os.kill
+        # convention that a negative pid signals the whole process group --
+        # a second POSIX-only assumption stacked on top of signal-0. This
+        # platform cannot prove absence safely, so treat it the same as any
+        # other uncertain-absence outcome rather than guess.
+        raise DeadReconciliationError(
+            f"{field}={identity} absence is uncertain (no POSIX signal-0 "
+            "probe on this platform)"
+        )
     try:
         os.kill(target, 0)
     except ProcessLookupError:

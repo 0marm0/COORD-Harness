@@ -20,6 +20,47 @@ except ImportError:  # pragma: no cover - exercised on non-POSIX installs
     fcntl = None
 
 
+class ProcessGroupUnsupportedError(RuntimeError):
+    """Raised when os.fork/os.setsid/os.killpg are required but this
+    platform provides none of them (there is no portable equivalent for
+    POSIX process-group tracked-job supervision -- see docs/compatibility.md)."""
+
+
+# os.fork/os.setsid/os.killpg are used unconditionally below because there is
+# no cross-platform equivalent of POSIX process-group supervision to fall
+# back to; probe once at import time (the answer cannot change within a
+# process's lifetime) so every call site fails with a named error instead of
+# a bare AttributeError.
+POSIX_PROCESS_GROUPS_AVAILABLE = (
+    hasattr(os, "fork") and hasattr(os, "setsid") and hasattr(os, "killpg")
+)
+_process_groups_unavailable_logged = False
+
+
+def _log_process_groups_unavailable_once() -> None:
+    global _process_groups_unavailable_logged
+    if _process_groups_unavailable_logged:
+        return
+    _process_groups_unavailable_logged = True
+    print(
+        "_tracked_pglaunch: POSIX process-group primitives (os.fork/"
+        "os.setsid/os.killpg) are unavailable on this platform; tracked-job "
+        "launch cannot supervise a process tree here and will refuse to run "
+        "(POSIX_PROCESS_GROUPS_AVAILABLE=False)",
+        file=sys.stderr,
+    )
+
+
+def _require_process_groups() -> None:
+    if not POSIX_PROCESS_GROUPS_AVAILABLE:
+        _log_process_groups_unavailable_once()
+        raise ProcessGroupUnsupportedError(
+            "this platform has no os.fork/os.setsid/os.killpg; tracked "
+            "process-group launch/reap is POSIX-only and has no portable "
+            "equivalent"
+        )
+
+
 _CUSTODY_SCHEMA = "coordharness.tracked-job-custody.v1"
 _TERMINAL_STATES = {
     "done",
@@ -159,6 +200,7 @@ def _atomic_write(path: str, obj: dict) -> None:
 
 
 def _group_alive(pgid: int) -> bool:
+    _require_process_groups()
     try:
         os.killpg(pgid, 0)
         return True
@@ -194,6 +236,7 @@ def _waitpid_status(child_pid: int, *, nohang: bool = False) -> int | None:
 
 
 def _reap_group(pgid: int, child_pid: int, grace: float) -> None:
+    _require_process_groups()
     try:
         os.killpg(pgid, signal.SIGTERM)
     except (ProcessLookupError, PermissionError):
@@ -217,6 +260,7 @@ def _reap_group(pgid: int, child_pid: int, grace: float) -> None:
 
 
 def _fork_gated_child(cmd: list[str]) -> tuple[int, int]:
+    _require_process_groups()
 
     release_read, release_write = os.pipe()
     ready_read, ready_write = os.pipe()
@@ -568,7 +612,11 @@ def main() -> int:
 
     signal.signal(signal.SIGTERM, _handler)
     signal.signal(signal.SIGINT, _handler)
-    child_pid, release_write = _fork_gated_child(cmd)
+    try:
+        child_pid, release_write = _fork_gated_child(cmd)
+    except ProcessGroupUnsupportedError as exc:
+        print(f"_tracked_pglaunch: {exc}", file=sys.stderr)
+        return 2
     pgid = child_pid
     child_started_at = time.time()
     try:
