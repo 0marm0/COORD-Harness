@@ -201,7 +201,10 @@ def test_cli_inbox_reports_the_split(board: Path, tmp_path: Path) -> None:
         "COORD_HOME": str(tmp_path),
         "CLAUDE_CODE_SESSION_ID": SESSION,
     }
-    for key in ("COORD_ACTOR", "COORD_SESSION_ID", "CODEX_SESSION_ID"):
+    for key in (
+        "COORD_ACTOR", "COORD_SESSION_ID", "CODEX_SESSION_ID",
+        "CODEX_THREAD_ID", "CODEX_WORKTREE_ID", "CODEX_CONVERSATION_ID",
+    ):
         env.pop(key, None)
 
     result = subprocess.run(
@@ -234,7 +237,10 @@ def test_cli_directed_scope_does_not_count_broadcasts_as_withheld(
         "COORD_HOME": str(tmp_path),
         "CLAUDE_CODE_SESSION_ID": SESSION,
     }
-    for key in ("COORD_ACTOR", "COORD_SESSION_ID", "CODEX_SESSION_ID"):
+    for key in (
+        "COORD_ACTOR", "COORD_SESSION_ID", "CODEX_SESSION_ID",
+        "CODEX_THREAD_ID", "CODEX_WORKTREE_ID", "CODEX_CONVERSATION_ID",
+    ):
         env.pop(key, None)
 
     result = subprocess.run(

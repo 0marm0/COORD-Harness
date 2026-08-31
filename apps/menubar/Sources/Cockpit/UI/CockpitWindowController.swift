@@ -32,6 +32,7 @@ final class CockpitWindowController: NSWindowController {
         mapSource: CockpitMapReadModelSource = CockpitMapReadModelSource(),
         stateStore: CockpitWindowUIStateStore = CockpitWindowUIStateStore(),
         usageStore: InstalledUsageStore = InstalledUsageStore(),
+        telemetryStore: SystemTelemetryStore,
         usageManagedExternally: Bool = false
     ) {
         self.source = source
@@ -44,6 +45,7 @@ final class CockpitWindowController: NSWindowController {
         self.rootView = CockpitRootView(
             frame: NSRect(origin: .zero, size: initialSize),
             usageStore: usageStore,
+            telemetryStore: telemetryStore,
             usageManagedExternally: usageManagedExternally
         )
         let content = NSViewController()
@@ -77,6 +79,7 @@ final class CockpitWindowController: NSWindowController {
 
     override func showWindow(_ sender: Any?) {
         restoreWindowStateIfNeeded()
+        rootView.prepareForPresentation()
         super.showWindow(sender)
         window?.makeKeyAndOrderFront(sender)
         NSApp.activate(ignoringOtherApps: true)

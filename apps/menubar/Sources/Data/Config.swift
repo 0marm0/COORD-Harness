@@ -32,6 +32,7 @@ struct Config: Codable {
     var systemTelemetryEnabled: Bool = true
     var systemTelemetryInPopover: Bool = true
     var systemTelemetryInStatusItem: Bool = true
+    var batteryStatusItemEnabled: Bool = false
     var systemTelemetryStatusPreferenceVersion: Int = 1
     var systemTelemetryInCockpit: Bool = true
     var systemTelemetryProfile: String = "balanced"
@@ -101,13 +102,15 @@ struct Config: Codable {
         showVitalsInPopover = try container.decodeIfPresent(Bool.self, forKey: .showVitalsInPopover) ?? fallback.showVitalsInPopover
         systemTelemetryEnabled = try container.decodeIfPresent(Bool.self, forKey: .systemTelemetryEnabled) ?? fallback.systemTelemetryEnabled
         systemTelemetryInPopover = try container.decodeIfPresent(Bool.self, forKey: .systemTelemetryInPopover) ?? fallback.systemTelemetryInPopover
-        let storedTelemetryStatusVersion = try container.decodeIfPresent(Int.self, forKey: .systemTelemetryStatusPreferenceVersion)
+        let visibility = try MenuBarVisibilityPersistence(from: decoder)
+        _ = try container.decodeIfPresent(Int.self, forKey: .systemTelemetryStatusPreferenceVersion)
+        let storedTelemetryVisibility = visibility.systemTelemetryInStatusItem
         systemTelemetryStatusPreferenceVersion = 1
-        // V0 shipped the persistent status module disabled. Migrate that old,
-        // unversioned value once; versioned false remains an explicit user choice.
-        systemTelemetryInStatusItem = storedTelemetryStatusVersion == nil
-            ? true
-            : (try container.decodeIfPresent(Bool.self, forKey: .systemTelemetryInStatusItem) ?? fallback.systemTelemetryInStatusItem)
+        // Absence gets the modern default. An explicitly stored false remains a user choice,
+        // including configs written before the version marker existed.
+        systemTelemetryInStatusItem = storedTelemetryVisibility ?? fallback.systemTelemetryInStatusItem
+        batteryStatusItemEnabled = visibility.batteryStatusItemEnabled
+            ?? fallback.batteryStatusItemEnabled
         systemTelemetryInCockpit = try container.decodeIfPresent(Bool.self, forKey: .systemTelemetryInCockpit) ?? fallback.systemTelemetryInCockpit
         let storedTelemetryProfile = try container.decodeIfPresent(String.self, forKey: .systemTelemetryProfile) ?? fallback.systemTelemetryProfile
         systemTelemetryProfile = ["eco", "balanced", "live"].contains(storedTelemetryProfile) ? storedTelemetryProfile : fallback.systemTelemetryProfile
@@ -116,10 +119,10 @@ struct Config: Codable {
         systemTelemetryCompactSpacing = storedTelemetrySpacingVersion == nil
             ? true
             : (try container.decodeIfPresent(Bool.self, forKey: .systemTelemetryCompactSpacing) ?? fallback.systemTelemetryCompactSpacing)
-        systemTelemetryShowCPU = try container.decodeIfPresent(Bool.self, forKey: .systemTelemetryShowCPU) ?? fallback.systemTelemetryShowCPU
-        systemTelemetryShowGPU = try container.decodeIfPresent(Bool.self, forKey: .systemTelemetryShowGPU) ?? fallback.systemTelemetryShowGPU
-        systemTelemetryShowRAM = try container.decodeIfPresent(Bool.self, forKey: .systemTelemetryShowRAM) ?? fallback.systemTelemetryShowRAM
-        systemTelemetryShowDisk = try container.decodeIfPresent(Bool.self, forKey: .systemTelemetryShowDisk) ?? fallback.systemTelemetryShowDisk
+        systemTelemetryShowCPU = visibility.systemTelemetryShowCPU ?? fallback.systemTelemetryShowCPU
+        systemTelemetryShowGPU = visibility.systemTelemetryShowGPU ?? fallback.systemTelemetryShowGPU
+        systemTelemetryShowRAM = visibility.systemTelemetryShowRAM ?? fallback.systemTelemetryShowRAM
+        systemTelemetryShowDisk = visibility.systemTelemetryShowDisk ?? fallback.systemTelemetryShowDisk
         let thresholds = SystemTelemetryDisplayPolicy(
             warningThreshold: try container.decodeIfPresent(Double.self, forKey: .systemTelemetryWarningThreshold) ?? fallback.systemTelemetryWarningThreshold,
             criticalThreshold: try container.decodeIfPresent(Double.self, forKey: .systemTelemetryCriticalThreshold) ?? fallback.systemTelemetryCriticalThreshold

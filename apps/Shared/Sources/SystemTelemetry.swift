@@ -32,6 +32,9 @@ struct SystemTelemetrySnapshot: Decodable, Equatable, Sendable {
         let usedBytes: Int64?
         let totalBytes: Int64?
         let freeBytes: Int64?
+        let appBytes: Int64?
+        let wiredBytes: Int64?
+        let compressedBytes: Int64?
         let swapUsedBytes: Int64?
         let swapTotalBytes: Int64?
         let pressure: String?
@@ -42,6 +45,87 @@ struct SystemTelemetrySnapshot: Decodable, Equatable, Sendable {
         var availablePercent: Double? {
             guard availability.lowercased() == "available", let usedPercent, usedPercent.isFinite else { return nil }
             return min(100, max(0, usedPercent))
+        }
+    }
+
+    /// App, Wired, Compressed, and Free reconcile to installed physical memory.
+    /// Swap remains metadata and is never drawn as a physical-memory slice.
+    struct MemoryRingComposition: Equatable, Sendable {
+        enum SegmentKind: Equatable, Sendable { case app, wired, compressed, free }
+        struct Segment: Equatable, Sendable {
+            let kind: SegmentKind
+            let bytes: Int64
+            let fraction: Double
+        }
+
+        let physicalUsedBytes: Int64?
+        let physicalFreeBytes: Int64?
+        let appBytes: Int64?
+        let wiredBytes: Int64?
+        let compressedBytes: Int64?
+        let swapUsedBytes: Int64?
+        let denominatorBytes: Int64?
+        let centerUsedPercent: Double?
+        let segments: [Segment]
+        let usesFallbackArc: Bool
+
+        static func make(
+            usedPercent: Double?, usedBytes: Int64?, totalBytes: Int64?,
+            freeBytes: Int64?, appBytes: Int64?, wiredBytes: Int64?,
+            compressedBytes: Int64?, swapUsedBytes: Int64?
+        ) -> Self {
+            let finitePercent = usedPercent.flatMap { $0.isFinite ? min(100, max(0, $0)) : nil }
+            guard let totalBytes, totalBytes > 0 else {
+                return Self(
+                    physicalUsedBytes: nil, physicalFreeBytes: nil,
+                    appBytes: nil, wiredBytes: nil, compressedBytes: nil,
+                    swapUsedBytes: swapUsedBytes.map { max(0, $0) }, denominatorBytes: nil,
+                    centerUsedPercent: finitePercent, segments: [], usesFallbackArc: finitePercent != nil
+                )
+            }
+
+            if let appBytes, let wiredBytes, let compressedBytes {
+                let wired = min(totalBytes, max(0, wiredBytes))
+                let compressed = min(totalBytes - wired, max(0, compressedBytes))
+                let app = min(totalBytes - wired - compressed, max(0, appBytes))
+                let physicalUsed = app + wired + compressed
+                let physicalFree = totalBytes - physicalUsed
+                let segments = [
+                    Segment(kind: .app, bytes: app, fraction: Double(app) / Double(totalBytes)),
+                    Segment(kind: .wired, bytes: wired, fraction: Double(wired) / Double(totalBytes)),
+                    Segment(kind: .compressed, bytes: compressed, fraction: Double(compressed) / Double(totalBytes)),
+                    Segment(kind: .free, bytes: physicalFree, fraction: Double(physicalFree) / Double(totalBytes)),
+                ]
+                return Self(
+                    physicalUsedBytes: physicalUsed, physicalFreeBytes: physicalFree,
+                    appBytes: app, wiredBytes: wired, compressedBytes: compressed,
+                    swapUsedBytes: swapUsedBytes.map { max(0, $0) }, denominatorBytes: totalBytes,
+                    centerUsedPercent: Double(physicalUsed) / Double(totalBytes) * 100,
+                    segments: segments, usesFallbackArc: false
+                )
+            }
+
+            let physicalUsed = finitePercent.map { Int64((Double(totalBytes) * $0 / 100).rounded()) }
+                ?? usedBytes.map { min(totalBytes, max(0, $0)) }
+                ?? freeBytes.map { totalBytes - min(totalBytes, max(0, $0)) }
+            let physicalFree = physicalUsed.map { totalBytes - $0 }
+            return Self(
+                physicalUsedBytes: physicalUsed, physicalFreeBytes: physicalFree,
+                appBytes: nil, wiredBytes: nil, compressedBytes: nil,
+                swapUsedBytes: swapUsedBytes.map { max(0, $0) }, denominatorBytes: totalBytes,
+                centerUsedPercent: physicalUsed.map { Double($0) / Double(totalBytes) * 100 },
+                segments: [], usesFallbackArc: physicalUsed != nil
+            )
+        }
+
+        static func make(_ metric: Memory?) -> Self {
+            make(
+                usedPercent: metric?.usedPercent, usedBytes: metric?.usedBytes,
+                totalBytes: metric?.totalBytes, freeBytes: metric?.freeBytes,
+                appBytes: metric?.appBytes, wiredBytes: metric?.wiredBytes,
+                compressedBytes: metric?.compressedBytes,
+                swapUsedBytes: metric?.swapUsedBytes
+            )
         }
     }
 

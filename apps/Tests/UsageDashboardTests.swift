@@ -46,6 +46,63 @@ final class UsageDashboardTests: XCTestCase {
         XCTAssertEqual(Set(codex.quotaGroups.map(\.id)).count, 2)
     }
 
+    func testLiveProxyShapeFeedsProviderCardsQuotaGroupsAndSeparateHistories() throws {
+        let snapshot = try decoder().decode(UsageIntelligenceSnapshot.self, from: Data(#"""
+        {
+          "schema":"coordharness.usage-intelligence.v1",
+          "generated_at":"2026-08-30T03:33:30Z",
+          "calendar":{"time_zone":"America/New_York","local_date":"2026-08-29"},
+          "providers":{
+            "claude":{
+              "account":{"status":"active","authenticated":true},
+              "account_source":{"kind":"claude_code_auth_status","canonical":true},
+              "quota_groups":[
+                {"key":"account","label":"Account quota","windows":[
+                  {"kind":"session","remaining_percent":100,"countdown_seconds":12389},
+                  {"kind":"weekly","remaining_percent":25,"countdown_seconds":98789}
+                ]},
+                {"key":"fable","label":"Fable only","windows":[
+                  {"kind":"weekly","name":"Fable","remaining_percent":25,"countdown_seconds":98789}
+                ]}
+              ],
+              "history":{"daily":[{"date":"2026-08-29","total_tokens":154,"api_rate_estimate_nanos":1234567890000}],
+                "ever_observed_envelope":{"total_tokens":999}},
+              "costs":{"api_rate_estimate":{"amount_nanos":1234567890000,"currency":"USD"}}
+            },
+            "codex":{
+              "account":{"status":"active","authenticated":true},
+              "quota_groups":[{"key":"account","label":"Account quota","windows":[
+                {"kind":"weekly","remaining_percent":98,"countdown_seconds":595435}
+              ]}],
+              "history":{"daily":[{"date":"2026-08-29","total_tokens":139}],
+                "provider_reported_account":{"daily":[{"date":"2026-08-29","total_tokens":141}],"today_total_tokens":141}},
+              "costs":{"api_rate_estimate":{"amount_nanos":2000000000,"currency":"USD"}}
+            }
+          }
+        }
+        """#.utf8))
+
+        XCTAssertEqual(UsageProviderCardState.cards(from: snapshot).map(\.id), ["claude", "codex"])
+        let summaries = UsageCompactProviderSummary.summaries(from: snapshot)
+        let claude = try XCTUnwrap(summaries.first { $0.id == "claude" })
+        XCTAssertEqual(claude.session?.resolvedRemainingPercent, 100)
+        XCTAssertEqual(claude.weekly?.resolvedRemainingPercent, 25)
+        XCTAssertEqual(claude.fable?.resolvedRemainingPercent, 25)
+        XCTAssertEqual(claude.retainedUSDEstimateNanos, 1_234_567_890_000)
+        let codex = try XCTUnwrap(snapshot.providers["codex"])
+        XCTAssertEqual(UsageHistoryPresentation.sources(for: codex).map(\.kind), [.retainedEnvelope, .providerReported])
+        XCTAssertEqual(UsageHistoryPresentation.sources(for: codex).map(\.todayTotalTokens), [nil, 141])
+        let claudeProvider = try XCTUnwrap(snapshot.providers["claude"])
+        XCTAssertEqual(
+            UsageDailyCostTrendProjection.make(
+                providerID: "claude",
+                history: try XCTUnwrap(UsageHistoryPresentation.sources(for: claudeProvider).first),
+                costs: claudeProvider.costs
+            ).points.first?.nanos,
+            1_234_567_890_000
+        )
+    }
+
     func testCompactSummaryPrefersAccountGroupWithoutBorrowingModelSession() throws {
         let summaries = UsageCompactProviderSummary.summaries(from: try fixture())
         XCTAssertEqual(summaries.map(\.id), ["claude", "codex"])
@@ -311,6 +368,13 @@ final class UsageDashboardTests: XCTestCase {
         XCTAssertNil(costs.providerNative?.currency)
         XCTAssertEqual(UsageFormat.cost(costs.providerNative), "units 1.00")
         XCTAssertFalse(UsageFormat.cost(costs.providerNative).contains("USD"))
+    }
+
+    func testCurrencyFormattingGroupsThousandsAndRoundsNanosDeterministically() {
+        XCTAssertEqual(UsageFormat.costNanos(1_234_567_890_000, currency: "USD"), "USD 1,234.57")
+        XCTAssertEqual(UsageFormat.costNanos(-1_234_567_890_000, currency: "USD"), "USD -1,234.57")
+        XCTAssertEqual(UsageFormat.costNanos(999_995_000_000, currency: "USD"), "USD 1,000.00")
+        XCTAssertEqual(UsageFormat.costNanos(12_340_000_000, currency: nil), "units 12.34")
     }
 
     func testHistoryPresentationKeepsRetainedAndProviderReportedSourcesSeparateWithProvenance() throws {
@@ -730,6 +794,24 @@ final class UsageDashboardTests: XCTestCase {
         XCTAssertLessThanOrEqual(UsageStatusLayout.quotaPercentX + UsageStatusLayout.percentWidth, 56)
     }
 
+    func testStatusBadgeRendererPaletteAndWidthContract() throws {
+        let projectRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let renderer = try String(
+            contentsOf: projectRoot.appendingPathComponent("apps/menubar/Sources/UI/RingRenderer.swift"),
+            encoding: .utf8
+        )
+        XCTAssertTrue(renderer.contains("static func quotaPercent"))
+        XCTAssertTrue(renderer.contains("return \"\\(Int(min(max(remaining, 0), 100).rounded()))\""))
+        XCTAssertFalse(renderer.contains("return \"\\(Int(min(max(remaining, 0), 100).rounded()))%\""))
+        XCTAssertTrue(renderer.contains("warningMarkerColor: warningMarkerColor(for: palette)"))
+        XCTAssertTrue(renderer.contains("palette == .colored ? .white : .systemRed"))
+        XCTAssertTrue(renderer.contains("Tokens.Color.claudeOrange"))
+        XCTAssertLessThanOrEqual(UsageStatusLayout.quotaPercentX + UsageStatusLayout.percentWidth, UsageStatusLayout.baseWidth(mode: .bars))
+    }
+
     func testCompactQuotaTimingUsesWindowResetAndPaceRunoutOnly() throws {
         let snapshot = try decoder().decode(UsageIntelligenceSnapshot.self, from: Data(#"""
         {
@@ -863,13 +945,22 @@ final class UsageDashboardTests: XCTestCase {
         XCTAssertTrue(peek.contains("addCollapsedQuotaSummaries(presentation)"))
         XCTAssertTrue(peek.contains("timing.resetLabel"))
         XCTAssertTrue(peek.contains("timing.runoutLabel"))
-        XCTAssertTrue(peek.contains("UI.label(\"Cost\""))
+        XCTAssertFalse(peek.contains("UI.label(\"Cost\""))
         XCTAssertTrue(peek.contains("weight: .regular"))
         XCTAssertTrue(peek.contains("costValue"))
+        XCTAssertTrue(peek.contains("visibleState(provider, freshness: presentation.freshness)"))
+        XCTAssertTrue(peek.contains("if let state = visibleState"))
+        XCTAssertTrue(peek.contains("if provider.connected == true { return nil }"))
+        XCTAssertTrue(peek.contains("providerY + (Self.quotaRowHeight - 18) / 2"))
+        XCTAssertTrue(peek.contains("srgbRed: 0.95, green: 0.47, blue: 0.24"))
+        XCTAssertTrue(peek.contains("srgbRed: 0.64, green: 0.43, blue: 0.96"))
         XCTAssertFalse(peek.contains("Today "))
         XCTAssertFalse(peek.contains("separatorColor"), "Usage must flow into the panel without a hard divider")
 
-        XCTAssertTrue(rendererSource.contains("green: 0.50, blue: 0.32"), "Claude compact color stays orange")
+        XCTAssertTrue(dashboardSource.contains("private enum UsageProviderVisualStyle"))
+        XCTAssertTrue(dashboardSource.contains("if let connectionNotice"))
+
+        XCTAssertTrue(rendererSource.contains("Tokens.Color.claudeOrange"), "Claude compact color uses the dedicated warm brand orange")
         XCTAssertTrue(rendererSource.contains("green: 0.40, blue: 0.96"), "Codex compact color is purple")
         XCTAssertTrue(rendererSource.contains("compositingOperation = .sourceAtop"), "Real provider marks are visibly tinted")
 
@@ -1057,22 +1148,32 @@ final class UsageDashboardTests: XCTestCase {
         )
 
         XCTAssertTrue(shared.contains("struct UsageCompactBoardStrip: View"))
-        XCTAssertTrue(shared.contains("@AppStorage(\"coord.cockpit.usage-strip-expanded\")"))
+        XCTAssertTrue(shared.contains("@State private var expanded = false"))
+        XCTAssertFalse(shared.contains("@AppStorage(\"coord.cockpit.usage-strip-expanded\")"))
         XCTAssertTrue(shared.contains("let systemTelemetry: SystemTelemetrySnapshot?"))
-        XCTAssertTrue(shared.contains("snapshot: systemTelemetry, showDisk: showDisk, embedded: true"))
+        XCTAssertTrue(shared.contains("snapshot: systemTelemetry, showDisk: true, embedded: true"))
         XCTAssertTrue(shared.contains("expanded: true"))
         XCTAssertTrue(shared.contains("Collapse usage and system stats"))
+        XCTAssertTrue(shared.contains(".onAppear {"))
+        XCTAssertTrue(shared.contains("onExpandedChange?(false)"))
+        XCTAssertTrue(shared.contains("Text(\"TOTAL TOKEN COST\")"))
+        XCTAssertTrue(shared.contains("HStack(alignment: .top, spacing: 12)"))
+        XCTAssertFalse(shared.contains("GridItem(.adaptive(minimum: 230)"))
         XCTAssertTrue(telemetry.contains("var showDisk = true"))
         XCTAssertTrue(telemetry.contains("var embedded = false"))
         XCTAssertTrue(telemetry.contains("return values.filter { showDisk || $0.0 != \"DISK\" }"))
         XCTAssertTrue(telemetry.contains(".frame(height: embedded ? 38 : 30)"))
-        XCTAssertTrue(telemetry.contains("if showDisk {"))
+        XCTAssertTrue(telemetry.contains("private var expandedCockpitStrip"))
+        XCTAssertTrue(telemetry.contains(".frame(maxWidth: .infinity, minHeight: 68, maxHeight: 68)"))
+        XCTAssertFalse(telemetry.contains("tinyUtilizationGraph"))
+        XCTAssertFalse(telemetry.contains("@State private var history: [SystemTelemetrySnapshot] = []"))
+        XCTAssertTrue(telemetry.contains("SystemTelemetrySnapshot.MemoryRingComposition.make(snapshot?.memory)"))
+        XCTAssertTrue(telemetry.contains("case .compressed: return .pink"))
         XCTAssertTrue(shared.contains(".frame(height: 38)"))
         XCTAssertTrue(shared.contains("windows.append((\"S\", session))"))
         XCTAssertTrue(shared.contains("windows.append((\"W\", weekly))"))
         XCTAssertTrue(shared.contains("windows.append((\"F\", fable))"))
         XCTAssertFalse(shared.contains("selectedQuota("))
-        XCTAssertTrue(shared.contains("GridItem(.adaptive(minimum: 230)"))
         XCTAssertTrue(shared.contains("Text(\"Cost\")"))
         XCTAssertTrue(shared.contains(".font(.system(size: 8.5, weight: .regular).monospacedDigit())"))
         XCTAssertTrue(shared.contains("var barPalette: UsageBarPalette = .colored"))
@@ -1086,6 +1187,15 @@ final class UsageDashboardTests: XCTestCase {
         XCTAssertTrue(cockpit.contains("coord.cockpit.system-telemetry-visible"))
         XCTAssertFalse(cockpit.contains("SystemTelemetryStrip(snapshot: model.systemTelemetry)"))
         XCTAssertEqual(cockpit.components(separatedBy: "UsageCompactBoardStrip(").count - 1, 1)
+
+        let coordRAM = try XCTUnwrap(telemetry.range(of: #"("RAM", "memorychip""#))
+        let coordGPU = try XCTUnwrap(telemetry.range(of: #"("GPU", "display""#))
+        let coordCPU = try XCTUnwrap(telemetry.range(of: #"("CPU", "cpu""#))
+        let coordDisk = try XCTUnwrap(telemetry.range(of: #"("DISK", "internaldrive""#))
+        XCTAssertLessThan(coordRAM.lowerBound, coordGPU.lowerBound)
+        XCTAssertLessThan(coordGPU.lowerBound, coordCPU.lowerBound)
+        XCTAssertLessThan(coordCPU.lowerBound, coordDisk.lowerBound)
+
     }
 
     func testUsageEndpointIsLoopbackOnlyAndUsesCanonicalBoardRoute() throws {
@@ -1197,6 +1307,122 @@ final class UsageDashboardTests: XCTestCase {
         XCTAssertTrue(performRoute.contains("case .refresh:                  forceUsageRefresh()"))
         XCTAssertTrue(performRoute.contains("onWantsRefresh?()"), "Footer refresh must continue updating work state")
         XCTAssertTrue(delegate.contains("popover.onWantsRefresh = { [weak self] in self?.refresh() }"))
+    }
+
+    func testInstalledCockpitRootMountsBoardSafeUsageAndStatsStrip() throws {
+        let projectRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        func source(_ path: String) throws -> String {
+            try String(contentsOf: projectRoot.appendingPathComponent(path), encoding: .utf8)
+        }
+
+        let root = try source("apps/menubar/Sources/Cockpit/UI/CockpitRootView.swift")
+        let controller = try source("apps/menubar/Sources/Cockpit/UI/CockpitWindowController.swift")
+        let delegate = try source("apps/menubar/Sources/App/AppDelegate.swift")
+        let usage = try source("apps/Shared/Sources/UsageDashboardContent.swift")
+        let telemetry = try source("apps/Shared/Sources/SystemTelemetryView.swift")
+
+        XCTAssertTrue(root.contains("NSHostingView<InstalledCockpitUsageStrip>"))
+        XCTAssertTrue(root.contains("UsageCompactBoardStrip("))
+        XCTAssertTrue(root.contains("@ObservedObject var usageStore: InstalledUsageStore"))
+        XCTAssertTrue(root.contains("@ObservedObject var telemetryStore: SystemTelemetryStore"))
+        XCTAssertTrue(root.contains("private var usageStripExpanded = false"))
+        XCTAssertTrue(root.contains("let usageStripHeight: CGFloat = usageStripExpanded ? 194 : 38"))
+        XCTAssertTrue(root.contains("let boardY = usageStripY + usageStripHeight + expandedGap"))
+        XCTAssertTrue(root.contains("y: boardY"))
+        XCTAssertTrue(root.contains("height: max(120, bounds.height - boardY - 16)"))
+        XCTAssertTrue(root.contains("usageStripView.isHidden = !cockpitVisible"))
+        XCTAssertTrue(root.contains("func prepareForPresentation()"))
+        XCTAssertTrue(controller.contains("rootView.prepareForPresentation()"))
+        XCTAssertTrue(controller.contains("telemetryStore: telemetryStore"))
+        XCTAssertTrue(delegate.contains("telemetryStore: telemetryStore"))
+
+        XCTAssertTrue(usage.contains("Text(\"TOTAL TOKEN COST\")"))
+        XCTAssertTrue(usage.contains("HStack(alignment: .top, spacing: 12)"))
+        XCTAssertTrue(usage.contains("onExpandedChange?(next)"))
+        XCTAssertTrue(usage.contains("showDisk: true"))
+        XCTAssertTrue(telemetry.contains(".frame(maxWidth: .infinity, minHeight: 68, maxHeight: 68)"))
+        XCTAssertFalse(telemetry.contains("tinyUtilizationGraph"))
+
+        let ram = try XCTUnwrap(telemetry.range(of: #"("RAM", "memorychip""#))
+        let gpu = try XCTUnwrap(telemetry.range(of: #"("GPU", "display""#))
+        let cpu = try XCTUnwrap(telemetry.range(of: #"("CPU", "cpu""#))
+        let disk = try XCTUnwrap(telemetry.range(of: #"("DISK", "internaldrive""#))
+        XCTAssertLessThan(ram.lowerBound, gpu.lowerBound)
+        XCTAssertLessThan(gpu.lowerBound, cpu.lowerBound)
+        XCTAssertLessThan(cpu.lowerBound, disk.lowerBound)
+    }
+
+    func testInstalledUsageRouteMaintainsDensePublicContract() throws {
+        let projectRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        func source(_ path: String) throws -> String {
+            try String(contentsOf: projectRoot.appendingPathComponent(path), encoding: .utf8)
+        }
+        func assertOrdered(_ labels: [String], in source: String, file: StaticString = #filePath, line: UInt = #line) {
+            var cursor = source.startIndex
+            for label in labels {
+                guard let range = source.range(of: label, range: cursor..<source.endIndex) else {
+                    XCTFail("Missing visible label \(label)", file: file, line: line)
+                    return
+                }
+                cursor = range.upperBound
+            }
+        }
+
+        let coordContent = try source("apps/Shared/Sources/UsageDashboardContent.swift")
+        let coordRoute = try source("apps/menubar/Sources/App/PopoverController.swift")
+        let installed = try source("apps/menubar/Sources/Usage/InstalledUsageDashboard.swift")
+        // The installed route—not merely an incidental shared card—must use the dense
+        // composition: total strip, ordered providers, quotas, daily bars, and a
+        // persistent action rail.
+        let requiredSections = [
+            "UsageDenseTotalCostStrip",
+            "UsageDenseProviderSection",
+            "UsageDenseQuotaRow",
+            "UsageDenseDailyCostChart",
+            "UsageDashboardFooter",
+            "onOpenSettings",
+        ]
+        for token in requiredSections {
+            XCTAssertTrue(coordContent.contains(token), "COORD Usage route lost \(token)")
+        }
+
+        let requiredGeometry = [
+            "compactChartHeight: CGFloat = 74",
+            "providerHorizontalPadding: CGFloat = 18",
+            "providerVerticalPadding: CGFloat = 14",
+            "providerCornerRadius: CGFloat = 12",
+            "providerBorderOpacity: CGFloat = 0.23",
+            "providerFactsSpacing: CGFloat = 22",
+            "providerChartWidth: CGFloat = 300",
+            "Color(red: 0.95, green: 0.47, blue: 0.24)",
+            "Color(red: 0.66, green: 0.42, blue: 1.00)",
+            ".font(.system(size: 19, weight: .bold, design: .rounded))",
+        ]
+        for token in requiredGeometry {
+            XCTAssertTrue(coordContent.contains(token), "COORD dense geometry drifted from \(token)")
+        }
+
+        let visibleLabelOrder = ["Total Tokens Costs", "Today", "Retained cost", "Tokens", "Daily cost"]
+        let denseRouteStart = try XCTUnwrap(coordContent.range(of: "private struct UsageDenseRoute: View"))
+        let denseRouteEnd = try XCTUnwrap(coordContent.range(of: "private struct UsageDailyTrendOverview", range: denseRouteStart.upperBound..<coordContent.endIndex))
+        let denseRouteSource = String(coordContent[denseRouteStart.lowerBound..<denseRouteEnd.lowerBound])
+        assertOrdered(visibleLabelOrder, in: denseRouteSource)
+        XCTAssertTrue(coordContent.contains("visibleLabelOrder = [\"Total Tokens Costs\", \"Claude\", \"Codex\""))
+        XCTAssertTrue(coordContent.contains("case \"claude\": 0"))
+        XCTAssertTrue(coordContent.contains("case \"codex\": 1"))
+
+        XCTAssertTrue(installed.contains("usesDenseRoute: true"))
+        XCTAssertTrue(installed.contains("onRefresh: { Task { await store.refresh(force: true) } }"))
+        XCTAssertTrue(installed.contains("UsageAccountSettingsView("))
+        XCTAssertTrue(coordRoute.contains("max(42, availablePopoverHeight())"))
+        XCTAssertTrue(coordContent.contains("Refresh provider usage"))
+        XCTAssertTrue(coordContent.contains("Provider settings"))
     }
 
     private func fixture(named name: String = "usage-dashboard-v1") throws -> UsageIntelligenceSnapshot {

@@ -165,7 +165,6 @@ _PRIVATE_PROJECT_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
         ),
     ),
     ("absolute host home path", re.compile(r"/Users/[A-Za-z0-9._-]+")),
-    ("personal username", re.compile(r"\bomar\b", re.IGNORECASE)),
 )
 
 
