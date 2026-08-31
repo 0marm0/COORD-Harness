@@ -361,6 +361,11 @@ private enum UsageDenseRouteLayout {
     static let sectionSpacing: CGFloat = 16
     static let compactChartHeight: CGFloat = 74
     static let regularChartHeight: CGFloat = 92
+    /// Space reserved for the daily-cost title and date axis outside the plot.
+    static let chartChromeHeight: CGFloat = 36
+    static let claudeChartPlotHeight: CGFloat = 82
+    /// The final Codex panel uses the otherwise-unused vertical room in the usage route.
+    static let codexChartPlotHeight: CGFloat = 136
     static let providerHorizontalPadding: CGFloat = 18
     static let providerVerticalPadding: CGFloat = 14
     static let providerCornerRadius: CGFloat = 12
@@ -409,7 +414,7 @@ private struct UsageDenseRoute: View {
 
     var body: some View {
         GeometryReader { geometry in
-            let chartHeight = geometry.size.height < 900
+            let chartPlotHeight = geometry.size.height < 900
                 ? UsageDenseRouteLayout.compactChartHeight
                 : UsageDenseRouteLayout.regularChartHeight
             VStack(alignment: .leading, spacing: UsageDenseRouteLayout.sectionSpacing) {
@@ -433,7 +438,7 @@ private struct UsageDenseRoute: View {
                     ScrollView {
                         LazyVStack(alignment: .leading, spacing: UsageDenseRouteLayout.sectionSpacing) {
                             ForEach(orderedCards) { card in
-                                UsageDenseProviderSection(card: card, chartHeight: chartHeight)
+                                UsageDenseProviderSection(card: card, chartPlotHeight: chartPlotHeight)
                             }
                         }
                     }
@@ -496,6 +501,15 @@ private struct UsageDenseRouteHeader: View {
     }
 }
 
+private enum UsageDashboardCostFormat {
+    static func display(_ value: Int64?, currency: String? = "USD") -> String {
+        let formatted = UsageFormat.costNanos(value, currency: currency)
+        return currency?.trimmingCharacters(in: .whitespacesAndNewlines).uppercased() == "USD"
+            ? formatted.replacingOccurrences(of: "USD ", with: "$")
+            : formatted
+    }
+}
+
 private struct UsageDenseTotalCostStrip: View {
     let totalEstimatedCostNanos: Int64?
 
@@ -504,7 +518,7 @@ private struct UsageDenseTotalCostStrip: View {
             Text("Total Tokens Costs")
                 .font(.system(size: 10.5, weight: .semibold))
                 .foregroundStyle(.secondary)
-            Text(UsageFormat.costNanos(totalEstimatedCostNanos, currency: "USD"))
+            Text(UsageDashboardCostFormat.display(totalEstimatedCostNanos))
                 .font(.system(size: 19, weight: .bold, design: .rounded))
                 .monospacedDigit()
                 .lineLimit(1)
@@ -517,18 +531,28 @@ private struct UsageDenseTotalCostStrip: View {
             in: RoundedRectangle(cornerRadius: UsageDenseRouteLayout.totalCornerRadius)
         )
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Total estimated API-rate cost \(UsageFormat.costNanos(totalEstimatedCostNanos, currency: "USD"))")
+        .accessibilityLabel("Total estimated API-rate cost \(UsageDashboardCostFormat.display(totalEstimatedCostNanos))")
     }
 }
 
 private struct UsageDenseProviderSection: View {
     let card: UsageProviderCardState
-    let chartHeight: CGFloat
+    let chartPlotHeight: CGFloat
 
     private var summary: UsageCompactProviderSummary {
         UsageCompactProviderSummary.summary(for: card)
     }
     private var tint: Color { UsageDenseRouteLayout.tint(card.id) }
+    private var effectiveChartPlotHeight: CGFloat {
+        switch card.id.lowercased() {
+        case "claude": return UsageDenseRouteLayout.claudeChartPlotHeight
+        case "codex": return UsageDenseRouteLayout.codexChartPlotHeight
+        default: return chartPlotHeight
+        }
+    }
+    private var chartPanelHeight: CGFloat {
+        effectiveChartPlotHeight + UsageDenseRouteLayout.chartChromeHeight
+    }
     private var dailyProjection: UsageDailyCostTrendProjection? {
         UsageHistoryPresentation.sources(for: card.provider)
             .map { UsageDailyCostTrendProjection.make(providerID: card.id, history: $0, costs: card.provider.costs) }
@@ -562,11 +586,11 @@ private struct UsageDenseProviderSection: View {
             ViewThatFits(in: .horizontal) {
                 HStack(alignment: .top, spacing: UsageDenseRouteLayout.providerFactsSpacing) {
                     facts
-                    chart.frame(width: UsageDenseRouteLayout.providerChartWidth, height: chartHeight)
+                    chart.frame(width: UsageDenseRouteLayout.providerChartWidth, height: chartPanelHeight)
                 }
                 VStack(alignment: .leading, spacing: 14) {
                     facts
-                    chart.frame(height: chartHeight)
+                    chart.frame(height: chartPanelHeight)
                 }
             }
         }
@@ -596,7 +620,7 @@ private struct UsageDenseProviderSection: View {
             }
             HStack(spacing: 18) {
                 UsageDenseMetric(label: "Today", value: UsageFormat.tokens(summary.todayTokens))
-                UsageDenseMetric(label: "Retained cost", value: UsageFormat.costNanos(summary.retainedUSDEstimateNanos, currency: "USD"))
+                UsageDenseMetric(label: "Retained cost", value: UsageDashboardCostFormat.display(summary.retainedUSDEstimateNanos))
                 UsageDenseMetric(label: "Tokens", value: UsageFormat.tokens(summary.todayTokens))
             }
         }
@@ -614,12 +638,16 @@ private struct UsageDenseProviderSection: View {
                     .foregroundStyle(tint)
             }
             if let dailyProjection {
-                UsageDenseDailyCostChart(projection: dailyProjection, tint: tint)
+                UsageDenseDailyCostChart(
+                    projection: dailyProjection,
+                    tint: tint,
+                    plotHeight: effectiveChartPlotHeight
+                )
             } else {
                 Text("History unavailable")
                     .font(.system(size: 9, weight: .medium))
                     .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, minHeight: 76, alignment: .leading)
+                    .frame(maxWidth: .infinity, minHeight: effectiveChartPlotHeight, alignment: .leading)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -627,7 +655,7 @@ private struct UsageDenseProviderSection: View {
 
     private var latestDailyCost: String {
         let latest = dailyProjection?.points.last
-        return UsageFormat.costNanos(latest?.nanos, currency: latest?.currency ?? "USD")
+        return UsageDashboardCostFormat.display(latest?.nanos, currency: latest?.currency ?? "USD")
     }
     private var planLabel: String {
         let plan = card.provider.account?.plan
@@ -691,6 +719,7 @@ private struct UsageDenseMetric: View {
 private struct UsageDenseDailyCostChart: View {
     let projection: UsageDailyCostTrendProjection
     let tint: Color
+    let plotHeight: CGFloat
 
     var body: some View {
         let points = projection.points
@@ -698,7 +727,7 @@ private struct UsageDenseDailyCostChart: View {
             Text("History unavailable")
                 .font(.system(size: 9, weight: .medium))
                 .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, minHeight: 76, alignment: .leading)
+                .frame(maxWidth: .infinity, minHeight: plotHeight, alignment: .leading)
         } else {
             let peak = max(points.map(\.nanos).max() ?? 1, 1)
             VStack(alignment: .leading, spacing: 3) {
@@ -707,14 +736,14 @@ private struct UsageDenseDailyCostChart: View {
                         RoundedRectangle(cornerRadius: 1)
                             .fill(tint.opacity(projection.sourceKind == .providerReported ? 0.50 : 0.82))
                             .frame(maxWidth: .infinity)
-                            .frame(height: max(1, 76 * CGFloat(Double(point.nanos) / Double(peak))))
-                            .help("\(point.day) · \(UsageFormat.costNanos(point.nanos, currency: point.currency)) · \(point.costKind)")
+                            .frame(height: max(1, plotHeight * CGFloat(Double(point.nanos) / Double(peak))))
+                            .help("\(point.day) · \(UsageDashboardCostFormat.display(point.nanos, currency: point.currency)) · \(point.costKind)")
                     }
                 }
                 .overlay(alignment: .bottom) { Divider().opacity(0.35) }
-                .frame(height: 76, alignment: .bottom)
+                .frame(height: plotHeight, alignment: .bottom)
                 .accessibilityLabel("\(projection.providerID) daily estimated cost")
-                .accessibilityValue("\(points.count) observed days; peak \(UsageFormat.costNanos(peak, currency: points.first?.currency))")
+                .accessibilityValue("\(points.count) observed days; peak \(UsageDashboardCostFormat.display(peak, currency: points.first?.currency))")
                 HStack {
                     Text(points.first?.day ?? "Unknown")
                     Spacer()
@@ -873,12 +902,12 @@ private struct UsageTotalCostStrip: View {
             Text("Total Tokens Costs")
                 .font(.system(size: 9, weight: .semibold))
                 .foregroundStyle(.secondary)
-            Text(UsageFormat.costNanos(totalEstimatedCostNanos, currency: "USD"))
+            Text(UsageDashboardCostFormat.display(totalEstimatedCostNanos))
                 .font(.system(size: 13, weight: .bold).monospacedDigit())
                 .foregroundStyle(.primary)
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Total estimated API-rate cost \(UsageFormat.costNanos(totalEstimatedCostNanos, currency: "USD"))")
+        .accessibilityLabel("Total estimated API-rate cost \(UsageDashboardCostFormat.display(totalEstimatedCostNanos))")
     }
 }
 

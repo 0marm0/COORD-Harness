@@ -1449,6 +1449,40 @@ final class UsageDashboardTests: XCTestCase {
         XCTAssertTrue(coordContent.contains("Provider settings"))
     }
 
+    func testUsageWindowUsesDollarCostLabelsAndAContainedTallerCodexPlot() throws {
+        let projectRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let content = try String(
+            contentsOf: projectRoot.appendingPathComponent("apps/Shared/Sources/UsageDashboardContent.swift"),
+            encoding: .utf8
+        )
+        let popover = try String(
+            contentsOf: projectRoot.appendingPathComponent("apps/menubar/Sources/App/PopoverController.swift"),
+            encoding: .utf8
+        )
+        let denseStart = try XCTUnwrap(content.range(of: "private struct UsageDenseRoute: View"))
+        let denseEnd = try XCTUnwrap(content.range(of: "private struct UsageDailyTrendOverview", range: denseStart.upperBound..<content.endIndex))
+        let dense = String(content[denseStart.lowerBound..<denseEnd.lowerBound])
+
+        XCTAssertTrue(popover.contains("let usageWindowWidth: CGFloat = 460"))
+        XCTAssertTrue(popover.contains("max(usageWindowWidth, detachedSize?.width ?? usageWindowWidth)"))
+        XCTAssertTrue(content.contains("private enum UsageDashboardCostFormat"))
+        XCTAssertTrue(content.contains("replacingOccurrences(of: \"USD \", with: \"$\")"))
+        XCTAssertTrue(dense.contains("UsageDashboardCostFormat.display(totalEstimatedCostNanos)"))
+        XCTAssertTrue(dense.contains("UsageDashboardCostFormat.display(latest?.nanos"))
+
+        XCTAssertTrue(content.contains("claudeChartPlotHeight: CGFloat = 82"))
+        XCTAssertTrue(content.contains("codexChartPlotHeight: CGFloat = 136"))
+        XCTAssertTrue(dense.contains("case \"claude\": return UsageDenseRouteLayout.claudeChartPlotHeight"))
+        XCTAssertTrue(dense.contains("case \"codex\": return UsageDenseRouteLayout.codexChartPlotHeight"))
+        XCTAssertTrue(dense.contains("plotHeight: effectiveChartPlotHeight"))
+        XCTAssertTrue(dense.contains("chartPanelHeight"))
+        XCTAssertTrue(dense.contains("chart.frame(width: UsageDenseRouteLayout.providerChartWidth, height: chartPanelHeight)"))
+        XCTAssertTrue(dense.contains(".frame(height: plotHeight, alignment: .bottom)"))
+        XCTAssertTrue(dense.contains("ScrollView"), "Taller Codex content must remain scrollable rather than clip.")
+    }
     private func fixture(named name: String = "usage-dashboard-v1") throws -> UsageIntelligenceSnapshot {
         let url = try XCTUnwrap(Bundle(for: Self.self).url(forResource: name, withExtension: "json"))
         return try decoder().decode(UsageIntelligenceSnapshot.self, from: Data(contentsOf: url))

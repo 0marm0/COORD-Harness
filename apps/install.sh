@@ -11,12 +11,17 @@ fail() {
 usage() {
   cat <<'EOF'
 Usage: apps/install.sh [--db PATH] [--app-dir PATH] [--python PATH] [--no-launch]
+                        [--enable-native-operator-writes]
                         [--install-reaper-agent] [--reaper-interval SECONDS]
 
   --db PATH                 Existing or new COORD authority (default: ~/.coordharness/coord.db)
   --app-dir PATH            Native app destination (default: ~/Applications)
   --python PATH             Python 3.11+ interpreter (default: python3 on PATH)
   --no-launch               Install without opening the menu-bar app
+  --enable-native-operator-writes
+                            Opt in to authenticated, loopback-only native task
+                            reassignment. Provisions an owner-only token beside
+                            coord.db. Browser actions remain read-only.
   --install-reaper-agent    Opt in to a second LaunchAgent that runs `coord-reaper`
                             on a timer (see "Scheduling the reaper" below). Off
                             by default: nothing reaps expired claims or dead
@@ -60,6 +65,7 @@ LAUNCH_APPS=1
 # reaper as a side effect. See "Scheduling the reaper" in usage() for why
 # this exists and what it does.
 INSTALL_REAPER_AGENT=0
+ENABLE_NATIVE_OPERATOR_WRITES=0
 REAPER_INTERVAL_S="${COORD_REAPER_INTERVAL_S:-300}"
 
 while [[ $# -gt 0 ]]; do
@@ -85,6 +91,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --install-reaper-agent)
       INSTALL_REAPER_AGENT=1
+      shift
+      ;;
+    --enable-native-operator-writes)
+      ENABLE_NATIVE_OPERATOR_WRITES=1
       shift
       ;;
     --reaper-interval)
@@ -162,6 +172,28 @@ printf '%s\n' "$LABEL" > "$RUNTIME_ROOT/.coord-install-marker"
 echo "2/7  create or migrate selected database"
 "$VENV/bin/python" -m coordharness.coord.create_schema --db "$DB_PATH"
 [[ -s "$DB_PATH" ]] || fail "database bootstrap did not create $DB_PATH"
+NATIVE_OPERATOR_TOKEN_PATH="$(dirname -- "$DB_PATH")/operator-token"
+if [[ "$ENABLE_NATIVE_OPERATOR_WRITES" == 1 ]]; then
+  "$VENV/bin/python" - "$NATIVE_OPERATOR_TOKEN_PATH" <<'PY'
+import os
+import pathlib
+import secrets
+import stat
+import sys
+
+path = pathlib.Path(sys.argv[1])
+path.parent.mkdir(parents=True, exist_ok=True)
+if not path.exists():
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as stream:
+        stream.write(secrets.token_urlsafe(48) + "\n")
+metadata = path.lstat()
+if path.is_symlink() or not stat.S_ISREG(metadata.st_mode):
+    raise SystemExit("native operator token must be a regular non-symlink file")
+if stat.S_IMODE(metadata.st_mode) != 0o600 or metadata.st_uid != os.getuid():
+    raise SystemExit("native operator token must be owner-owned mode 0600")
+PY
+fi
 
 echo "3/7  persist shared native configuration"
 for domain in org.coordharness.menubar org.coordharness.cockpit.window org.coordharness.cockpit.mac; do
@@ -192,12 +224,23 @@ PY
 
 echo "4/7  install and start dedicated board LaunchAgent"
 "$VENV/bin/python" - "$PLIST" "$LABEL" "$VENV/bin/coord-board" "$DB_PATH" \
-  "$RUNTIME_ROOT" "$LOG_DIR/coord-board.stdout.log" "$LOG_DIR/coord-board.stderr.log" <<'PY'
+  "$RUNTIME_ROOT" "$LOG_DIR/coord-board.stdout.log" "$LOG_DIR/coord-board.stderr.log" \
+  "$ENABLE_NATIVE_OPERATOR_WRITES" "$NATIVE_OPERATOR_TOKEN_PATH" <<'PY'
 import pathlib
 import plistlib
 import sys
 
-path, label, executable, database, working_directory, stdout_path, stderr_path = sys.argv[1:]
+(
+    path,
+    label,
+    executable,
+    database,
+    working_directory,
+    stdout_path,
+    stderr_path,
+    enable_native_operator_writes,
+    native_operator_token_path,
+) = sys.argv[1:]
 payload = {
     "Label": label,
     "ProgramArguments": [
@@ -218,6 +261,13 @@ payload = {
     "StandardOutPath": stdout_path,
     "StandardErrorPath": stderr_path,
 }
+if enable_native_operator_writes == "1":
+    payload["EnvironmentVariables"].update(
+        {
+            "COORD_NATIVE_OPERATOR_WRITES": "1",
+            "COORD_NATIVE_OPERATOR_TOKEN_FILE": native_operator_token_path,
+        }
+    )
 destination = pathlib.Path(path)
 temporary = destination.with_name(destination.name + ".coord-install.tmp")
 with temporary.open("wb") as stream:
@@ -226,7 +276,16 @@ temporary.replace(destination)
 PY
 chmod 600 "$PLIST"
 launchctl bootout "gui/$UID/$LABEL" >/dev/null 2>&1 || true
-launchctl bootstrap "gui/$UID" "$PLIST"
+bootstrap_ok=0
+for _attempt in {1..10}; do
+  if launchctl bootstrap "gui/$UID" "$PLIST"; then
+    bootstrap_ok=1
+    break
+  fi
+  sleep 0.5
+done
+[[ "$bootstrap_ok" == 1 ]] \
+  || fail "LaunchAgent $LABEL could not be bootstrapped after a bounded retry"
 launchctl kickstart -k "gui/$UID/$LABEL"
 
 echo "5/7  health-check local board"
@@ -312,6 +371,11 @@ echo "  database:    $DB_PATH"
 echo "  LaunchAgent: $PLIST"
 echo "  menu bar:    $MENU_TARGET"
 echo "  cockpit:     $WINDOW_TARGET"
+if [[ "$ENABLE_NATIVE_OPERATOR_WRITES" == 1 ]]; then
+  echo "  operator:    native reassignment enabled (loopback + private token)"
+else
+  echo "  operator:    read-only (enable with --enable-native-operator-writes)"
+fi
 echo "  uninstall:   $SCRIPT_DIR/uninstall.sh"
 echo "The database is preserved by repairs and by the default uninstall."
 

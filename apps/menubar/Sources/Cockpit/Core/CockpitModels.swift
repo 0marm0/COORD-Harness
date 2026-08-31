@@ -118,6 +118,15 @@ struct CockpitRow: Equatable {
     var displayOrder: Int
     var hierarchyDepth: Int = 0
     var actions: [CockpitRowAction]
+    var workVersion: Int? = nil
+    var currentAssignee: String? = nil
+    var assignmentHeadEventIDs: [Int] = []
+    var activeClaimIDs: [String] = []
+    var claimStatus: String? = nil
+    var claimLive: Bool = false
+    var liveRunCount: Int = 0
+    var nativeOperatorWritesEnabled: Bool = false
+    var nativeOperatorWritesReason: String? = nil
 
     var effectivePct: Double? {
         guard let pct else { return nil }
