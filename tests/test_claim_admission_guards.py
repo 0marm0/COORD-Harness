@@ -120,6 +120,10 @@ def test_completed_work_cannot_be_reclaimed(conn, project: Path) -> None:
     artifact = project / PROOF
     artifact.parent.mkdir(parents=True, exist_ok=True)
     artifact.write_text(json.dumps({"rows": 3}), encoding="utf-8")
+    # Every declared proof, not only Markdown, has to be in git's index for a
+    # completion to be admissible; this test is about reclaiming, so it hands
+    # the custody gate what it now asks for rather than working around it.
+    subprocess.run(["git", "add", PROOF], cwd=project, check=True)
     coord_db.complete_claim(
         conn,
         claim_id,

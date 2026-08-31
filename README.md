@@ -55,7 +55,7 @@ door.
 
 <!-- D1 -->
 <p align="center">
-  <img src="docs/assets/birdseye.svg" alt="Different kinds of agents use lifecycle clients such as CLI, MCP, and Python to call fenced operations on one coord.db authority. Work advances through claim and heartbeat, but done against a Markdown proof is refused until the declared artifact is staged in git; web, macOS, and iOS projections remain read-only." width="100%">
+  <img src="docs/assets/birdseye.svg" alt="Different kinds of agents use lifecycle clients such as CLI, MCP, and Python to call fenced operations on one coord.db authority. Work advances through claim and heartbeat, but done is refused until the declared proof artifact is staged in git; web, macOS, and iOS projections remain read-only." width="100%">
 </p>
 
 <p align="center"><sub>One database owns lifecycle truth. CLI, MCP, and Python are clients of its fenced operation contract, never parallel authorities. Claims prevent collisions, heartbeats renew ownership, completion is proof-gated, and every viewer is a read-only projection.</sub></p>
@@ -185,10 +185,15 @@ coord doctor    # still PASS, exit 0, with the completion recorded
 
 `coord` creates `.coordharness/coord.db` and applies migrations on first use. The
 `done` command succeeds because `ML-204` declares `docs/reports/ml-204.md` as its
-`done_signal`, the non-empty Markdown proof exists, and Git's current index tracks
-it. Staging is sufficient; no commit is required — but a Markdown proof that is
-untracked, or a project that is not a Git repository at all, is refused with
-`artifact proof does not exist or is incomplete`. For a clean reset, remove only the
+`done_signal`, the non-empty proof exists, and Git's current index tracks
+it. Staging is sufficient; no commit is required — but an untracked proof of any
+type, or a project that is not a Git repository at all, is refused with
+`artifact proof does not exist or is incomplete`. The only artifacts exempt from
+tracking are the kinds that structurally cannot live in Git — databases, dataset
+dumps, serialized models, archives — listed in `DEFAULT_CUSTODY_EXEMPT_SUFFIXES`
+in `src/coordharness/jobs/status.py` and rebindable with
+`COORD_COMPLETION_CUSTODY_EXEMPT`. Exempt kinds still have to exist; the
+exemption is about custody, not about proof. For a clean reset, remove only the
 disposable clone's `.coordharness/` directory; never point cleanup commands at a
 broad directory or an unresolved variable.
 
@@ -666,8 +671,9 @@ agent is the one operation that moves ownership out from under a live holder.
 > docs will hit. Only `orient` fails closed on a fresh checkout: it
 > requires an enforced exact-authority policy that a fresh checkout does not activate. The
 > remaining lifecycle writers refuse by contract until their preconditions hold: `complete`
-> demands the declared Markdown artifact in Git's index (non-Markdown proofs are
-> accepted on existence alone — see `docs/comparison.md`), `verdict` refuses a same-lane pass, and
+> demands the declared artifact in Git's index — every artifact type, with a narrow
+> exemption for kinds that structurally cannot live there (see `docs/comparison.md`),
+> `verdict` refuses a same-lane pass, and
 > `request_audit` refuses T2/T1 rows that self-verify. The strict deployment profile adds
 > repository-custody and exact-authority gates that a public checkout cannot satisfy — it is for
 > a deployment that has done its own authority activation, and its refusals there are working as
@@ -826,8 +832,16 @@ another process's session ID.
 
 **`done` says proof is missing or incomplete** — the artifact path must exactly
 match the row's declared `done_signal`, resolve beneath `COORD_PROJECT_ROOT`,
-exist, and be non-empty. A Markdown proof must also be tracked in Git's index —
-`git add` it; staging is enough, no commit needed.
+exist, and be non-empty. It must also be tracked in Git's index — `git add` it;
+staging is enough, no commit needed. This applies to a proof of **any** type: up
+to 0.1.0 only `.md` proofs were custody-checked and everything else completed on
+existence alone, so a `.json`, `.txt` or `.html` completion that used to succeed
+untracked is now refused. The exceptions are artifact kinds that structurally
+cannot live in Git — `.parquet`, `.duckdb`, `.db`, `.joblib`, `.bz2`, `.backup` —
+which must still exist but need not be tracked. Set
+`COORD_COMPLETION_CUSTODY_EXEMPT` to a comma-separated suffix list to rebind that
+set for an unusual artifact kind, or to `*` to turn the custody requirement off
+entirely.
 
 **`coord doctor` reports `database_outside_state_root`** — the database exists
 but sits outside the state root doctor was given. Pass a matching `--state-root`,

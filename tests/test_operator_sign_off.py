@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import io
 import json
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -48,9 +49,13 @@ def board(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setenv("COORD_PROJECT_ROOT", str(tmp_path))
     monkeypatch.setenv("COORD_HOME", str(tmp_path / ".coordharness"))
     monkeypatch.setattr(coord_db, "HARNESS_ROOT", tmp_path)
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
     proof = tmp_path / PROOF
     proof.parent.mkdir(parents=True, exist_ok=True)
     proof.write_text('{"done": true}\n', encoding="utf-8")
+    # The custody gate asks for every proof in git's index, not only Markdown.
+    # This module measures the sign-off gate, so it satisfies the custody one.
+    subprocess.run(["git", "add", PROOF], cwd=tmp_path, check=True)
 
     database = tmp_path / "coord.db"
     bootstrap_database(database)
