@@ -12,6 +12,7 @@ from typing import Any, Mapping
 from coordharness import config as harness_config
 
 from . import coord_db
+from .config import lane_set as _lane_set
 from .process_liveness import pid_matches
 
 _logger = logging.getLogger(__name__)
@@ -184,7 +185,7 @@ def resolve_identity(env: dict | None = None) -> dict:
         "actor": actor,
         "session_id": csid,
         "parent_session_id": None,
-        "runner_type": actor if actor in {"claude", "codex", "local"} else "agent",
+        "runner_type": actor if actor in (_lane_set() | {"local"}) else "agent",
         "human_label": label or _fallback_human_label(actor, csid),
         "external_thread_id": thread_id,
         "conversation_title": title,
