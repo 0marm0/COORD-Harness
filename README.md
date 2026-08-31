@@ -524,6 +524,13 @@ Most of the design is a refusal. Each of these is enforced in code, not by conve
 - **No hidden local work.** Long-running processes report through run records and compact JSON sidecars.
 - **No accidental second authority.** Web and native clients consume read-only projections.
 
+<!-- D8 -->
+<p align="center">
+  <img src="docs/assets/proof-gated-done.svg" alt="REAL, non-staged capture: `.venv/bin/python examples/proof-gated-done/run.py`, run from a scratch working directory outside this repository against the venv's own coord binary. The script builds its own throwaway git repo and coord.db under tempfile.TemporaryDirectory() and deletes both on exit; this transcript is its exact stdout, unedited except for the deterministic display truncation tools/render_terminal_cast.py applies to long JSON lines when rendering the SVG. Animated terminal recording of 19 real captured lines from examples/proof-gated-done/run.py showing `coord done` refused twice -- once because the declared artifact file does not exist, once because it exists on disk but is not staged in git's index -- and then accepted once `git add` stages it. Some long lines are truncated for display width; the full transcript is the committed JSON this SVG was rendered from." width="100%">
+</p>
+
+<p align="center"><sub><b>No completion by assertion, shown rather than claimed.</b> The unedited stdout of <a href="examples/proof-gated-done/run.py"><code>examples/proof-gated-done/run.py</code></a>: <code>coord done</code> refused for a missing artifact, refused again for one that exists but is not staged, then accepted once <code>git add</code> stages it.</sub></p>
+
 ### The database
 
 One SQLite database in WAL mode, `.coordharness/coord.db` (WAL keeps `-wal` and
@@ -648,10 +655,15 @@ agent is the one operation that moves ownership out from under a live holder.
 > **Current boundary:** the default generic profile is the one to use. All 36 default tools
 > register against a fresh local database, and the ones a first session needs answer there:
 > `preflight`, `board`, `next_work`, `work_context`, `event_context`, `inbox`, `inbox_recent`,
-> `runs`, `knowledge_search`, `facts_query`, `knowledge_index_status`, the memory-proposal reads,
-> and the `claim_work`/`heartbeat`/`note`/`audit`/`decision`/`park`/`release` writers. Two of the
-> 36 fail closed on a fresh checkout rather than answering: `facts_lookup` raises
-> `FactStoreUnavailable` until a knowledge store exists — no MCP read creates one — and `orient`
+> `runs`, `knowledge_search`, `facts_query`, `facts_lookup`, `knowledge_index_status`, the
+> memory-proposal reads, and the `claim_work`/`heartbeat`/`note`/`audit`/`decision`/`park`/`release`
+> writers. The MCP server creates its backing knowledge store at process startup, before the first
+> tool call runs, so on the standard install path (`scripts/setup.sh`, whose onboarding self-test
+> starts that same stdio process) the store already exists by the time a session begins.
+> `facts_lookup`'s `FactStoreUnavailable` refusal is a defensive guard for a store that was deleted
+> or never went through that startup path — for example a caller that invokes the tool function
+> directly rather than through the running server — not a boundary a stranger following the setup
+> docs will hit. Only `orient` fails closed on a fresh checkout: it
 > requires an enforced exact-authority policy that a fresh checkout does not activate. The
 > remaining lifecycle writers refuse by contract until their preconditions hold: `complete`
 > demands the declared artifact in Git's index, `verdict` refuses a same-lane pass, and
@@ -866,6 +878,7 @@ figure in the source, so `grep -n "S7" README.md` finds it instantly.
 | **S10** | `screens/map-topology.png` | Lens gallery | The fleet as an org in motion |
 | **D5** | `lifecycle.svg` | How work moves | Intent vs observed state; the proof gate |
 | **D6** | `jobs.svg` | How work moves | Tracked processes and liveness re-derivation |
+| **D8** | `proof-gated-done.svg` | How work moves | Real transcript: `coord done` refused twice, accepted once staged |
 | **D7** | `context-retrieval.svg` | What the harness remembers | Authority vs bounded retrieval vs recall |
 | **S11** | `screens/macos-panel.png` | Native | The menu-bar glance |
 | **S12** | `screens/ios-home.png` | Native | The same board on a phone |
