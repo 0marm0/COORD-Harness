@@ -105,11 +105,20 @@ Notes for embedders:
 - SQLite opens in read-only/query-only mode.
 - Only `GET` and `HEAD` are handled as reads.
 - `OPTIONS` returns method metadata without reading or mutating board state.
-- `POST`, `PUT`, `PATCH`, and `DELETE` return `405`.
+- `PUT`, `PATCH`, and `DELETE` return `405`. `POST` does not: three routes
+  accept it (`/api/v1/usage-actions`, `/api/v1/provider-management`, and the
+  opt-in `/api/native/action`), each hedged separately and none touching the
+  read-only SQLite path. See
+  [`threat-model.md` §2.8](threat-model.md#28-the-read-only-projection--survives-with-two-precise-caveats)
+  for the gating on each.
 - Host-header checks reduce DNS-rebinding exposure.
 - Responses use no-store and content-type hardening headers.
 
-These controls prevent the viewer from accidentally becoming another writer. They do not provide authentication, authorization, tenant isolation, TLS termination, or safe internet exposure.
+These controls prevent the viewer from accidentally becoming another writer of
+`coord.db`. They do not provide authentication, authorization, tenant
+isolation, TLS termination, or safe internet exposure — and, for the opt-in
+`/api/native/action` route, they are not the whole story: see the threat-model
+section linked above.
 
 ## Snapshot compatibility
 

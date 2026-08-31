@@ -108,6 +108,9 @@ The stable finding IDs are:
   environment values are redacted. Literal secret-like values, shell commands,
   unpinned package launchers, invalid files, and config paths outside the
   project/state roots block the report.
+- `doctor.db_file_modes`: the database and its `-wal`/`-shm` sidecars are not
+  readable by other accounts (`0600`); a group- or world-readable mode blocks
+  the report. Read-only: this check stats and reports, it never chmods.
 - `doctor.board_port`: a cheap bind probe of the configured `coord-board` port
   on the loopback interface. The port is read the same way `coord-board`
   reads it (`COORD_BOARD_PORT`, falling back to its packaged default) — never

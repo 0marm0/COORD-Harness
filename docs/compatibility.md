@@ -19,7 +19,7 @@ This page defines supported interfaces, not every environment in which the code 
 - `coord` command names and required positional arguments are treated as public once shipped.
 - MCP tool names are public; preview tools and complex parameter contracts may evolve before a stable release.
 - The snapshot API is versioned under `/api/v1/`. Additive fields are expected; consumers must ignore unknown fields.
-- Native clients differ, and the difference is deliberate. The macOS menu-bar panel (`CoordMenuBar`) and the Cockpit window (`CoordCockpitWindow`) read `COORD_DB` directly over a `SQLITE_OPEN_READONLY` connection with `PRAGMA query_only=ON`, falling back to the HTTP snapshot when the file is absent or unreadable; they are therefore coupled to the SQLite schema and must be rebuilt across a migration. The iOS client (`CoordCockpitIOS`) and the snapshot-only macOS app (`CoordCockpitMac`) consume `/api/v1/snapshot` and `/healthz` over `URLSession` and never open the database, which keeps them independent of schema migration. No client writes.
+- Native clients differ, and the difference is deliberate. The macOS menu-bar panel (`CoordMenuBar`) and the Cockpit window (`CoordCockpitWindow`) read `COORD_DB` directly over a `SQLITE_OPEN_READONLY` connection with `PRAGMA query_only=ON`, falling back to the HTTP snapshot when the file is absent or unreadable; they are therefore coupled to the SQLite schema and must be rebuilt across a migration. The iOS client (`CoordCockpitIOS`) and the snapshot-only macOS app (`CoordCockpitMac`) consume `/api/v1/snapshot` and `/healthz` over `URLSession` and never open the database, which keeps them independent of schema migration. No client writes by default; the macOS menu bar can POST an operator reassignment to `/api/native/action` when `COORD_NATIVE_OPERATOR_WRITES=1` and a private operator token is present — see [`threat-model.md` §2.8](threat-model.md#28-the-read-only-projection--survives-with-two-precise-caveats).
 
 ## Portability limits
 
@@ -80,12 +80,12 @@ now resolved (below); these are the concrete blockers that remain, not an exhaus
   liveness check rather than silently passing. `tests/test_portability_guards.py` covers both the
   absence path and the pre-existing "cannot verify" semantics.
 - **Process-group and signal semantics -- still open.** `os.fork` / `os.setsid` / `os.killpg` in
-  `src/coordharness/jobs/pglaunch.py` (`os.fork()` at line 219, `os.killpg` at lines 159, 194, 204)
+  `src/coordharness/jobs/pglaunch.py` (`os.fork()` at line 223, `os.killpg` at lines 163, 198, 208)
   and `src/coordharness/jobs/launch.py` (`_terminate_process_group`, `os.killpg` at lines 261, 269,
   506) assume a POSIX process-group model with no Windows equivalent in this code path -- unlike
   the `fcntl` imports, these are used unconditionally rather than behind a capability guard, and
   fixing them is a separate, larger change than the import-time fix above.
-  `os.kill(pid, 0)` as a liveness probe (`src/coordharness/coord/process_liveness.py:17`,
+  `os.kill(pid, 0)` as a liveness probe (`src/coordharness/coord/process_liveness.py:39`,
   `src/coordharness/coord/reaper.py:25`, `src/coordharness/jobs/sidecar_writer.py:215,301`) runs
   on Windows but with different signal-0 semantics, and the broad `except OSError` around it would
   silently misreport a live process as dead rather than fail loudly.
@@ -103,7 +103,7 @@ now resolved (below); these are the concrete blockers that remain, not an exhaus
   Darwin-gated -- but the script itself is still a POSIX shell script, which is an unrelated
   portability question from what it installs.
 
-What already generalizes: path construction is `pathlib`-based throughout the package (67 of 117
+What already generalizes: path construction is `pathlib`-based throughout the package (70 of 118
 modules under `src/coordharness` import `pathlib.Path`; only one uses `os.path.join`), and the
 two modules that do hardware/platform branching --
 `src/coordharness/coord/modeld_lite.py` and `src/coordharness/coord/runners/mlx_runner.py` -- do
