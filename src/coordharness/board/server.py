@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 from datetime import datetime, timezone
+import errno
 import hmac
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -13,6 +14,7 @@ import os
 from pathlib import Path
 from pathlib import PurePosixPath
 import re
+import sqlite3
 import stat
 import sys
 import threading
@@ -47,6 +49,7 @@ from coordharness.board.snapshot import (
     load_schema,
     stable_copy,
 )
+from coordharness.coord.config import connect_ro
 from coordharness.usage.account_actions import UsageAccountActionForwarder
 from coordharness.usage.dashboard_proxy import UsageDashboardProxy
 from coordharness.board.system_telemetry_proxy import SystemTelemetryProxy
@@ -202,6 +205,23 @@ def _utc_now() -> str:
         else datetime.now(timezone.utc)
     )
     return moment.isoformat().replace("+00:00", "Z")
+
+
+def _metric_int(value: Any) -> int:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return 0
+    return int(value)
+
+
+def _metric_label(value: str) -> str:
+    """Escape a label value per the Prometheus text exposition format.
+
+    Backslash and double-quote must be escaped and a literal newline is not
+    representable at all; every value here (a session id or actor name) is
+    operator-chosen text, not a query parameter, but a stray quote in either
+    would otherwise emit a metrics line no scraper can parse.
+    """
+    return value.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
 
 
 def _reject_json_constant(_value: str) -> None:
@@ -815,6 +835,97 @@ class BoardServer(ThreadingHTTPServer):
         with self._snapshot_lock:
             return self._read_status_locked()
 
+    def metrics_text(self) -> str:
+        """Prometheus text exposition of counts the projection already derives.
+
+        Nothing here computes a new business fact. The status buckets come
+        straight off `snapshot.summary`, the same running/attention/next/done
+        split every board client already renders. The lease and run figures
+        read `runs.state` and `agent_sessions.last_heartbeat` directly -- the
+        columns `doctor.py`'s lease/review check and the native cockpit
+        materializer already treat as the source of truth for "is this claim
+        still held" and "when did this session last check in" -- through one
+        fresh read-only connection opened the same way every other board
+        document does (`stable_copy` + `connect_ro`), so a scrape never
+        contends with a writer and never sees a torn WAL.
+
+        A scrape that lands mid-refresh, or against a database a writer has
+        mid-checkpoint, reports the run/session gauges as absent rather than
+        failing the whole response -- `main()` already refuses to start
+        against a schemaless or missing database, so a running process can
+        assume the schema exists and a transient read hiccup is not that.
+        """
+        now = time.time()
+        with self._snapshot_lock:
+            summary = dict(self._snapshot.get("summary") or {})
+            context_items = list(self._context.get("items") or [])
+        expired_leases = sum(
+            1
+            for item in context_items
+            if isinstance(item, dict)
+            and item.get("claim_present")
+            and isinstance(item.get("lease_remaining_s"), (int, float))
+            and item["lease_remaining_s"] <= 0
+        )
+
+        run_counts = {"live": 0, "orphaned": 0}
+        heartbeat_ages: list[tuple[str, str, float]] = []
+        source = self.db_path if self.db_path is not None else config.coord_db_path()
+        try:
+            with stable_copy(source) as frozen:
+                conn = connect_ro(frozen)
+                try:
+                    for row in conn.execute(
+                        "SELECT state, COUNT(*) AS n FROM runs"
+                        " WHERE state IN ('live','orphaned') GROUP BY state"
+                    ):
+                        run_counts[str(row["state"])] = int(row["n"])
+                    for row in conn.execute(
+                        "SELECT session_id, actor, last_heartbeat FROM agent_sessions"
+                        " WHERE state='active'"
+                    ):
+                        session_id = str(row["session_id"] or "")
+                        last_heartbeat = row["last_heartbeat"]
+                        if not session_id or last_heartbeat is None:
+                            continue
+                        heartbeat_ages.append(
+                            (session_id, str(row["actor"] or ""), max(0.0, now - float(last_heartbeat)))
+                        )
+                finally:
+                    conn.close()
+        except (OSError, sqlite3.Error):
+            # Same failure class main() already fails closed on at startup; a
+            # scrape is not the place to raise it a second time, so the run
+            # and heartbeat gauges are simply omitted for this generation.
+            pass
+
+        lines: list[str] = []
+        lines.append("# HELP coordharness_board_rows_by_status Board rows by derived status bucket.")
+        lines.append("# TYPE coordharness_board_rows_by_status gauge")
+        for bucket in ("running", "attention", "next", "done"):
+            lines.append(
+                f'coordharness_board_rows_by_status{{status="{bucket}"}} {_metric_int(summary.get(bucket))}'
+            )
+        lines.append("# HELP coordharness_expired_leases_total Held claims whose lease has lapsed.")
+        lines.append("# TYPE coordharness_expired_leases_total gauge")
+        lines.append(f"coordharness_expired_leases_total {expired_leases}")
+        lines.append("# HELP coordharness_runs_by_state Run rows by lifecycle state.")
+        lines.append("# TYPE coordharness_runs_by_state gauge")
+        for state in ("live", "orphaned"):
+            lines.append(f'coordharness_runs_by_state{{state="{state}"}} {run_counts[state]}')
+        lines.append(
+            "# HELP coordharness_session_heartbeat_age_seconds"
+            " Seconds since each active session's last heartbeat."
+        )
+        lines.append("# TYPE coordharness_session_heartbeat_age_seconds gauge")
+        for session_id, actor, age in sorted(heartbeat_ages):
+            lines.append(
+                "coordharness_session_heartbeat_age_seconds"
+                f'{{session_id="{_metric_label(session_id)}",actor="{_metric_label(actor)}"}} {age:.3f}'
+            )
+        lines.append("")
+        return "\n".join(lines)
+
     def operations_bundle(self) -> dict[str, Any]:
         """Return every Atlas input and its receipt from one cache generation.
 
@@ -1218,6 +1329,15 @@ class BoardHandler(BaseHTTPRequestHandler):
                 {"ok": True, "service": "coord-board", "read_only": True},
             )
             return
+        if path == "/metrics":
+            payload = self.server.metrics_text().encode("utf-8")
+            self._send(
+                HTTPStatus.OK,
+                payload,
+                "text/plain; version=0.0.4; charset=utf-8",
+                security_headers={**SECURITY_HEADERS, "Cache-Control": "no-store"},
+            )
+            return
         if path == "/api/v1/snapshot":
             self._send_json(HTTPStatus.OK, self.server.snapshot())
             return
@@ -1594,6 +1714,50 @@ def _missing_database_message(db_path: str | None) -> str:
     ))
 
 
+def _foreign_database_message(db_path: str | None) -> str:
+    """What to print when the named path opens as SQLite but carries no board schema.
+
+    A stray `touch coord.db`, an unrelated application's `.db` file, or a copy
+    interrupted before its schema was written all open without error and then
+    fail the first real query with `sqlite3.OperationalError: no such table`.
+    That reached the terminal as the same nine-frame traceback the missing-file
+    case used to. The file is present, so `_missing_database_message`'s "no
+    coordination database at X" would be false of it; the remediation is
+    otherwise identical, so only the headline differs.
+
+    This is a server-side catch on top of whatever path resolution already
+    handed back, not a fix to resolution itself: `coordharness/coord/config.py`
+    (owned by another lane) does not yet distinguish "no file" from "a file
+    that is not this schema" earlier in the chain. Teaching resolution itself
+    that distinction is the follow-up to file against that module.
+    """
+    resolved = db_path if db_path is not None else config.coord_db_path()
+    return "\n".join((
+        f"coord-board: {resolved} is not a coord-board database",
+        "  the file opens, but has none of the coordination tables.",
+        "  seed a demo board:      python -m coordharness.demo",
+        "  or name an existing one: coord-board --db /path/to/coord.db",
+    ))
+
+
+def _address_in_use_message(host: str, port: int) -> str:
+    """What to print when the bind itself fails because the port is taken.
+
+    A previous run left listening, another board pointed at a different
+    database, or an unrelated process picked the same port first -- all of
+    them reach `socket.bind` as `OSError: [Errno 48] Address already in use`,
+    which otherwise surfaces as a traceback that never names the port or says
+    how to find what is holding it.
+    """
+    return "\n".join((
+        f"coord-board: address already in use: {host}:{port}",
+        "  another process is already listening on this port.",
+        f"  find it:      lsof -i :{port}",
+        "  pick another: coord-board --port <port>",
+        "  or set:       COORD_BOARD_PORT=<port>",
+    ))
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="coord-board")
     parser.add_argument("--host", default=os.environ.get("COORD_BOARD_HOST", DEFAULT_HOST))
@@ -1624,10 +1788,17 @@ def main(argv: list[str] | None = None) -> int:
             refresh_interval=args.refresh_seconds,
         )
     except FileNotFoundError:
-        # Only this one condition is translated. A locked, corrupt, or
+        # Only these conditions are translated. A locked, corrupt, or
         # oversized database is not something a caller can be told to fix in
         # three lines, so those keep their traceback.
         print(_missing_database_message(args.db), file=sys.stderr)
+        return 2
+    except sqlite3.OperationalError:
+        # The file exists and opens, but the first real query answers "no
+        # such table": it is not a coord-board database. Same remediation as
+        # the missing-file case, different headline -- see
+        # `_foreign_database_message`.
+        print(_foreign_database_message(args.db), file=sys.stderr)
         return 2
     except ValueError as exc:
         # Configuration this process refuses to honour -- a brand name too long
@@ -1635,6 +1806,11 @@ def main(argv: list[str] | None = None) -> int:
         # the variable, which is the whole fix, so it is printed rather than
         # raised.
         print(f"coord-board: {exc}", file=sys.stderr)
+        return 2
+    except OSError as exc:
+        if exc.errno != errno.EADDRINUSE:
+            raise
+        print(_address_in_use_message(args.host, args.port), file=sys.stderr)
         return 2
     wildcard_ipv4 = ".".join(("0", "0", "0", "0"))
     shown_host = args.host if args.host not in {wildcard_ipv4, "::"} else "127.0.0.1"

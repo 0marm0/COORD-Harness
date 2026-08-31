@@ -28,6 +28,18 @@ for arg in "$@"; do
   esac
 done
 
+# Fail before seeding, not after: a raw traceback out of the board server
+# would otherwise be the first thing this script shows for an already-taken
+# port, and it never names the port or how to find what is holding it.
+if lsof -nP -iTCP:"$PORT" -sTCP:LISTEN >/dev/null 2>&1; then
+  echo "coord-board: address already in use: 127.0.0.1:$PORT" >&2
+  echo "  another process is already listening on this port." >&2
+  echo "  find it:      lsof -i :$PORT" >&2
+  echo "  pick another: COORD_BOARD_PORT=<port> $0 $*" >&2
+  echo "  or set:       coord-board --port <port>" >&2
+  exit 2
+fi
+
 [ "$RESET" = 1 ] && rm -rf "$DEMO"
 
 if [ ! -f "$DEMO/.coordharness/coord.db" ]; then
