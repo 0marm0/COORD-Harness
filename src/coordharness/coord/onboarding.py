@@ -24,8 +24,7 @@ def codex_config_text() -> str:
     return '''# Portable project-scoped MCP configuration. The project-local virtual environment
 # avoids reliance on an activated shell or a GUI application's PATH.
 [mcp_servers.coordharness]
-command = "./.venv/bin/python"
-args = ["-m", "coordharness.coord.mcp_coord_server"]
+command = "./scripts/coord-mcp-launch.sh"
 cwd = "."
 startup_timeout_sec = 20
 tool_timeout_sec = 60
@@ -42,8 +41,7 @@ COORD_ACTOR = "codex"
 def claude_config_text() -> str:
     return json.dumps({'mcpServers': {'coordharness': {
         'type': 'stdio',
-        'command': './.venv/bin/python',
-        'args': ['-m', 'coordharness.coord.mcp_coord_server'],
+        'command': './scripts/coord-mcp-launch.sh',
         'env': {
             'COORD_PROJECT_ROOT': '.',
             'COORD_DB': '.coordharness/coord.db',
@@ -119,7 +117,11 @@ def _resolve_server_command(root: Path, command: str) -> Path | None:
             launch_path.relative_to(root.resolve(strict=True))
     except (OSError, ValueError):
         return None
-    if not launch_path.is_file():
+    if not launch_path.is_file() or not os.access(launch_path, os.X_OK):
+        # A shim that resolves and exists but lacks the executable bit fails every
+        # client launch with a raw EACCES; treat it identically to "not found" so
+        # the doctor blocks here with a clear problem code instead of reporting
+        # PASS on a command that cannot actually run.
         return None
     # Preserve a virtual-environment launcher path rather than its interpreter
     # symlink target; Python derives sys.prefix from argv[0].
@@ -150,6 +152,12 @@ def _check_configs(root: Path) -> tuple[dict[str, Any], Any | None]:
             problems.append(f'machine_specific_command:{record.source}')
         if any(record.env.get(key) != value for key, value in expected.items()):
             problems.append(f'nonportable_env:{record.source}')
+        # The tracked launch command is a checked-in shim (scripts/coord-mcp-launch.sh)
+        # that always exists post-clone; it fails closed with an instruction, not an
+        # ENOENT, when the venv it execs into is missing. Check the venv directly so an
+        # unset-up clone still reads BLOCKED here rather than a false PASS.
+        if not (root / '.venv' / 'bin' / 'python').is_file():
+            problems.append(f'runtime_missing:{record.source}')
     problems.extend(issue.code for issue in security_issues(records))
     unique = sorted(set(problems))
     codex_record = next((r for r in coord_records if r.source == '.codex/config.toml'), None)
