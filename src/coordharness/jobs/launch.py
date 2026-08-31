@@ -20,6 +20,26 @@ from coordharness.coord.policy.pipeline import run_boundary_policy
 from coordharness import config as harness_config
 
 
+class ProcessGroupUnsupportedError(RuntimeError):
+    """Raised when os.killpg is required but this platform does not
+    provide it (there is no portable equivalent -- see docs/compatibility.md)."""
+
+
+# os.killpg is used unconditionally below because there is no cross-platform
+# equivalent of POSIX process-group signaling to fall back to. Probe once at
+# import time so every call site fails with a named error instead of a bare
+# AttributeError.
+POSIX_PROCESS_GROUPS_AVAILABLE = hasattr(os, "killpg")
+
+
+def _require_process_groups() -> None:
+    if not POSIX_PROCESS_GROUPS_AVAILABLE:
+        raise ProcessGroupUnsupportedError(
+            "this platform has no os.killpg; tracked process-group "
+            "signal/reap is POSIX-only and has no portable equivalent"
+        )
+
+
 def _job_progress_dir() -> Path:
     return harness_config.job_progress_dir()
 
@@ -107,6 +127,7 @@ def _command_receipt(command: list[str], proc_pattern: str | None = None) -> dic
 
 
 def _group_alive(pgid: int) -> bool:
+    _require_process_groups()
     try:
         os.killpg(pgid, 0)
         return True
@@ -257,6 +278,7 @@ def _finalize_coord_run(coord_path: Path, run_id: str, state: str) -> str | None
 
 
 def _terminate_process_group(proc: subprocess.Popen, pgid: int, *, grace_s: float = 2.0) -> None:
+    _require_process_groups()
     try:
         os.killpg(pgid, signal.SIGTERM)
     except (ProcessLookupError, PermissionError, OSError):
@@ -375,6 +397,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     if not reservation.ok:
         print(f"launch.py: runtime reservation rejected: {reservation.reason}", file=sys.stderr)
+        return 2
+    try:
+        _require_process_groups()
+    except ProcessGroupUnsupportedError as exc:
+        print(f"launch.py: {exc}", file=sys.stderr)
         return 2
     try:
         os.makedirs(progress_dir, exist_ok=True)
@@ -502,6 +529,7 @@ def main(argv: list[str] | None = None) -> int:
     killed_for_cap = {"flag": False}
 
     def _signal_group(sig: int) -> None:
+        _require_process_groups()
         try:
             os.killpg(pgid, sig)
         except (ProcessLookupError, PermissionError, OSError):

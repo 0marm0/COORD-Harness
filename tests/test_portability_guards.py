@@ -443,14 +443,29 @@ def test_mlx_runner_hardware_check_branches_on_platform_not_import(
     decide hardware support from sys.platform / platform.machine() read at
     call time -- never from an import-time failure that would make the
     runner unavailable to inspect on non-Apple-silicon hosts.
+
+    This calls the real hardware check inside `_make_real_generate_fn`
+    itself rather than recomputing the platform/machine comparison inline --
+    a version of this test that only re-derived `expect_supported` from the
+    same two patched values it had just set would pass regardless of what
+    `_make_real_generate_fn` actually decides, since it would never invoke
+    that function at all.
     """
     monkeypatch.setattr(mlx_runner.sys, "platform", platform_name)
     monkeypatch.setattr(mlx_runner.platform, "machine", lambda: machine_name)
-    supported = mlx_runner.sys.platform == "darwin" and mlx_runner.platform.machine() in {
-        "arm64",
-        "aarch64",
-    }
-    assert supported is expect_supported
+
+    if expect_supported:
+        # The hardware gate must pass; whatever happens next (e.g. the
+        # optional mlx_lm dependency being absent in this venv) is a
+        # separate concern, so only a RuntimeError naming the hardware gate
+        # itself is disallowed here.
+        try:
+            mlx_runner._make_real_generate_fn("dummy-model")
+        except RuntimeError as exc:
+            assert "Apple silicon" not in str(exc)
+    else:
+        with pytest.raises(RuntimeError, match="Apple silicon"):
+            mlx_runner._make_real_generate_fn("dummy-model")
 
 
 def test_pid_exists_never_raises_regardless_of_os_kill_outcome(
@@ -520,3 +535,202 @@ def test_platform_branching_modules_import_cleanly_under_every_declared_platform
         if module is None:
             module = importlib.import_module(module_name)
         assert module is not None
+
+
+# ---------------------------------------------------------------------------
+# windows-primitives lane: guards for the unconditional os.fork/os.setsid/
+# os.killpg process-group calls and the os.kill(pid, 0) signal-0 liveness
+# probes that docs/compatibility.md names under "Windows -- not supported".
+# Appended as its own block (not interleaved above) because another lane may
+# be concurrently editing this file. Each test simulates the primitive's
+# absence via the module's own precomputed capability flag -- the same style
+# the PS_LSTART_AVAILABLE tests above already use -- rather than deleting
+# the real os.fork/os.killpg/os.kill from the running interpreter, which
+# would risk breaking pytest's own process machinery mid-suite.
+# ---------------------------------------------------------------------------
+
+
+def test_pglaunch_refuses_process_group_calls_without_the_primitives(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """pglaunch._group_alive/_reap_group/_fork_gated_child call os.killpg,
+    os.setsid, or os.fork unconditionally with no portable fallback. With
+    POSIX_PROCESS_GROUPS_AVAILABLE forced False (what it computes to on a
+    platform missing any of the three), each must raise the named
+    ProcessGroupUnsupportedError before touching any of them -- never a
+    bare AttributeError from calling a primitive that doesn't exist.
+    """
+    from coordharness.jobs import pglaunch
+
+    monkeypatch.setattr(pglaunch, "POSIX_PROCESS_GROUPS_AVAILABLE", False)
+    monkeypatch.setattr(pglaunch, "_process_groups_unavailable_logged", True)  # keep quiet
+
+    with pytest.raises(pglaunch.ProcessGroupUnsupportedError):
+        pglaunch._group_alive(1)
+    with pytest.raises(pglaunch.ProcessGroupUnsupportedError):
+        pglaunch._reap_group(1, 1, 0.01)
+    with pytest.raises(pglaunch.ProcessGroupUnsupportedError):
+        pglaunch._fork_gated_child(["true"])
+
+
+def test_gpu_pglaunch_refuses_process_group_calls_without_the_primitives(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """gpu_pglaunch mirrors pglaunch's group helpers (_group_alive,
+    _reap_group) plus an unconditional os.getpgid in main(); main() must
+    refuse with the named error and a clean exit code 2 before it ever
+    calls subprocess.Popen(start_new_session=True) -- which Windows accepts
+    but silently no-ops, so getpgid() would then fail on a pgid that was
+    never real.
+    """
+    from coordharness.jobs import gpu_pglaunch
+
+    monkeypatch.setattr(gpu_pglaunch, "POSIX_PROCESS_GROUPS_AVAILABLE", False)
+
+    with pytest.raises(gpu_pglaunch.ProcessGroupUnsupportedError):
+        gpu_pglaunch._group_alive(1)
+    with pytest.raises(gpu_pglaunch.ProcessGroupUnsupportedError):
+        gpu_pglaunch._reap_group(1, None, 0.01)  # type: ignore[arg-type]
+
+    pgid_file = tmp_path / "pgid.json"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["_gpu_pglaunch", "--pgid-file", str(pgid_file), "--", "true"],
+    )
+    rc = gpu_pglaunch.main()
+    assert rc == 2
+    assert not pgid_file.exists()  # never reached the point of spawning anything
+
+
+def test_launch_refuses_process_group_calls_without_the_primitives(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """launch.py's _group_alive and _terminate_process_group call os.killpg
+    unconditionally; both must raise the named ProcessGroupUnsupportedError
+    when POSIX_PROCESS_GROUPS_AVAILABLE is False rather than let an
+    AttributeError propagate or silently degrade to killing only the
+    tracked root process while leaving the rest of its group running --
+    the "faked process-group semantics" outcome the module must not
+    produce. The third call site, the `_signal_group` closure inside
+    main(), is not independently invocable without standing up a full
+    coord-db-backed launch; it opens with the identical
+    `_require_process_groups()` call exercised directly below, so this is
+    the coverage that call site gets without a heavier main()-level
+    integration test.
+    """
+    from coordharness.jobs import launch
+
+    monkeypatch.setattr(launch, "POSIX_PROCESS_GROUPS_AVAILABLE", False)
+
+    with pytest.raises(launch.ProcessGroupUnsupportedError):
+        launch._group_alive(1)
+    with pytest.raises(launch.ProcessGroupUnsupportedError):
+        launch._require_process_groups()
+
+    class _NeverTerminated:
+        def terminate(self) -> None:
+            raise AssertionError(
+                "must raise before falling back to a single-process terminate()"
+            )
+
+    with pytest.raises(launch.ProcessGroupUnsupportedError):
+        launch._terminate_process_group(_NeverTerminated(), 1)  # type: ignore[arg-type]
+
+
+def test_process_liveness_pid_exists_refuses_without_a_signal_zero_probe(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """pid_exists()/pid_matches() call os.kill(pid, 0) unconditionally as a
+    POSIX null-signal existence probe. On a platform where signal 0 means
+    something else entirely (Windows aliases it to CTRL_C_EVENT), that call
+    must not run at all -- POSIX_LIVENESS_PROBE_AVAILABLE=False must raise
+    the named ProcessLivenessUnsupportedError rather than return a bool
+    that looks trustworthy but was produced by sending a real control
+    event.
+    """
+    monkeypatch.setattr(process_liveness, "POSIX_LIVENESS_PROBE_AVAILABLE", False)
+    monkeypatch.setattr(process_liveness, "_liveness_probe_unavailable_logged", True)
+
+    with pytest.raises(process_liveness.ProcessLivenessUnsupportedError):
+        process_liveness.pid_exists(12345)
+    with pytest.raises(process_liveness.ProcessLivenessUnsupportedError):
+        process_liveness.pid_matches(12345, expected_start_time=None)
+
+    # A falsy pid short-circuits before the platform check -- that branch is
+    # about the argument, not the platform, and must keep working everywhere.
+    assert process_liveness.pid_exists(None) is False
+    assert process_liveness.pid_exists(0) is False
+
+
+def test_reaper_pid_alive_refuses_without_a_signal_zero_probe(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """reaper.py keeps its own inline copy of the os.kill(pid, 0) probe
+    (imported name, not a call-through to process_liveness.pid_exists), so
+    it needs its own guard and its own test: patching
+    process_liveness.POSIX_LIVENESS_PROBE_AVAILABLE would not touch
+    reaper's separately-bound name.
+    """
+    from coordharness.coord import reaper
+
+    monkeypatch.setattr(reaper, "POSIX_LIVENESS_PROBE_AVAILABLE", False)
+
+    with pytest.raises(reaper.ProcessLivenessUnsupportedError):
+        reaper._pid_alive(12345)
+
+    # A falsy pid still short-circuits before the platform check.
+    assert reaper._pid_alive(None) is False
+    assert reaper._pid_alive(0) is False
+
+
+def test_sidecar_writer_pid_probes_refuse_without_a_signal_zero_probe(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """sidecar_writer.py has two independent os.kill(pid, 0)-family call
+    sites: `_pid_alive` (a plain liveness probe) and
+    `_prove_process_identity_absent` (which additionally negates a pgid
+    into a negative pid, relying on the POSIX convention that a negative
+    pid signals the whole process group -- a second POSIX-only assumption
+    stacked on signal-0 itself). Neither has a portable equivalent, so both
+    must refuse by raising rather than guess at an answer reconciliation
+    logic would then trust.
+    """
+    from coordharness.jobs import sidecar_writer
+
+    monkeypatch.setattr(sidecar_writer, "POSIX_LIVENESS_PROBE_AVAILABLE", False)
+
+    with pytest.raises(sidecar_writer.ProcessLivenessUnsupportedError):
+        sidecar_writer._pid_alive(12345)
+    assert sidecar_writer._pid_alive(None) is False
+    assert sidecar_writer._pid_alive(0) is False
+
+    with pytest.raises(sidecar_writer.DeadReconciliationError):
+        sidecar_writer._prove_process_identity_absent("pgid", 12345)
+
+
+def test_pytest_gate_runner_liveness_degrades_without_a_signal_zero_probe(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """pytest_gate.runner_is_live() has its own os.kill(pid, 0) call site,
+    found by enumerating every unconditional os.kill in src/ rather than
+    trusting the six-module inventory docs/compatibility.md already named
+    (`testing/pytest_gate.py` was not on that list). Unlike the other
+    liveness probes in this block, this function's own contract already
+    treats `None` as an honest "cannot verify" outcome -- reconcile_running_
+    sidecar() explicitly branches on `runner_liveness is None` into a
+    `runner_liveness: "UNAVAILABLE_PROCESS_INSPECTION"` marker rather than
+    ever needing a bool -- so the platform-unavailable case reuses that
+    existing sentinel instead of introducing a new raising failure mode
+    that would be inconsistent with its own PermissionError/OSError
+    branches just below it.
+    """
+    from coordharness.testing import pytest_gate
+
+    monkeypatch.setattr(pytest_gate, "POSIX_LIVENESS_PROBE_AVAILABLE", False)
+
+    assert pytest_gate.runner_is_live({"runner_pid": 12345}) is None
+    # Argument-shaped short-circuits (non-positive/non-numeric pid) still
+    # resolve before the platform check is ever consulted.
+    assert pytest_gate.runner_is_live({"runner_pid": 0}) is False
+    assert pytest_gate.runner_is_live({}) is False

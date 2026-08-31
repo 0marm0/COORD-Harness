@@ -79,16 +79,62 @@ now resolved (below); these are the concrete blockers that remain, not an exhaus
   that behavior is unchanged, so PID-reuse protection degrades visibly to a bare `pid_exists()`
   liveness check rather than silently passing. `tests/test_portability_guards.py` covers both the
   absence path and the pre-existing "cannot verify" semantics.
-- **Process-group and signal semantics -- still open.** `os.fork` / `os.setsid` / `os.killpg` in
-  `src/coordharness/jobs/pglaunch.py` (`os.fork()` at line 223, `os.killpg` at lines 163, 198, 208)
-  and `src/coordharness/jobs/launch.py` (`_terminate_process_group`, `os.killpg` at lines 261, 269,
-  506) assume a POSIX process-group model with no Windows equivalent in this code path -- unlike
-  the `fcntl` imports, these are used unconditionally rather than behind a capability guard, and
-  fixing them is a separate, larger change than the import-time fix above.
-  `os.kill(pid, 0)` as a liveness probe (`src/coordharness/coord/process_liveness.py:39`,
-  `src/coordharness/coord/reaper.py:25`, `src/coordharness/jobs/sidecar_writer.py:215,301`) runs
-  on Windows but with different signal-0 semantics, and the broad `except OSError` around it would
-  silently misreport a live process as dead rather than fail loudly.
+- **Process-group and signal semantics -- RESOLVED (fails named, does not fake it).** There is no
+  portable equivalent for POSIX process-group job supervision or a POSIX null-signal existence
+  probe, so neither is faked; every unconditional use of `os.fork` / `os.setsid` / `os.killpg` /
+  `os.getpgid` / `os.kill(pid, 0)` now checks a module-level capability flag (computed once at
+  import time, the same `hasattr`-probe pattern `PS_LSTART_AVAILABLE` established above) and raises
+  a named error at the point of use instead of leaking a bare `AttributeError` or silently
+  misreporting a result:
+  - **Process-group supervision (`os.fork`/`os.setsid`/`os.killpg`/`os.getpgid`).** A job
+    supervisor that silently could not kill a process tree would be worse than one that says it
+    cannot run here, so these raise `ProcessGroupUnsupportedError` (one such class per module, all
+    gated on `POSIX_PROCESS_GROUPS_AVAILABLE`) rather than fall back to killing only the tracked
+    root process and leaving its descendants orphaned:
+    - `src/coordharness/jobs/pglaunch.py` -- `_group_alive`, `_reap_group`, and `_fork_gated_child`
+      (`os.killpg` at the call sites, `os.fork`/`os.setsid` inside `_fork_gated_child`); `main()`
+      catches the error around the launch call and exits `2` with a stderr message instead of a
+      traceback.
+    - `src/coordharness/jobs/gpu_pglaunch.py` -- `_group_alive`/`_reap_group` (`os.killpg`) and
+      `main()` itself, which checks before `subprocess.Popen(..., start_new_session=True)` even
+      runs: that flag is silently a no-op on a platform without `setsid`, so the `os.getpgid(
+      proc.pid)` right after it would describe a group that was never actually created, not just
+      raise `AttributeError`.
+    - `src/coordharness/jobs/launch.py` -- `_group_alive`, `_terminate_process_group`, and the
+      `_signal_group` closure inside `main()` (`os.killpg`); `main()` also checks up front, before
+      spawning the child, so a launch on an unsupported platform never gets partway through.
+  - **Signal-0 liveness probes (`os.kill(pid, 0)`).** Windows does not treat signal 0 as a POSIX
+    null-probe: `sig=0` aliases `CTRL_C_EVENT`, so `os.kill(pid, 0)` there asks the OS to send a
+    real console control event to a process group rather than performing a side-effect-free
+    existence check -- catching the resulting `OSError` and returning "not alive" would not just be
+    wrong, it would be reporting the outcome of an action the caller never intended to take. These
+    sites raise `ProcessLivenessUnsupportedError` (gated on `POSIX_LIVENESS_PROBE_AVAILABLE`, mirrored
+    per module) instead:
+    - `src/coordharness/coord/process_liveness.py` -- `pid_exists()` (and transitively
+      `pid_matches()`), the primitive every other liveness check in the package ultimately calls.
+    - `src/coordharness/coord/reaper.py` -- `_pid_alive()`, which inlines the same probe rather than
+      calling `process_liveness.pid_exists()`.
+    - `src/coordharness/jobs/sidecar_writer.py` -- `_pid_alive()`, and
+      `_prove_process_identity_absent()`, which additionally relies on the POSIX convention that a
+      *negative* pid passed to `os.kill` signals the whole process group, so a pgid check there
+      stacks two POSIX-only assumptions; both raise (`ProcessLivenessUnsupportedError` and the
+      existing `DeadReconciliationError` respectively, since that function's contract is already
+      "prove absence or raise" and platform incapability is one more way absence cannot be proven).
+    - `src/coordharness/testing/pytest_gate.py` -- `runner_is_live()`, found by enumerating every
+      unconditional `os.kill` call in `src/` rather than trusting the module list above to be
+      exhaustive. Its signature is already `bool | None`, and `None` is already its own vocabulary
+      for "cannot verify" -- the `PermissionError`/`OSError` branches immediately below the probe
+      return it, and its one caller (`reconcile_running_sidecar()`) already branches on
+      `runner_liveness is None` into a `runner_liveness: "UNAVAILABLE_PROCESS_INSPECTION"` marker.
+      Platform incapability reuses that existing sentinel (imports
+      `process_liveness.POSIX_LIVENESS_PROBE_AVAILABLE` directly) instead of adding a second,
+      inconsistent failure mode to a function that already has an honest one.
+  - Test coverage: `tests/test_portability_guards.py` (in the block marked `windows-primitives
+    lane`, added after `test_platform_branching_modules_import_cleanly_under_every_declared_
+    platform`) simulates each primitive's absence per module -- flipping the module's capability
+    flag and, for the process-group tests, also `monkeypatch.delattr`-ing the underlying `os`
+    function -- and asserts the named error (or, for `pytest_gate.runner_is_live()`, the existing
+    `None` sentinel), not a source-text grep.
 - **Permission bits that mean something different on Windows.** `os.chmod`/`os.open` mode bits
   such as `0o600` and `0o700` (`src/coordharness/coord/coord_db.py:150,158`,
   `src/coordharness/usage/replica.py` and `src/coordharness/usage/local_profiles.py`,
