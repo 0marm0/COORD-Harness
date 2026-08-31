@@ -36,6 +36,12 @@ FENCE_RE = re.compile(r"^ {0,3}(`{3,}|~{3,})")
 REFERENCE_RE = re.compile(
     r"(?m)^ {0,3}\[[^\]\n]+\]:[ \t]*(?:<(?P<angle>[^>\n]+)>|(?P<plain>\S+))"
 )
+# A prose citation names a doc and a "§4a"-style section inside a Markdown
+# link's visible label, e.g. "[release readiness checklist §2a](next-steps.md#...)".
+CITATION_RE = re.compile(
+    r"\[(?P<label>[^\]\n]*§(?P<section>[0-9]+[a-z]?)\b[^\]\n]*)\]\((?P<target>[^)\n]+)\)"
+)
+HEADING_TOKEN_RE = re.compile(r"^ {0,3}#{1,6}\s+(?P<token>[0-9]+[a-z]?)(?=[.:)\s]|$)")
 
 
 @dataclass
@@ -255,6 +261,65 @@ def _check_links(root: Path, tracked: list[str], report: Report) -> None:
             _check_link(root, source, line, target, report)
 
 
+def _heading_tokens(text: str) -> set[str]:
+    """Leading '§N[a]'-style tokens off every ATX heading, lowercased."""
+
+    tokens: set[str] = set()
+    for line in text.splitlines():
+        match = HEADING_TOKEN_RE.match(line)
+        if match:
+            tokens.add(match.group("token").lower())
+    return tokens
+
+
+def _check_prose_citations(root: Path, tracked: list[str], report: Report) -> None:
+    """A '[doc name §4a](target)' citation must resolve to a real heading in target."""
+
+    tracked_set = set(tracked)
+    sources = [root / rel for rel in tracked if rel.lower().endswith(".md")]
+    for source in sources:
+        try:
+            text = source.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        masked = _mask_markdown_code(text)
+        for match in CITATION_RE.finditer(masked):
+            target = match.group("target").strip()
+            if not target or target.startswith("#"):
+                # A same-document anchor citation isn't a cross-doc section claim.
+                continue
+            try:
+                parsed = urlsplit(target)
+            except ValueError:
+                continue
+            if parsed.scheme or not parsed.path:
+                continue
+            try:
+                decoded = unquote_to_bytes(parsed.path).decode("utf-8")
+            except UnicodeDecodeError:
+                continue
+            candidate = (root / decoded.lstrip("/")) if decoded.startswith("/") else source.parent / decoded
+            resolved = candidate.resolve(strict=False)
+            try:
+                rel = resolved.relative_to(root).as_posix()
+            except ValueError:
+                continue
+            if rel not in tracked_set or not resolved.is_file():
+                # Already reported (or not) by _check_links; don't double up.
+                continue
+            try:
+                cited_text = resolved.read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError):
+                continue
+            section = match.group("section").lower()
+            if section not in _heading_tokens(cited_text):
+                line = masked.count("\n", 0, match.start()) + 1
+                report.add(
+                    f"{_display(root, source)}:{line}: prose citation "
+                    f"§{match.group('section')} has no matching heading in {rel}"
+                )
+
+
 def _load_json(root: Path, tracked: list[str], report: Report) -> dict[Path, object]:
     values: dict[Path, object] = {}
     for rel in tracked:
@@ -452,6 +517,7 @@ def validate(root: Path) -> Report:
     if tracked is None:
         return report
     _check_links(root, tracked, report)
+    _check_prose_citations(root, tracked, report)
     values = _load_json(root, tracked, report)
     _check_svgs(root, tracked, report)
     _check_asset_provenance(root, tracked, values, report)
