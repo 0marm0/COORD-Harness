@@ -10,7 +10,12 @@ import tempfile
 
 from . import coord_db
 from .config import connect
-from .process_liveness import START_TIME_TOLERANCE_S, pid_start_time
+from .process_liveness import (
+    POSIX_LIVENESS_PROBE_AVAILABLE,
+    START_TIME_TOLERANCE_S,
+    ProcessLivenessUnsupportedError,
+    pid_start_time,
+)
 from .staleness import ACTIVE_INTENT_STALE_SECS, PIDLESS_RUN_STALE_SECS
 
 
@@ -21,6 +26,14 @@ def _process_start_time(pid: int | None) -> float | None:
 def _pid_alive(pid: int | None, expected_start_time: float | None = None) -> bool:
     if not pid:
         return False
+    if not POSIX_LIVENESS_PROBE_AVAILABLE:
+        # See process_liveness.ProcessLivenessUnsupportedError: this
+        # platform's os.kill(pid, 0) does not perform a POSIX null-signal
+        # existence probe, so the reaper refuses to guess at liveness here.
+        raise ProcessLivenessUnsupportedError(
+            "reaper._pid_alive() relies on POSIX signal-0 null-probe "
+            "semantics, which this platform does not provide"
+        )
     try:
         os.kill(pid, 0)
     except ProcessLookupError:

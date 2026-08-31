@@ -11,6 +11,30 @@ import tempfile
 import time
 
 
+class ProcessGroupUnsupportedError(RuntimeError):
+    """Raised when os.getpgid/os.killpg are required but this platform
+    provides none of them (there is no portable equivalent -- see
+    docs/compatibility.md)."""
+
+
+# os.getpgid/os.killpg are used unconditionally below because there is no
+# cross-platform equivalent of POSIX process-group supervision to fall back
+# to; `subprocess.Popen(start_new_session=True)` also silently does nothing
+# on platforms without setsid, so a group id obtained there would not even
+# describe a real group. Probe once at import time so every call site fails
+# with a named error instead of a bare AttributeError.
+POSIX_PROCESS_GROUPS_AVAILABLE = hasattr(os, "getpgid") and hasattr(os, "killpg")
+
+
+def _require_process_groups() -> None:
+    if not POSIX_PROCESS_GROUPS_AVAILABLE:
+        raise ProcessGroupUnsupportedError(
+            "this platform has no os.getpgid/os.killpg; GPU tracked "
+            "process-group launch/reap is POSIX-only and has no portable "
+            "equivalent"
+        )
+
+
 def _atomic_write(path: str, obj: dict) -> None:
     d = os.path.dirname(path) or "."
     fd, tmp = tempfile.mkstemp(prefix=os.path.basename(path) + ".", dir=d)
@@ -28,6 +52,7 @@ def _atomic_write(path: str, obj: dict) -> None:
 
 
 def _group_alive(pgid: int) -> bool:
+    _require_process_groups()
     try:
         os.killpg(pgid, 0)
         return True
@@ -47,6 +72,7 @@ def _wait_group_empty(pgid: int, timeout_s: float) -> bool:
 
 
 def _reap_group(pgid: int, proc: subprocess.Popen, grace: float) -> None:
+    _require_process_groups()
     try:
         os.killpg(pgid, signal.SIGTERM)
     except (ProcessLookupError, PermissionError):
@@ -82,6 +108,11 @@ def main() -> int:
         print("_gpu_pglaunch: no command given after --", file=sys.stderr)
         return 2
 
+    try:
+        _require_process_groups()
+    except ProcessGroupUnsupportedError as exc:
+        print(f"_gpu_pglaunch: {exc}", file=sys.stderr)
+        return 2
     proc = subprocess.Popen(cmd, start_new_session=True)
     pgid = os.getpgid(proc.pid)
     try:

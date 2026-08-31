@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from coordharness import config as harness_config
+from coordharness.coord.process_liveness import POSIX_LIVENESS_PROBE_AVAILABLE
 
 def retired_test_basenames(repo_root: Path) -> frozenset[str]:
     return frozenset()
@@ -256,6 +257,16 @@ def runner_is_live(sidecar: dict[str, Any]) -> bool | None:
         return False
     if pid <= 0:
         return False
+    if not POSIX_LIVENESS_PROBE_AVAILABLE:
+        # os.kill(pid, 0) is a POSIX null-signal existence probe; on a
+        # platform where signal 0 means something else (Windows aliases it
+        # to CTRL_C_EVENT and sends a real console control event instead),
+        # this refuses to call it at all rather than either fake a bool or
+        # risk the side effect. "Cannot verify" is already this function's
+        # own vocabulary for that -- see the PermissionError/OSError
+        # branches below -- so this platform gap uses the same sentinel
+        # instead of a new failure mode.
+        return None
     try:
         os.kill(pid, 0)
     except ProcessLookupError:
