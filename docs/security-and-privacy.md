@@ -56,6 +56,17 @@ share `coord.db` over a network mount, or publish the viewer through a proxy. Mu
 or multi-tenant coordination requires real identity, authorization, and tenant-scoped data;
 that product does not exist here.
 
+**Before proposing to change any of this, read the guard audit.**
+[`threat-model.md`](threat-model.md) works through the trust model above guard by guard —
+the claim-ownership check, the one-live-claim index, lane inequality on review, the
+completion proof gate, the deferred-tool handshake, the read-only projection — and asks of
+each one whether it would still be doing work if `actor` were verified rather than asserted.
+Some survive unchanged, some become enforcement points for the first time, and some turn out
+to be decorative the moment a second person can write. It also lists what a hosted or shared
+profile would actually require, as a checklist. That audit is the gate for every
+multi-machine idea in this project, including adding authentication itself: a login screen
+added before it moves the trust boundary without establishing which guards move with it.
+
 ## What the harness writes, and what it never writes
 
 Writes fall into two places, kept deliberately narrow. **The board** holds structured rows:
