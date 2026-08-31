@@ -429,7 +429,7 @@ fenced producer**: a successful session closeout offers only typed decisions
 explicitly marked `memory_candidate=true`; ordinary decisions, notes, summaries and
 empty sessions emit nothing. And the board's own context endpoint carries
 **structure, not prose** — parents, dependencies, dependents and siblings — because
-the board is read-only and unauthenticated, and decisions and notes are not public.
+the browser board is read-only and unauthenticated, and decisions and notes are not public.
 
 [Context and memory](docs/context-and-memory.md) is the full chapter — every store,
 every module, what each is for, and what is deliberately never written down.
@@ -448,6 +448,7 @@ core against the same file.
 | Renew | `coord heartbeat-claim CLAIM --step "…"` | `heartbeat(...)` | `coord_db.heartbeat_claim(...)` |
 | Pause/block | `coord release CLAIM --status paused\|blocked ...` | `park(...)`, `block(...)` | typed lifecycle functions |
 | Message mid-run | `coord note WORK --body "…"` | `note(...)` | `coord_db.post_note(...)` |
+| Reassign work | `coord reassign WORK --owner-lane …` | `handoff_existing(...)` | `coord_db.post_existing_work_handoff(...)` |
 | Read messages | `coord inbox` | `inbox`, `inbox_recent` | `coord_db.read_inbox(...)` |
 | Complete | `coord done WORK --artifact PATH` | `complete(...)` | `coord_db.complete_claim(...)` |
 | Read board | `coord board --group-by module` | `board(...)` | read-only board queries |
@@ -483,7 +484,8 @@ agent is the one operation that moves ownership out from under a live holder.
 > a deployment that has done its own authority activation, and its refusals there are working as
 > designed. Typed handoff over MCP stays behind the promotion contract; the CLI `coord handoff`
 > reaches the same fenced operation and demands the exact row version, owner, and event heads by
-> hand.
+> hand. `coord reassign` is the concise twin: it snapshots those same fences once and still fails
+> closed if another writer changes them before commit.
 
 <details>
 <summary><b>MCP client setup</b> &mdash; Claude Code, Codex, and generic clients</summary>
@@ -664,8 +666,12 @@ COORD_DB=$PWD/.coordharness/coord.db COORD_BOARD_URL=http://127.0.0.1:7870 \
 
 Both read the database directly through a read-only SQLite connection
 (`SQLITE_OPEN_READONLY` plus `PRAGMA query_only=ON`) and fall back to the HTTP
-snapshot; neither can write to the board — the panel's action buttons post typed
-requests to a separate, unshipped control endpoint, never to the store. Reading the
+snapshot. By default neither can write to the board. An explicit
+`apps/install.sh --enable-native-operator-writes` opt-in enables only native task
+reassignment over a fixed loopback endpoint, with an owner-only bearer,
+confirmation, exact row/version/assignment-head fences, idempotent receipts, and
+refusal while a claim or run is live. Browser actions remain read-only; the native
+client never writes SQLite directly. Reading the
 file directly couples these two apps to the SQLite schema; the iOS client and the
 snapshot-only `CoordCockpitMac` target take `/api/v1/snapshot` over HTTP instead and
 stay independent of it. See [compatibility](docs/compatibility.md).
@@ -702,7 +708,7 @@ The machine-readable source for this table is [`docs/feature-status.json`](docs/
 | Freeform shared whiteboard | **Planned** | No authoritative standalone implementation |
 | Rich private-product operations console | **Excluded** | Product modules, branded actions, and hosted operations stay private |
 | Loopback read-only web board | **Preview** | Branch surface; localhost only |
-| macOS and iOS read-only clients | **Preview** | Clean-room native clients in branch integration |
+| macOS and iOS clients | **Preview** | Clean-room read-only clients by default; opt-in macOS task reassignment is loopback-only, authenticated, confirmed, and CAS-fenced |
 | Distributed, hosted, or multi-tenant coordination | **Excluded** | Single-machine trust model |
 
 ## Security boundary

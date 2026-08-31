@@ -239,7 +239,16 @@ final class CockpitHTTPFallbackSource {
             groupKey: groupKey,
             groupLabel: row.string("group_label") ?? fallbackGroupLabel,
             displayOrder: row.int("display_order") ?? fallbackOrder ?? 0,
-            actions: compactActions(row)
+            actions: compactActions(row),
+            workVersion: row.int("work_version"),
+            currentAssignee: row.string("current_assignee") ?? row.string("assignee") ?? row.string("owner"),
+            assignmentHeadEventIDs: row.ints("assignment_head_event_ids"),
+            activeClaimIDs: row.strings("active_claim_ids"),
+            claimStatus: row.string("claim_status"),
+            claimLive: row.bool("claim_live") ?? false,
+            liveRunCount: row.int("live_run_count") ?? 0,
+            nativeOperatorWritesEnabled: row.bool("native_operator_writes_enabled") ?? false,
+            nativeOperatorWritesReason: row.string("native_operator_writes_reason")
         )
     }
 
@@ -424,6 +433,20 @@ private extension Dictionary where Key == String, Value == Any {
         if let value = self[key] as? String { return Double(value) }
         if let number = self[key] as? NSNumber { return number.doubleValue }
         return nil
+    }
+
+    func ints(_ key: String) -> [Int] {
+        if let values = self[key] as? [Int] { return values }
+        guard let raw = self[key] as? String, let data = raw.data(using: .utf8),
+              let values = try? JSONSerialization.jsonObject(with: data) as? [Int] else { return [] }
+        return values
+    }
+
+    func strings(_ key: String) -> [String] {
+        if let values = self[key] as? [String] { return values }
+        guard let raw = self[key] as? String, let data = raw.data(using: .utf8),
+              let values = try? JSONSerialization.jsonObject(with: data) as? [String] else { return [] }
+        return values
     }
 
     func bool(_ key: String) -> Bool? {

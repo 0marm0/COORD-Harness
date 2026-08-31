@@ -38,6 +38,15 @@ def test_continuous_height_messages_target_the_embedding_parent_origin() -> None
     assert '}, location.origin);' not in source
 
 
+def test_continuous_fleet_matrix_uses_compact_information_dense_geometry() -> None:
+    css = (SCHEMA_DIR / "static" / "cockpit.css").read_text(encoding="utf-8")
+    assert ".continuous-section-fleet #fleet .matrix th," in css
+    assert "height: 30px;" in css
+    assert "height: 66px;" in css
+    assert "padding: .22rem .38rem;" in css
+    assert ".continuous-section-fleet #fleet .legend" in css
+
+
 def _nested_keys(value: object) -> set[str]:
     if isinstance(value, dict):
         found = set(value)

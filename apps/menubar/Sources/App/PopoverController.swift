@@ -441,7 +441,8 @@ final class PopoverController {
         forceUsageRefresh()
         let detachedVisible = detachedWindow?.isVisible == true
         let detachedSize = detachedVisible ? detachedWindow?.contentView?.bounds.size : nil
-        let width = max(500, detachedSize?.width ?? 500)
+        let usageWindowWidth: CGFloat = 460
+        let width = detachedVisible ? max(usageWindowWidth, detachedSize?.width ?? usageWindowWidth) : usageWindowWidth
         // Usage is an expanded route: give its cards, cost charts, and persistent actions
         // the same screen-fit height as the installed route instead of capping it at 680 points.
         let height = detachedVisible
