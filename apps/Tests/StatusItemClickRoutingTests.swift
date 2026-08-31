@@ -3,6 +3,82 @@ import XCTest
 @testable import CoordCockpitMac
 
 final class StatusItemClickRoutingTests: XCTestCase {
+    func testOpeningClickCannotImmediatelyDismissPrimaryPopover() {
+        let anchor = CGRect(x: 500, y: 900, width: 120, height: 24)
+        XCTAssertFalse(
+            PopoverClickPolicy.shouldCloseGlobalClick(
+                location: CGPoint(x: 100, y: 100),
+                anchorFrame: anchor,
+                stayOpen: false,
+                openedAt: 10,
+                now: 10.1
+            )
+        )
+        XCTAssertFalse(
+            PopoverClickPolicy.shouldCloseGlobalClick(
+                location: CGPoint(x: 100, y: 100),
+                anchorFrame: anchor,
+                stayOpen: false,
+                openedAt: 10,
+                now: 11.01
+            ),
+            "the measured delayed AXPress event must not dismiss the panel"
+        )
+        XCTAssertFalse(
+            PopoverClickPolicy.shouldCloseGlobalClick(
+                location: CGPoint(x: 100, y: 100),
+                anchorFrame: anchor,
+                stayOpen: false,
+                openedAt: 10,
+                now: 12
+            )
+        )
+        XCTAssertTrue(
+            PopoverClickPolicy.shouldCloseGlobalClick(
+                location: CGPoint(x: 100, y: 100),
+                anchorFrame: anchor,
+                stayOpen: false,
+                openedAt: 10,
+                now: 14
+            )
+        )
+        XCTAssertFalse(
+            PopoverClickPolicy.shouldCloseGlobalClick(
+                location: CGPoint(x: anchor.midX, y: anchor.midY),
+                anchorFrame: anchor,
+                stayOpen: false,
+                openedAt: 10,
+                now: 11
+            )
+        )
+    }
+
+    func testGlobalClickMonitorNormalizesWindowCoordinatesBeforeHitTesting() throws {
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+        let source = try String(contentsOf: root.appendingPathComponent("menubar/Sources/App/PopoverController.swift"))
+
+        XCTAssertTrue(source.contains("$0.convertPoint(toScreen: event.locationInWindow)"))
+        XCTAssertTrue(source.contains("location: screenLocation"))
+        XCTAssertFalse(source.contains("location: event.locationInWindow"))
+    }
+
+    func testAttachedCloseCallbackHasSingleOwner() throws {
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+        let source = try String(contentsOf: root.appendingPathComponent("menubar/Sources/App/PopoverController.swift"))
+        let closeBody = try XCTUnwrap(
+            source.components(separatedBy: "func close() {").dropFirst().first?
+                .components(separatedBy: "private func installClickMonitor()").first
+        )
+
+        XCTAssertTrue(closeBody.contains("if popover.isShown"))
+        XCTAssertTrue(closeBody.contains("} else if detachedWindow?.isVisible == true"))
+        XCTAssertEqual(
+            closeBody.components(separatedBy: "popoverDidClose()").count - 1,
+            1,
+            "only detached orderOut needs a direct close callback; NSPopover uses its delegate"
+        )
+    }
+
     func testEveryHorizontalLocationRoutesToPrimaryPanel() {
         let bounds = CGRect(x: 0, y: 0, width: 180, height: 24)
         for x in stride(from: -20.0, through: 200.0, by: 0.25) {
@@ -14,17 +90,21 @@ final class StatusItemClickRoutingTests: XCTestCase {
         }
     }
 
-    func testControllerHasNoStatsHitRegionOrTransientCallback() throws {
+    func testStatsOwnIndependentStatusItemAndDetailRoute() throws {
         let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
         let controller = try String(contentsOf: root.appendingPathComponent("menubar/Sources/App/StatusItemController.swift"))
+        let stats = try String(contentsOf: root.appendingPathComponent("menubar/Sources/App/StatsStatusItemController.swift"))
         let delegate = try String(contentsOf: root.appendingPathComponent("menubar/Sources/App/AppDelegate.swift"))
 
         XCTAssertTrue(controller.contains("guard let button = item.button else { return }\n        onClick?(button)"))
         XCTAssertFalse(controller.contains("onStatsClick"))
         XCTAssertFalse(controller.contains("clickedSystemTelemetrySegment"))
         XCTAssertFalse(controller.contains("titleRect(forBounds"))
-        XCTAssertFalse(delegate.contains("statsPopover"))
-        XCTAssertFalse(delegate.contains("toggleStatsPopover"))
+        XCTAssertTrue(stats.contains("next.autosaveName = \"org.coordharness.menubar.stats\""))
+        XCTAssertTrue(stats.contains("onClick?(button)"))
+        XCTAssertTrue(delegate.contains("statsStatusItem.onClick"))
+        XCTAssertTrue(delegate.contains("statsPopover.toggle("))
+        XCTAssertTrue(delegate.contains("snapshot: self.telemetryStore.snapshot"))
     }
 
     func testStatsRowOnlyTogglesInlineDetailInsidePrimaryPanel() throws {
@@ -68,9 +148,10 @@ final class StatusItemClickRoutingTests: XCTestCase {
         }
     }
 
-    func testQuotaAndTelemetryUseOneImageOnlyAccessibleClickTarget() throws {
+    func testQuotaAndStatsUseIndependentAccessibleClickTargets() throws {
         let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
         let controller = try String(contentsOf: root.appendingPathComponent("menubar/Sources/App/StatusItemController.swift"))
+        let stats = try String(contentsOf: root.appendingPathComponent("menubar/Sources/App/StatsStatusItemController.swift"))
         let renderer = try String(contentsOf: root.appendingPathComponent("menubar/Sources/UI/RingRenderer.swift"))
         let render = try XCTUnwrap(controller.components(separatedBy: "private func render()").dropFirst().first?.components(separatedBy: "private func systemTelemetryPresentations").first)
 
@@ -84,11 +165,24 @@ final class StatusItemClickRoutingTests: XCTestCase {
         XCTAssertFalse(render.contains("Active task"))
         XCTAssertFalse(renderer.contains("task.compactLabel"))
 
-        let gpu = try XCTUnwrap(controller.range(of: "(\"GPU\","))
-        let ram = try XCTUnwrap(controller.range(of: "(\"RAM\",", range: gpu.upperBound..<controller.endIndex))
-        let cpu = try XCTUnwrap(controller.range(of: "(\"CPU\",", range: ram.upperBound..<controller.endIndex))
+        XCTAssertTrue(render.contains("let telemetry: [RingRenderer.TelemetryPresentation] = []"))
+        XCTAssertFalse(render.contains("showSystemTelemetry ? systemTelemetryPresentations()"))
+        XCTAssertTrue(stats.contains("button.imagePosition = .imageOnly"))
+        XCTAssertTrue(stats.contains("button.setAccessibilityLabel(label)"))
+        XCTAssertTrue(stats.contains("button.setAccessibilityHelp("))
+        let gpu = try XCTUnwrap(stats.range(of: "(\"GPU\","))
+        let ram = try XCTUnwrap(stats.range(of: "(\"RAM\",", range: gpu.upperBound..<stats.endIndex))
+        let cpu = try XCTUnwrap(stats.range(of: "(\"CPU\",", range: ram.upperBound..<stats.endIndex))
         XCTAssertLessThan(gpu.lowerBound, ram.lowerBound)
         XCTAssertLessThan(ram.lowerBound, cpu.lowerBound)
+
+        let tokens = try String(contentsOf: root.appendingPathComponent("menubar/Sources/App/DesignTokens.swift"))
+        XCTAssertTrue(tokens.contains("static let claudeOrange = rgb(0.95, 0.47, 0.24)"))
+        XCTAssertTrue(tokens.contains("static let statsWarningOrange = rgb(0.90, 0.36, 0.16)"))
+        XCTAssertTrue(stats.contains("case .normal: return .systemBlue"))
+        XCTAssertTrue(stats.contains("case .warning: return Tokens.Color.statsWarningOrange"))
+        XCTAssertTrue(stats.contains("case .critical: return .systemRed"))
+        XCTAssertTrue(stats.contains("case .unavailable: return .secondaryLabelColor"))
     }
 
     func testContextMenuSettingsUsesDedicatedNonToggleRoute() throws {

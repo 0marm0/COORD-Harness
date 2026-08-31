@@ -23,17 +23,54 @@ final class ConfigPersistenceTests: XCTestCase {
         let source = try String(contentsOf: root.appendingPathComponent("menubar/Sources/Data/Config.swift"))
         XCTAssertTrue(source.contains("var systemTelemetryInStatusItem: Bool = true"))
         XCTAssertTrue(source.contains("var systemTelemetryStatusPreferenceVersion: Int = 1"))
-        XCTAssertTrue(source.contains("storedTelemetryStatusVersion == nil"))
-        XCTAssertTrue(source.contains("? true"))
+        XCTAssertTrue(source.contains("let storedTelemetryVisibility"))
+        XCTAssertTrue(source.contains("systemTelemetryInStatusItem = storedTelemetryVisibility ?? fallback.systemTelemetryInStatusItem"))
         XCTAssertTrue(source.contains("persistTelemetryStatusMigration"))
         XCTAssertTrue(source.contains("if persistTelemetryStatusMigration"))
         XCTAssertTrue(source.contains("config.save()"))
 
-        let controller = try String(contentsOf: root.appendingPathComponent("menubar/Sources/App/StatusItemController.swift"))
-        XCTAssertTrue(controller.contains("item.autosaveName = \"org.coordharness.menubar.primary\""))
-        XCTAssertTrue(controller.contains("item.isVisible = true"))
-        XCTAssertTrue(controller.contains("systemTelemetryPresentations"))
-        XCTAssertTrue(controller.contains("RingRenderer.statusImage"))
+        let primary = try String(contentsOf: root.appendingPathComponent("menubar/Sources/App/StatusItemController.swift"))
+        let stats = try String(contentsOf: root.appendingPathComponent("menubar/Sources/App/StatsStatusItemController.swift"))
+        let settings = try String(contentsOf: root.appendingPathComponent("menubar/Sources/UI/SettingsView.swift"))
+        XCTAssertTrue(primary.contains("item.autosaveName = \"org.coordharness.menubar.primary\""))
+        XCTAssertTrue(primary.contains("item.isVisible = true"))
+        XCTAssertTrue(primary.contains("let telemetry: [RingRenderer.TelemetryPresentation] = []"))
+        XCTAssertTrue(stats.contains("next.autosaveName = \"org.coordharness.menubar.stats\""))
+        XCTAssertTrue(stats.contains("func setEnabled(_ enabled: Bool)"))
+        XCTAssertTrue(settings.contains("Show Stats as a separate menu-bar item"))
     }
+
+    func testBatteryAndStatsVisibilityRoundTripPreservesExplicitSelections() throws {
+        let selected = MenuBarVisibilityPersistence(
+            batteryStatusItemEnabled: true,
+            systemTelemetryInStatusItem: false,
+            systemTelemetryShowCPU: false,
+            systemTelemetryShowGPU: true,
+            systemTelemetryShowRAM: false,
+            systemTelemetryShowDisk: true
+        )
+        let encoder = JSONEncoder()
+        encoder.keyEncodingStrategy = .convertToSnakeCase
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("coord-visibility-roundtrip-\(UUID().uuidString)", isDirectory: true)
+        let url = root.appendingPathComponent("menubar_panel_config.json")
+        defer { try? FileManager.default.removeItem(at: root) }
+        try ConfigPersistence.write(encoder.encode(selected), to: url)
+        XCTAssertEqual(try decoder.decode(MenuBarVisibilityPersistence.self, from: Data(contentsOf: url)), selected)
+
+        let sourceRoot = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+        let source = try String(contentsOf: sourceRoot.appendingPathComponent("menubar/Sources/Data/Config.swift"))
+        XCTAssertTrue(source.contains("let storedTelemetryVisibility"))
+        XCTAssertTrue(source.contains("systemTelemetryInStatusItem = storedTelemetryVisibility ?? fallback.systemTelemetryInStatusItem"))
+        XCTAssertTrue(source.contains("let visibility = try MenuBarVisibilityPersistence(from: decoder)"))
+        XCTAssertTrue(source.contains("batteryStatusItemEnabled = visibility.batteryStatusItemEnabled"))
+        for key in ["systemTelemetryShowCPU", "systemTelemetryShowGPU", "systemTelemetryShowRAM", "systemTelemetryShowDisk"] {
+            XCTAssertTrue(source.contains("\(key) = visibility.\(key)"))
+        }
+    }
+
 
 }

@@ -31,6 +31,13 @@ WITHHELD_EVENT_KEYS = {
 }
 
 
+def test_continuous_height_messages_target_the_embedding_parent_origin() -> None:
+    source = (SCHEMA_DIR / "static" / "cockpit.js").read_text(encoding="utf-8")
+    assert "new URL(document.referrer).origin" in source
+    assert '}, parentOrigin);' in source
+    assert '}, location.origin);' not in source
+
+
 def _nested_keys(value: object) -> set[str]:
     if isinstance(value, dict):
         found = set(value)
@@ -129,9 +136,13 @@ def test_continuous_comms_is_the_only_loopback_embeddable_board_page(tmp_path: P
         with urlopen(f"{url}/map?embedded=1&continuous=1") as response:
             assert response.headers.get("X-Frame-Options") is None
             frame_policy = response.headers["Content-Security-Policy"]
-            assert "frame-ancestors 'self'" in frame_policy
+            assert (
+                "frame-ancestors 'self' http://127.0.0.1:8780 "
+                "http://localhost:8780"
+            ) in frame_policy
             assert "http://127.0.0.1:65535" not in frame_policy
             assert "http://localhost:65535" not in frame_policy
+            assert "frame-ancestors *" not in frame_policy
             assert "frame-ancestors 'none'" not in frame_policy
 
 
@@ -142,9 +153,10 @@ def test_continuous_comms_section_embeds_publish_one_canonical_surface(
         browser = playwright.chromium.launch()
         page = browser.new_page(viewport={"width": 960, "height": 800})
         try:
-            for section, selector, opposite in (
-                ("fleet", "#fleet .matrix", "pulse"),
-                ("pulse", "#pulse .pulse-refresh-receipt", "fleet"),
+            for section, selector in (
+                ("fleet", "#fleet .matrix"),
+                ("deps", '#deps .gwrap svg[aria-label="Dependency graph"]'),
+                ("pulse", "#pulse .pulse-refresh-receipt"),
             ):
                 page.goto(
                     f"{url}/map?embedded=1&continuous=1&section={section}",
@@ -158,7 +170,10 @@ def test_continuous_comms_section_embeds_publish_one_canonical_surface(
                 assert page.locator("main > .panel").evaluate_all(
                     "panels => panels.filter(panel => !panel.hidden).map(panel => panel.id)"
                 ) == [section]
-                assert page.locator(f"#{opposite}").evaluate("panel => panel.hidden")
+                assert page.locator("main > .panel").evaluate_all(
+                    "(panels, section) => panels.every(panel => panel.id === section || panel.hidden)",
+                    section,
+                )
                 receipt = page.locator(f"#{section} .projection-receipt-compact")
                 assert receipt.count() == 1
                 assert not receipt.evaluate("details => details.open")
@@ -170,7 +185,11 @@ def test_continuous_comms_section_embeds_publish_one_canonical_surface(
                 if section == "fleet":
                     fleet = page.locator("#fleet")
                     assert "Who is working where" not in fleet.inner_text()
-                    assert fleet.locator(".continuous-fleet-label").inner_text().startswith("Fleet matrix")
+                    assert fleet.locator(".continuous-fleet-label").count() == 0
+                    assert fleet.locator(".lanes").count() == 0
+                    assert fleet.locator("#fleet-matrix-label").inner_text() == (
+                        "Agent by vertical matrix"
+                    )
                     matrix = fleet.locator(".matrix")
                     assert matrix.get_attribute("aria-labelledby") == "fleet-matrix-label"
                     assert matrix.get_attribute("aria-describedby") == "fleet-matrix-description"
@@ -182,6 +201,92 @@ def test_continuous_comms_section_embeds_publish_one_canonical_surface(
                     assert fleet.locator("#fleet-matrix-description").evaluate(
                         "node => node.classList.contains('visually-hidden')"
                     )
+                if section == "deps":
+                    deps = page.locator("#deps")
+                    assert deps.get_by_role("heading", name="What waits on what").count() == 1
+                    assert deps.locator(".structural-focus-receipt").count() == 1
+                    assert deps.get_by_role(
+                        "heading", name="Recorded downstream reach"
+                    ).count() == 1
+        finally:
+            browser.close()
+
+
+def test_embedded_board_comms_keeps_complete_single_page_composition(
+    tmp_path: Path,
+) -> None:
+    with _board(tmp_path) as url, playwright_api.sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page(viewport={"width": 1440, "height": 900})
+        requests: list[str] = []
+        page.on("request", lambda request: requests.append(request.url))
+        try:
+            page.goto(f"{url}/?embedded=1#v=comms", wait_until="networkidle")
+            traffic = page.locator("#comms.active [data-comms-traffic]")
+            traffic.locator(
+                '[aria-label="Recorded-direction traffic visualization"] svg'
+            ).wait_for()
+            fleet_frame = page.frame_locator('[data-comms-frame="fleet"]')
+            deps_frame = page.frame_locator('[data-comms-frame="deps"]')
+            pulse_frame = page.frame_locator('[data-comms-frame="pulse"]')
+            fleet_frame.locator("#fleet .matrix").wait_for()
+            deps_frame.locator('#deps .gwrap svg[aria-label="Dependency graph"]').wait_for()
+            pulse_frame.locator("#pulse .pulse-refresh-receipt").wait_for()
+
+            assert page.locator("html").get_attribute("data-embedded") == "1"
+            assert page.locator("#comms.active [data-comms-continuous]").count() == 3
+            assert {
+                path.split("section=")[-1]
+                for path in requests
+                if "/map?embedded=1&continuous=1&section=" in path
+            } == {"fleet", "deps", "pulse"}
+            assert page.locator("#comms .comms-shell > *").evaluate_all(
+                """nodes => nodes.map(node =>
+                  node.classList.contains("comms-jump") ? "jump" :
+                  (node.dataset.commsSurface ||
+                  (node.dataset.commsTraffic === "" ? "traffic" :
+                  (node.matches("[data-comms-fleet-status]") ? "status" : "unexpected")))
+                )"""
+            ) == ["jump", "fleet", "traffic", "deps", "pulse", "status"]
+            assert traffic.locator(":scope > .comms-kpis").count() == 1
+            assert fleet_frame.locator(".continuous-fleet-label").count() == 0
+            assert fleet_frame.locator(".lanes").count() == 0
+            assert page.locator(".comms-jump [data-comms-jump]").evaluate_all(
+                "buttons => buttons.map(button => button.dataset.commsJump)"
+            ) == [
+                "#comms-fleet",
+                "#comms-traffic",
+                "#comms-dependencies",
+                "#comms-pulse",
+            ]
+            jump_box = page.locator(".comms-jump").bounding_box()
+            assert jump_box is not None and jump_box["y"] < 900
+            page.get_by_role("button", name="Dependencies", exact=True).click()
+            assert page.url.endswith("#v=comms")
+            assert page.locator(".panes").evaluate("pane => pane.scrollTop") > 0
+
+            page.evaluate(
+                """() => {
+                  window.__embeddedTraffic = document.querySelector('[data-comms-traffic]');
+                  window.__embeddedFrames = [...document.querySelectorAll('[data-comms-continuous]')];
+                }"""
+            )
+            with page.expect_response(
+                lambda response: response.url.endswith("/api/v2/operations-bundle")
+            ):
+                page.evaluate("refreshBoard()")
+            page.wait_for_timeout(200)
+            assert page.evaluate(
+                "window.__embeddedTraffic === document.querySelector('[data-comms-traffic]')"
+            )
+            assert page.evaluate(
+                """() => window.__embeddedFrames.length === 3 &&
+                window.__embeddedFrames.every(
+                  (frame, index) => frame === document.querySelectorAll(
+                    '[data-comms-continuous]'
+                  )[index]
+                )"""
+            )
         finally:
             browser.close()
 
@@ -207,10 +312,12 @@ def test_board_comms_is_one_stable_continuous_destination_at_wide_width(
         try:
             page.goto(f"{url}/#v=comms", wait_until="networkidle")
             frame_elements = page.locator("#comms.active [data-comms-continuous]")
-            assert frame_elements.count() == 2
+            assert frame_elements.count() == 3
             fleet_frame = page.frame_locator('[data-comms-frame="fleet"]')
+            deps_frame = page.frame_locator('[data-comms-frame="deps"]')
             pulse_frame = page.frame_locator('[data-comms-frame="pulse"]')
             fleet_frame.locator("#fleet .matrix").wait_for()
+            deps_frame.locator('#deps .gwrap svg[aria-label="Dependency graph"]').wait_for()
             pulse_frame.locator("#pulse .pulse-refresh-receipt").wait_for()
 
             assert page.locator(".shell-subnav [data-shell-destination=comms]:visible").count() == 1
@@ -218,6 +325,7 @@ def test_board_comms_is_one_stable_continuous_destination_at_wide_width(
             assert page.locator("#comms.active").count() == 1
             assert page.locator("#crumbs").inner_text() == "Work/Comms"
             assert fleet_frame.locator("#maptabs:visible").count() == 0
+            assert deps_frame.locator("#maptabs:visible").count() == 0
             assert pulse_frame.locator("#maptabs:visible").count() == 0
             assert fleet_frame.locator("main > .panel").evaluate_all(
                 "panels => panels.filter(panel => !panel.hidden).map(panel => panel.id)"
@@ -225,20 +333,41 @@ def test_board_comms_is_one_stable_continuous_destination_at_wide_width(
             assert pulse_frame.locator("main > .panel").evaluate_all(
                 "panels => panels.filter(panel => !panel.hidden).map(panel => panel.id)"
             ) == ["pulse"]
+            assert deps_frame.locator("main > .panel").evaluate_all(
+                "panels => panels.filter(panel => !panel.hidden).map(panel => panel.id)"
+            ) == ["deps"]
             assert page.locator("#comms .comms-shell > section").evaluate_all(
                 "nodes => nodes.map(node => node.dataset.commsSurface || (node.dataset.commsTraffic === '' ? 'traffic' : ''))"
-            ) == ["fleet", "traffic", "pulse"]
+            ) == ["fleet", "traffic", "deps", "pulse"]
             assert page.locator("#comms .comms-shell > *").evaluate_all(
                 """nodes => nodes.map(node =>
-                  node.dataset.commsSurface ||
-                  (node.classList.contains("comms-kpis") ? "kpis" : "traffic")
+                  node.classList.contains("comms-jump") ? "jump" :
+                  (node.dataset.commsSurface ||
+                  (node.dataset.commsTraffic === "" ? "traffic" :
+                  (node.matches("[data-comms-fleet-status]") ? "status" : "unexpected")))
                 )"""
-            ) == ["fleet", "kpis", "traffic", "pulse"]
+            ) == ["jump", "fleet", "traffic", "deps", "pulse", "status"]
             fleet_box = page.locator('[data-comms-surface="fleet"]').bounding_box()
             kpi_box = page.locator(".comms-kpis").bounding_box()
             traffic_box = page.locator("[data-comms-traffic]").bounding_box()
+            deps_box = page.locator('[data-comms-surface="deps"]').bounding_box()
             pulse_box = page.locator('[data-comms-surface="pulse"]').bounding_box()
-            assert fleet_box["y"] < kpi_box["y"] < traffic_box["y"] < pulse_box["y"]
+            assert (
+                fleet_box["y"]
+                < traffic_box["y"]
+                < kpi_box["y"]
+                < deps_box["y"]
+                < pulse_box["y"]
+            )
+            assert page.evaluate(
+                "document.querySelector('[data-comms-surface=fleet]').nextElementSibling.matches('[data-comms-traffic]')"
+            )
+            assert fleet_frame.locator(".continuous-fleet-label").count() == 0
+            assert fleet_frame.locator(".lanes").count() == 0
+            page.locator("[data-comms-fleet-status]").wait_for(state="visible")
+            assert "recorded running in this projection" in page.locator(
+                "[data-comms-fleet-status]"
+            ).inner_text()
 
             traffic_workspace = page.locator("[data-comms-traffic]")
             assert traffic_workspace.locator(
@@ -276,6 +405,7 @@ def test_board_comms_is_one_stable_continuous_destination_at_wide_width(
             assert PRIVATE_SENTINEL not in visible
             assert PRIVATE_SENTINEL not in page.locator("#comms").inner_html()
             assert PRIVATE_SENTINEL not in fleet_frame.locator("main").inner_text()
+            assert PRIVATE_SENTINEL not in deps_frame.locator("main").inner_text()
             assert PRIVATE_SENTINEL not in pulse_frame.locator("main").inner_text()
             assert "recorded direction only" in visible.lower()
             assert "delivery status" in visible.lower()
@@ -293,7 +423,7 @@ def test_board_comms_is_one_stable_continuous_destination_at_wide_width(
                 page.evaluate("refreshBoard()")
             page.wait_for_timeout(300)
             assert page.evaluate(
-                """() => window.__continuousFrameIdentity.length === 2 &&
+                """() => window.__continuousFrameIdentity.length === 3 &&
                 window.__continuousFrameIdentity.every(
                   (frame, index) => frame === document.querySelectorAll(
                     "[data-comms-continuous]"
@@ -317,25 +447,36 @@ def test_board_comms_is_one_stable_continuous_destination_at_wide_width(
                 page.goto(f"{url}/#v={legacy}", wait_until="networkidle")
                 page.wait_for_url(f"{url}/#v=comms")
                 assert page.url.endswith("#v=comms")
-                assert page.locator("#comms.active [data-comms-continuous]").count() == 2
+                assert page.locator("#comms.active [data-comms-continuous]").count() == 3
         finally:
             browser.close()
 
 
-def test_board_comms_keeps_full_fleet_and_pulse_at_narrow_width(tmp_path: Path) -> None:
+def test_board_comms_keeps_full_fleet_dependencies_and_pulse_at_narrow_width(
+    tmp_path: Path,
+) -> None:
     with _board(tmp_path) as url, playwright_api.sync_playwright() as playwright:
         browser = playwright.chromium.launch()
         page = browser.new_page(viewport={"width": 390, "height": 844})
         try:
             page.goto(f"{url}/#v=comms", wait_until="networkidle")
             fleet_frame = page.frame_locator('[data-comms-frame="fleet"]')
+            deps_frame = page.frame_locator('[data-comms-frame="deps"]')
             pulse_frame = page.frame_locator('[data-comms-frame="pulse"]')
             fleet_frame.locator("#fleet .matrix").wait_for()
+            deps_frame.locator('#deps .gwrap svg[aria-label="Dependency graph"]').wait_for()
             pulse_frame.locator("#pulse .pulse-refresh-receipt").wait_for()
 
             assert page.locator(".shell-subnav [data-shell-destination=comms]:visible").count() == 1
             assert fleet_frame.locator("#maptabs:visible").count() == 0
+            assert deps_frame.locator("#maptabs:visible").count() == 0
             assert pulse_frame.locator("#maptabs:visible").count() == 0
+            assert page.locator(".comms-jump [data-comms-jump]").all_inner_texts() == [
+                "Fleet",
+                "Traffic",
+                "Dependencies",
+                "Pulse",
+            ]
             assert fleet_frame.locator("#fleet .matrix th").evaluate_all(
                 "cells => cells.every(cell => getComputedStyle(cell).display !== 'none')"
             )
@@ -349,6 +490,7 @@ def test_board_comms_keeps_full_fleet_and_pulse_at_narrow_width(tmp_path: Path) 
             detail = traffic_workspace.locator(".comms-detail").bounding_box()
             assert direction["y"] < feed["y"] < detail["y"]
             assert traffic_workspace.bounding_box()["width"] <= 390
+            assert page.locator('[data-comms-surface="deps"]').bounding_box()["width"] <= 390
             assert page.evaluate(
                 "document.documentElement.scrollWidth <= window.innerWidth + 1"
             )
@@ -373,8 +515,10 @@ def test_board_comms_keeps_v1_server_compatibility(tmp_path: Path) -> None:
         try:
             page.goto(f"{url}/#v=comms", wait_until="networkidle")
             fleet_frame = page.frame_locator('[data-comms-frame="fleet"]')
+            deps_frame = page.frame_locator('[data-comms-frame="deps"]')
             pulse_frame = page.frame_locator('[data-comms-frame="pulse"]')
             fleet_frame.locator("#fleet .matrix").wait_for()
+            deps_frame.locator('#deps .gwrap svg[aria-label="Dependency graph"]').wait_for()
             pulse_frame.locator("#pulse .pulse-refresh-receipt").wait_for()
 
             assert any(path.endswith("/api/v2/operations-bundle") for path in requests)
@@ -382,6 +526,7 @@ def test_board_comms_keeps_v1_server_compatibility(tmp_path: Path) -> None:
             assert any(path.endswith("/api/v1/pulse") for path in requests)
             assert PRIVATE_SENTINEL not in page.locator("#comms").inner_text()
             assert PRIVATE_SENTINEL not in fleet_frame.locator("main").inner_text()
+            assert PRIVATE_SENTINEL not in deps_frame.locator("main").inner_text()
             assert PRIVATE_SENTINEL not in pulse_frame.locator("main").inner_text()
             assert "Compatibility Pulse receipt" in pulse_frame.locator(
                 "#pulse .pulse-refresh-receipt"

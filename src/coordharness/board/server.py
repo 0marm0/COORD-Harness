@@ -51,6 +51,11 @@ from coordharness.usage.provider_management import ProviderManagementForwarder
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 7870
+_CONTINUOUS_EMBED_FRAME_ANCESTORS = (
+    "'self'",
+    "http://127.0.0.1:8780",
+    "http://localhost:8780",
+)
 _PROVIDER_ACTION_SHAPES = {
     "provider_add": {"action", "provider"}, "provider_remove": {"action", "provider_id"},
     "provider_configure": {"action", "provider_id", "enabled", "priority"},
@@ -1128,7 +1133,7 @@ class BoardHandler(BaseHTTPRequestHandler):
                 headers.pop("X-Frame-Options", None)
                 headers["Content-Security-Policy"] = headers["Content-Security-Policy"].replace(
                     "frame-ancestors 'none'",
-                    "frame-ancestors 'self'",
+                    "frame-ancestors " + " ".join(_CONTINUOUS_EMBED_FRAME_ANCESTORS),
                 )
             self._serve_static("cockpit.html", security_headers=headers)
             return

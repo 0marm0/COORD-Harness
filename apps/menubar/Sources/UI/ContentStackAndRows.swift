@@ -4,6 +4,9 @@ import AppKit
 enum PanelAction {
     case setMode(String)
     case pauseAll([String])
+    case toggleCaffeine
+    case openBatteryDetails
+    case toggleChargeLimit(expected: Int, target: Int)
     case pauseResume(String, Bool)
     case kill(String)
     case refresh
@@ -18,6 +21,39 @@ enum PanelAction {
     case capability(job: String, action: String, contextRef: String?)
 }
 
+/// Image-only brand control used by the main dropdown. Keeping the action target on the control
+/// makes the complete visible wordmark a reliable hit target for mouse and accessibility presses.
+final class CockpitWordmarkButton: NSButton {
+    private var onPress: (() -> Void)?
+
+    init(
+        frame: NSRect,
+        image: NSImage?,
+        identifier: String,
+        accessibilityLabel: String,
+        accessibilityHelp: String,
+        onPress: @escaping () -> Void
+    ) {
+        self.onPress = onPress
+        super.init(frame: frame)
+        self.image = image
+        imagePosition = .imageOnly
+        imageScaling = .scaleProportionallyDown
+        isBordered = false
+        alignment = .left
+        setButtonType(.momentaryChange)
+        self.identifier = NSUserInterfaceItemIdentifier(identifier)
+        setAccessibilityLabel(accessibilityLabel)
+        setAccessibilityHelp(accessibilityHelp)
+        toolTip = accessibilityHelp
+        target = self
+        action = #selector(pressed)
+    }
+
+    @objc private func pressed() { onPress?() }
+    required init?(coder: NSCoder) { nil }
+}
+
 
 protocol ContentStack: AnyObject {
     var onAction: ((PanelAction) -> Void)? { get set }
@@ -26,6 +62,7 @@ protocol ContentStack: AnyObject {
     func updateConfig(_ c: Config)
     func updateUsage(_ state: UsageDashboardState)
     func updateSystemTelemetry(_ snapshot: SystemTelemetrySnapshot?)
+    func updateLocalPower(battery: LocalBatterySnapshot, caffeineActive: Bool)
     func resetSystemTelemetryDisclosure()
     @discardableResult func build(state: MenubarState, into container: NSView) -> [NSView]
 }
@@ -37,23 +74,35 @@ final class AppKitContentStack: ContentStack {
     var onAction: ((PanelAction) -> Void)?
     var onRelayout: (() -> Void)?
     private(set) var contentHeight: CGFloat = 0
+    private var localBattery = LocalBatterySnapshot.unavailable
+    private var caffeineActive = false
+
+    func updateLocalPower(battery: LocalBatterySnapshot, caffeineActive: Bool) {
+        localBattery = battery
+        self.caffeineActive = caffeineActive
+    }
 
     private var config: Config
-    func updateConfig(_ c: Config) { config = c }
+    func updateConfig(_ c: Config) {
+        config = c
+        FooterTelemetryBridge.shared.config = c
+    }
     private var usageState = UsageDashboardState()
     func updateUsage(_ state: UsageDashboardState) { usageState = state }
     private var systemTelemetry: SystemTelemetrySnapshot?
     private var systemTelemetryExpanded = false
     private let systemTelemetryHistory = SystemTelemetryHistoryBuffer()
-    private weak var systemTelemetryRow: SystemTelemetryRow?
     private weak var inlineSystemTelemetryDetail: InlineSystemTelemetryDetailView?
     func updateSystemTelemetry(_ snapshot: SystemTelemetrySnapshot?) {
         systemTelemetry = snapshot
+        FooterTelemetryBridge.shared.update(snapshot: snapshot)
         systemTelemetryHistory.append(snapshot)
-        systemTelemetryRow?.update(snapshot: snapshot, config: config, expanded: systemTelemetryExpanded)
         inlineSystemTelemetryDetail?.update(snapshot: snapshot, history: systemTelemetryHistory.samples)
     }
-    func resetSystemTelemetryDisclosure() { systemTelemetryExpanded = false }
+    func resetSystemTelemetryDisclosure() {
+        systemTelemetryExpanded = false
+        FooterTelemetryBridge.shared.expanded = false
+    }
 
     private var nextCollapsed = false
     private var nextExpanded = false
@@ -87,6 +136,14 @@ final class AppKitContentStack: ContentStack {
         RowActions.expand = { [weak self] key in self?.toggleExpand(key) }
         container.subviews.forEach { $0.removeFromSuperview() }
         let W = Tokens.Layout.popoverWidth
+        FooterTelemetryBridge.shared.config = config
+        FooterTelemetryBridge.shared.expanded = systemTelemetryExpanded
+        FooterTelemetryBridge.shared.onToggle = { [weak self] in
+            guard let self else { return }
+            self.systemTelemetryExpanded.toggle()
+            FooterTelemetryBridge.shared.expanded = self.systemTelemetryExpanded
+            self.onRelayout?()
+        }
         var y: CGFloat = Tokens.Layout.topPad
 
         func place(_ v: NSView) {
@@ -106,7 +163,11 @@ final class AppKitContentStack: ContentStack {
         }
 
 
-        place(HeaderView(state: state) { [weak self] in self?.onAction?($0) })
+        place(HeaderView(
+            state: state,
+            battery: localBattery,
+            caffeineActive: caffeineActive
+        ) { [weak self] in self?.onAction?($0) })
         place(UsagePeekRow(
             UsagePopoverPeekPresentation.make(
                 from: usageState,
@@ -126,27 +187,13 @@ final class AppKitContentStack: ContentStack {
         ))
 
 
-        if config.systemTelemetryEnabled {
-            let telemetryRow = SystemTelemetryRow(
-                snapshot: systemTelemetry,
-                config: config,
-                expanded: systemTelemetryExpanded,
-                onOpen: { [weak self] in
-                    guard let self else { return }
-                    self.systemTelemetryExpanded.toggle()
-                    self.onRelayout?()
-                }
-            )
-            systemTelemetryRow = telemetryRow
-            place(telemetryRow)
-            if systemTelemetryExpanded {
-                let detail = InlineSystemTelemetryDetailView(snapshot: systemTelemetry, config: config, history: systemTelemetryHistory.samples)
-                inlineSystemTelemetryDetail = detail
-                place(detail)
-            } else {
-                inlineSystemTelemetryDetail = nil
-            }
+        if config.systemTelemetryEnabled && systemTelemetryExpanded {
+            let detail = InlineSystemTelemetryDetailView(snapshot: systemTelemetry, config: config, history: systemTelemetryHistory.samples)
+            inlineSystemTelemetryDetail = detail
+            place(detail)
             y += Self.telemetryFollowupGap
+        } else {
+            inlineSystemTelemetryDetail = nil
         }
 
         if let hs = state.healthSummary { place(CoordHealthRow(hs)) }
@@ -201,9 +248,11 @@ final class AppKitContentStack: ContentStack {
 
 
         let agents = runRows.filter { !$0.showsBar }
+        var needsServerToAgentGap = !barRows.isEmpty
         func placeAgentGroup(_ rows: [Row]) {
             guard !rows.isEmpty else { return }
-            runningGap()
+            if placedGroup { y += needsServerToAgentGap ? Tokens.Layout.serverToAgentGap : Tokens.Layout.groupGap }
+            needsServerToAgentGap = false
             for (i, r) in rows.enumerated() { placeRow(RunningAgentRow(r, showIcon: i == 0), r) }
             placedGroup = true
         }
@@ -487,21 +536,27 @@ final class AppKitContentStack: ContentStack {
 
 
 final class HeaderView: RowView {
-    private var consoleEmit: (() -> Void)?
-    private var pauseEmit: (() -> Void)?
-    init(state: MenubarState, emit: @escaping (PanelAction) -> Void) {
-        super.init(frame: NSRect(x: 0, y: 0, width: Tokens.Layout.popoverWidth, height: 40))
+    init(
+        state: MenubarState,
+        battery: LocalBatterySnapshot,
+        caffeineActive: Bool,
+        emit: @escaping (PanelAction) -> Void
+    ) {
+        super.init(frame: NSRect(x: 0, y: 0, width: Tokens.Layout.popoverWidth, height: Tokens.Layout.headerHeight))
         typealias L = Tokens.Layout
 
 
         let logoX = L.rowPadL - 6
-        let mark = NSButton(frame: NSRect(x: logoX, y: 6, width: L.wordmarkW, height: L.wordmarkH))
-
-
-        mark.image = Art.wordmark
-        mark.imagePosition = .imageOnly; mark.imageScaling = .scaleProportionallyDown; mark.isBordered = false
-        mark.alignment = .left; mark.setButtonType(.momentaryChange)
-        mark.target = self; mark.action = #selector(openConsole); addSubview(mark)
+        let mark = CockpitWordmarkButton(
+            frame: NSRect(x: logoX, y: 8, width: L.wordmarkW, height: L.wordmarkH),
+            image: Art.wordmark,
+            identifier: "main.coord-wordmark",
+            accessibilityLabel: "Open COORD Cockpit",
+            accessibilityHelp: "Open COORD's full native Cockpit window."
+        ) {
+            emit(.openCockpit)
+        }
+        addSubview(mark)
 
 
         if state.workModel == nil || state.hasProjectionWarning {
@@ -510,25 +565,30 @@ final class HeaderView: RowView {
         }
 
 
-        let sliderRightInset = L.rowPadR
-        let sliderW: CGFloat = 70, sliderH: CGFloat = 26
-        let slider = ModeSlider(frame: NSRect(x: bounds.width - sliderRightInset - sliderW, y: 23 - sliderH/2, width: sliderW, height: sliderH))
-        slider.setLiveMode(state.displayMode, paused: state.displayMode == "pause")
-        slider.onSetMode = { emit(.setMode($0)) }
-        addSubview(slider)
-
-
-        let pause = NSButton(frame: NSRect(x: slider.frame.minX - 27, y: 23 - 26/2, width: 28, height: 26))
-        pause.title = state.displayMode == "pause" ? "▶" : "⏸"; pause.isBordered = false
-        pause.font = .systemFont(ofSize: 16); pause.contentTintColor = Tokens.Color.dimGray
         let ids = (state.workModel?.runningRows ?? []).filter { $0.live == true }.compactMap { $0.jobId ?? $0.id }
-        pauseEmit = { emit(.pauseAll(ids)) }
-        pause.target = self; pause.action = #selector(doPause); addSubview(pause)
+        let controls = CoordPowerControlsView(
+            frame: NSRect(
+                x: bounds.width - L.rowPadR - L.headerControlsWidth,
+                y: 7,
+                width: L.headerControlsWidth,
+                height: L.headerControlsHeight
+            ),
+            battery: battery,
+            caffeineActive: caffeineActive,
+            mode: state.displayMode
+        )
+        controls.identifier = NSUserInterfaceItemIdentifier("coord.header.power-controls")
+        controls.onToggleChargeLimit = { expected, target in
+            emit(.toggleChargeLimit(expected: expected, target: target))
+        }
+        controls.onToggleCaffeine = { emit(.toggleCaffeine) }
+        controls.onSetMode = { mode in
+            if mode == "pause" { emit(.pauseAll(ids)) }
+            else { emit(.setMode(mode)) }
+        }
+        addSubview(controls)
 
-        consoleEmit = { emit(.openCockpit) }
     }
-    @objc private func openConsole() { consoleEmit?() }
-    @objc private func doPause() { pauseEmit?() }
     required init?(coder: NSCoder) { nil }
 }
 
@@ -538,17 +598,25 @@ final class UsagePeekRow: RowView {
     private let open: () -> Void
     private let barPalette: UsageBarPalette
     private static let quotaRowHeight: CGFloat = 18
-    private static let providerFooterHeight: CGFloat = 29
-    private static let columnHeaderHeight: CGFloat = 15
+    private static let providerFooterHeight: CGFloat = 22
+    private static let columnHeaderHeight: CGFloat = 14
+    private static let headerHeight: CGFloat = 28
     private static let quotaLabelX: CGFloat = 55
-    private static let quotaLabelWidth: CGFloat = 47
+    private static let providerIconX: CGFloat = Tokens.Layout.rowPadL
+    private static let quotaLabelWidth: CGFloat = 13
     private static let quotaLabelBarGap: CGFloat = 4
-    private static let quotaTrackWidth: CGFloat = 72
+    private static let quotaTrackWidth: CGFloat = 119
     private static var quotaTrackX: CGFloat { quotaLabelX + quotaLabelWidth + quotaLabelBarGap }
-    private static let costLabelX: CGFloat = 202
-    private static let costLabelWidth: CGFloat = 36
-    private static let costLabelValueGap: CGFloat = 12
-    private static var costValueX: CGFloat { costLabelX + costLabelWidth + costLabelValueGap }
+    private static let percentageX: CGFloat = 195
+    private static let percentageWidth: CGFloat = 36
+    private static let resetX: CGFloat = 239
+    private static let resetWidth: CGFloat = 64
+    private static let runoutX: CGFloat = 311
+    private static let runoutWidth: CGFloat = 64
+    private static let costValueX: CGFloat = 55
+    private static let costValueWidth: CGFloat = 132
+    private static let stateX: CGFloat = 196
+    private static let stateWidth: CGFloat = 179
 
     init(
         _ presentation: UsagePopoverPeekPresentation,
@@ -567,7 +635,7 @@ final class UsagePeekRow: RowView {
             return Self.providerFooterHeight + CGFloat(rows) * Self.quotaRowHeight
         }
         let detailHeight = Self.columnHeaderHeight + presentation.providers.reduce(CGFloat(0)) { $0 + providerHeight($1) }
-        let height: CGFloat = collapsed ? 26 : 26 + detailHeight
+        let height: CGFloat = collapsed ? Self.headerHeight : Self.headerHeight + detailHeight
         super.init(frame: NSRect(x: 0, y: 0, width: width, height: height))
         wantsLayer = true
         layer?.backgroundColor = NSColor.clear.cgColor
@@ -579,36 +647,43 @@ final class UsagePeekRow: RowView {
         setAccessibilityHelp(collapsed ? "Expands inline provider usage." : "Collapses inline provider usage.")
         addGestureRecognizer(NSClickGestureRecognizer(target: self, action: #selector(openUsage)))
 
-        let chevron = UI.label(collapsed ? "›" : "⌄", size: 12, weight: .semibold, color: .labelColor)
-        chevron.frame = NSRect(x: 10, y: 4, width: 11, height: 16)
-        addSubview(chevron)
-        let heading = UI.label("Usage", size: 9.5, weight: .semibold, color: .labelColor)
-        heading.frame = NSRect(x: 24, y: 5, width: 50, height: 14)
+        let heading = UI.label("USAGE", size: 9.5, weight: .semibold, color: .labelColor)
+        heading.frame = NSRect(x: 31, y: 8, width: 45, height: 14)
         addSubview(heading)
-        let disclosure = NSButton(frame: NSRect(x: 7, y: 1, width: 72, height: 23))
+        let chevron = UI.label(collapsed ? "›" : "⌄", size: 12, weight: .semibold, color: .labelColor)
+        chevron.frame = NSRect(x: 77, y: 7, width: 11, height: 16)
+        addSubview(chevron)
+        let disclosure = NSButton(frame: NSRect(x: 25, y: 3, width: 68, height: 22))
         disclosure.title = ""; disclosure.isBordered = false
         disclosure.target = self; disclosure.action = #selector(toggleUsage)
         disclosure.toolTip = collapsed ? "Expand Usage" : "Collapse Usage"
+        disclosure.identifier = NSUserInterfaceItemIdentifier("coord.usage.disclosure")
         addSubview(disclosure)
+        let details = NSButton(frame: NSRect(x: bounds.width - 27, y: 4, width: 19, height: 19))
+        details.title = "↗"; details.isBordered = false; details.font = .systemFont(ofSize: 10)
+        details.contentTintColor = Tokens.Color.sectionGray
+        details.target = self; details.action = #selector(openUsage)
+        details.identifier = NSUserInterfaceItemIdentifier("coord.usage.details")
+        details.toolTip = "Open Usage details"
+        addSubview(details)
         if collapsed {
             addCollapsedQuotaSummaries(presentation)
             return
         }
-        let resetHeader = UI.label("RESET", size: 8, weight: .bold, color: Tokens.Color.sectionGray)
-        resetHeader.frame = NSRect(x: 220, y: 27, width: 52, height: 13)
+        let resetHeader = UI.label("RESET", size: 7.5, weight: .semibold, color: Tokens.Color.sectionGray, align: .center)
+        resetHeader.frame = NSRect(x: Self.resetX, y: Self.headerHeight, width: Self.resetWidth, height: 13)
         addSubview(resetHeader)
-        let runoutHeader = UI.label("RUNOUT", size: 8, weight: .bold, color: Tokens.Color.sectionGray)
-        runoutHeader.frame = NSRect(x: 280, y: 27, width: 60, height: 13)
+        let runoutHeader = UI.label("RUNOUT", size: 7.5, weight: .semibold, color: Tokens.Color.sectionGray, align: .center)
+        runoutHeader.frame = NSRect(x: Self.runoutX, y: Self.headerHeight, width: Self.runoutWidth, height: 13)
         addSubview(runoutHeader)
 
-        var providerY: CGFloat = 26 + Self.columnHeaderHeight
+        var providerY: CGFloat = Self.headerHeight + Self.columnHeaderHeight
         for provider in presentation.providers {
             let color = providerColor(provider.id)
             let mark = ProviderMenuMark.image(for: provider.id)?.copy() as? NSImage
             let icon = UI.imageView(mark, size: 18, tint: color)
             let rowCount = (provider.hasSession ? 1 : 0) + (provider.hasWeekly ? 1 : 0) + (provider.hasFable ? 1 : 0)
-            let quotaHeight = max(Self.quotaRowHeight, CGFloat(rowCount) * Self.quotaRowHeight)
-            icon.frame = NSRect(x: 22, y: providerY + quotaHeight / 2 - 9, width: 18, height: 18)
+            icon.frame = NSRect(x: Self.providerIconX, y: providerY + (Self.quotaRowHeight - 18) / 2, width: 18, height: 18)
             icon.toolTip = provider.displayName
             addSubview(icon)
 
@@ -626,8 +701,6 @@ final class UsagePeekRow: RowView {
             }
 
             let summaryY = providerY + CGFloat(rowCount) * Self.quotaRowHeight
-            let costLabel = UI.label("Cost", size: 8.5, weight: .regular, color: Tokens.Color.sectionGray, align: .right)
-            costLabel.frame = NSRect(x: Self.costLabelX, y: summaryY + 3, width: Self.costLabelWidth, height: 14)
             let costValue = UI.label(
                 usd(provider.retainedUSDEstimateNanos),
                 size: 8.5,
@@ -636,23 +709,34 @@ final class UsagePeekRow: RowView {
                 align: .right
             )
             costValue.font = .monospacedDigitSystemFont(ofSize: 8.5, weight: .regular)
-            costValue.frame = NSRect(x: Self.costValueX, y: summaryY + 3, width: 90, height: 14)
-            costLabel.toolTip = "Retained cumulative USD API-rate estimate; not billed subscription spend"
-            costValue.toolTip = costLabel.toolTip
-            addSubview(costLabel); addSubview(costValue)
+            costValue.frame = NSRect(x: Self.costValueX, y: summaryY + 3, width: Self.costValueWidth, height: 14)
+            costValue.toolTip = "Retained cumulative USD API-rate estimate; not billed subscription spend"
+            addSubview(costValue)
+            if let state = visibleState(provider, freshness: presentation.freshness) {
+                let stateLabel = UI.label(state.text, size: 8.5, weight: .medium, color: state.color, align: .right)
+                stateLabel.frame = NSRect(x: Self.stateX, y: summaryY + 3, width: Self.stateWidth, height: 14)
+                stateLabel.toolTip = provider.displayName + ": " + state.text
+                addSubview(stateLabel)
+            }
             providerY += providerHeight(provider)
         }
 
     }
 
     private func addCollapsedQuotaSummaries(_ presentation: UsagePopoverPeekPresentation) {
+        let startX: CGFloat = 104
         let providers = presentation.providers.filter {
             $0.hasSession || $0.hasWeekly || $0.hasFable
         }
-        guard !providers.isEmpty else { return }
+        guard !providers.isEmpty else {
+            let state = presentation.providers.map { $0.connectionLabel }.joined(separator: " · ")
+            let label = UI.label(state.isEmpty ? "Usage unavailable" : state, size: 8.5, weight: .medium, color: Tokens.Color.sectionGray, align: .right)
+            label.frame = NSRect(x: startX, y: 7, width: bounds.width - startX - 32, height: 14)
+            addSubview(label)
+            return
+        }
 
-        let startX: CGFloat = 78
-        let slotWidth = (bounds.width - startX - 8) / CGFloat(providers.count)
+        let slotWidth = (bounds.width - startX - 32) / CGFloat(providers.count)
         for (index, provider) in providers.enumerated() {
             let x = startX + CGFloat(index) * slotWidth
             let color = providerColor(provider.id)
@@ -716,15 +800,17 @@ final class UsagePeekRow: RowView {
 
         let percentage = UI.label(percent(remaining), size: 9.5, weight: .bold, color: quotaColor, align: .right)
         percentage.font = .monospacedDigitSystemFont(ofSize: 9.5, weight: .bold)
-        percentage.frame = NSRect(x: 181, y: y, width: 35, height: 16)
+        percentage.frame = NSRect(x: Self.percentageX, y: y, width: Self.percentageWidth, height: 16)
         addSubview(percentage)
 
-        let reset = UI.label(timing.resetLabel, size: 8.5, weight: .medium, color: Tokens.Color.sectionGray)
-        reset.frame = NSRect(x: 220, y: y, width: 52, height: 16)
+        let reset = UI.label(timing.resetLabel, size: 8.5, weight: .medium, color: Tokens.Color.sectionGray, align: .center)
+        reset.frame = NSRect(x: Self.resetX, y: y, width: Self.resetWidth, height: 16)
+        reset.font = .monospacedDigitSystemFont(ofSize: 8.5, weight: .medium)
         reset.toolTip = timing.accessibilityLabel
         addSubview(reset)
-        let runout = UI.label(timing.runoutLabel, size: 8.5, weight: .medium, color: Tokens.Color.sectionGray)
-        runout.frame = NSRect(x: 280, y: y, width: 60, height: 16)
+        let runout = UI.label(timing.runoutLabel, size: 8.5, weight: .medium, color: Tokens.Color.sectionGray, align: .center)
+        runout.frame = NSRect(x: Self.runoutX, y: y, width: Self.runoutWidth, height: 16)
+        runout.font = .monospacedDigitSystemFont(ofSize: 8.5, weight: .medium)
         runout.toolTip = timing.accessibilityLabel
         addSubview(runout)
     }
@@ -736,13 +822,14 @@ final class UsagePeekRow: RowView {
 
     private func usd(_ nanos: Int64?) -> String {
         guard let nanos else { return "$—" }
-        return String(format: "$%.2f", Double(nanos) / 1_000_000_000)
+        return UsageFormat.costNanos(nanos, currency: "USD")
+            .replacingOccurrences(of: "USD ", with: "$")
     }
 
     private func providerColor(_ identity: String) -> NSColor {
         identity.lowercased() == "claude"
-            ? NSColor(calibratedRed: 0.96, green: 0.50, blue: 0.32, alpha: 1)
-            : NSColor(calibratedRed: 0.58, green: 0.40, blue: 0.96, alpha: 1)
+            ? NSColor(srgbRed: 0.95, green: 0.47, blue: 0.24, alpha: 1)
+            : NSColor(srgbRed: 0.64, green: 0.43, blue: 0.96, alpha: 1)
     }
 
     private func freshnessLabel(_ freshness: UsagePeekFreshness) -> (text: String, color: NSColor) {
@@ -756,14 +843,14 @@ final class UsagePeekRow: RowView {
     private func visibleState(
         _ provider: UsagePopoverPeekProvider,
         freshness: UsagePeekFreshness
-    ) -> (text: String, color: NSColor) {
+    ) -> (text: String, color: NSColor)? {
         switch freshness {
         case .unavailable:
             return ("Unavailable", .systemRed)
         case .stale:
-            return ("Stale · \(provider.connectionLabel)", .systemOrange)
+            return ("Stale", .systemOrange)
         case .live:
-            if provider.connected == true { return (provider.connectionLabel, .systemGreen) }
+            if provider.connected == true { return nil }
             if provider.connected == false { return (provider.connectionLabel, .systemOrange) }
             return (provider.connectionLabel, Tokens.Color.sectionGray)
         }
@@ -784,14 +871,27 @@ final class UsagePeekRow: RowView {
 final class FooterView: RowView {
     private var refreshEmit: (() -> Void)?; private var gearEmit: (() -> Void)?; private var detachEmit: (() -> Void)?
     init(emit: @escaping (PanelAction) -> Void) {
-        super.init(frame: NSRect(x: 0, y: 0, width: Tokens.Layout.popoverWidth, height: 30))
+        super.init(frame: NSRect(x: 0, y: 0, width: Tokens.Layout.popoverWidth, height: Tokens.Layout.footerHeight))
         refreshEmit = { emit(.refresh) }; gearEmit = { emit(.openSettings) }; detachEmit = { emit(.toggleDetachedPanel) }
-        let gear = btn("⚙", x: bounds.width - 28); gear.action = #selector(doGear); addSubview(gear)
-        let refr = btn("↻", x: bounds.width - 52); refr.action = #selector(doRefresh); addSubview(refr)
-        let detach = btn("⇱", x: bounds.width - 76); detach.action = #selector(doDetach); detach.toolTip = "Pop out panel"; addSubview(detach)
+        let telemetryState = FooterTelemetryBridge.shared
+        if telemetryState.config.systemTelemetryEnabled {
+            let telemetry = SystemTelemetryRow(
+                snapshot: telemetryState.snapshot,
+                config: telemetryState.config,
+                expanded: telemetryState.expanded,
+                panelWidth: Tokens.Layout.telemetryRailWidth,
+                onOpen: { telemetryState.onToggle?() }
+            )
+            telemetry.frame.origin = .zero
+            telemetryState.row = telemetry
+            addSubview(telemetry)
+        }
+        let gear = btn("⚙", x: bounds.width - 28); gear.action = #selector(doGear); gear.identifier = NSUserInterfaceItemIdentifier("coord.footer.settings"); addSubview(gear)
+        let refr = btn("↻", x: bounds.width - 52); refr.action = #selector(doRefresh); refr.identifier = NSUserInterfaceItemIdentifier("coord.footer.refresh"); addSubview(refr)
+        let detach = btn("⇱", x: bounds.width - 76); detach.action = #selector(doDetach); detach.identifier = NSUserInterfaceItemIdentifier("coord.footer.detach"); detach.toolTip = "Pop out panel"; addSubview(detach)
     }
     private func btn(_ t: String, x: CGFloat) -> NSButton {
-        let b = NSButton(frame: NSRect(x: x, y: 5, width: 18, height: 18))
+        let b = NSButton(frame: NSRect(x: x, y: 7, width: 18, height: 20))
         b.title = t; b.isBordered = false; b.font = .systemFont(ofSize: 12)
         b.contentTintColor = Tokens.Color.sectionGray; b.target = self; return b
     }
