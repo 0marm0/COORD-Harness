@@ -11,6 +11,7 @@ import time
 from typing import Any
 
 from coordharness import config as _harness_config
+from . import config as _coord_config
 from . import coord_db, process_liveness
 from coordharness.jobs import sidecar_snapshot, status as jobstatus
 
@@ -384,8 +385,11 @@ def _transfer_disabled_reason(
     if not writes_enabled:
         return configuration_reason
     assignee = str(row.get("assignee") or "").strip().lower()
-    if assignee not in {"claude", "codex"}:
-        return "The current assignee is not a transferable Claude or Codex lane."
+    if assignee not in _coord_config.lane_set():
+        return (
+            "The current assignee is not one of the configured transferable lanes "
+            f"({_coord_config.lanes_display()})."
+        )
     if str(row.get("intent_state") or "").strip().lower() in _TERMINAL_TRANSFER_STATES:
         return "Terminal or archived work cannot be transferred."
     if not str(row.get("done_signal") or "").strip():

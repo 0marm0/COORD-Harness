@@ -8197,10 +8197,14 @@ def _operator_reassignment_request(
         raise ValueError("operator reassignment requires work_id")
     if len(request["work_id"].encode("utf-8")) > 256:
         raise ValueError("operator reassignment work_id exceeds 256 UTF-8 bytes")
-    if request["owner_lane"] not in {"claude", "codex"}:
-        raise ValueError("operator reassignment owner_lane must be claude|codex")
-    if request["expected_assignee"] not in {"claude", "codex"}:
-        raise ValueError("operator reassignment expected_assignee must be claude|codex")
+    if request["owner_lane"] not in _lane_set():
+        raise ValueError(
+            f"operator reassignment owner_lane must be {_lanes_display()}"
+        )
+    if request["expected_assignee"] not in _lane_set():
+        raise ValueError(
+            f"operator reassignment expected_assignee must be {_lanes_display()}"
+        )
     if request["owner_lane"] == request["expected_assignee"]:
         raise ValueError(
             "operator reassignment owner_lane must differ from expected_assignee"
