@@ -19,7 +19,9 @@ This is the product and operator documentation for `coordharness`. Capability cl
 | Build or consume a viewer | [Web board](web-board.md) | [Native clients](native-clients.md), [compatibility](compatibility.md) |
 | Audit standalone coverage | [Module coverage](module-coverage.md) | [Feature status](feature-status.json), [extraction](extraction.md) |
 | Contribute or release | [Governance](governance.md) | [Releasing](releasing.md), [extraction](extraction.md) |
-| Assess risk | [Safety doctor](safety-doctor.md) | [Security and privacy](security-and-privacy.md), [security policy](../.github/SECURITY.md) |
+| Assess risk | [Safety doctor](safety-doctor.md) | [Security and privacy](security-and-privacy.md), [security policy](../SECURITY.md) |
+| Report a vulnerability or conduct concern | [Security policy](../SECURITY.md) | [Threat model](threat-model.md), [Code of Conduct](../CODE_OF_CONDUCT.md) |
+| Send a pull request | [Contributing](../CONTRIBUTING.md) | [Governance](governance.md), [Extraction](extraction.md) |
 
 ## Concepts and reference
 
@@ -61,6 +63,9 @@ This is the product and operator documentation for `coordharness`. Capability cl
 - [Safety doctor](safety-doctor.md) — read-only schema, lifecycle, job, path, Git, and MCP checks.
 - [Security and privacy](security-and-privacy.md) — local trust model and publication boundaries.
 - [Threat model](threat-model.md) — the untrusted-actor guard audit: which existing guards would survive a second, adversarial writer, and what a hosted or shared profile would still require.
+- [Security policy](../SECURITY.md) — supported line, how to report a vulnerability privately, and what is and isn't in scope.
+- [Contributing](../CONTRIBUTING.md) — setup, the ported-code constraint, review discipline, and the checks a pull request must pass.
+- [Code of Conduct](../CODE_OF_CONDUCT.md) — community standards and how to report a concern.
 - [Governance](governance.md) — decision ownership and change classes.
 - [Compatibility](compatibility.md) — Python, SQLite, MCP, snapshot, and native compatibility.
 - [Releasing](releasing.md) — exact-candidate distribution gate and provenance checks.
