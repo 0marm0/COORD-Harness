@@ -15,7 +15,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterable, Iterator, Optional
 
-from coordharness.config import HARNESS_ROOT
+from coordharness.config import HARNESS_ROOT, state_dir
 from coordharness.jobs.status import done_signal_custodied, done_signal_exists
 
 from .config import (
@@ -100,8 +100,70 @@ def new_id(prefix: str) -> str:
 
 
 def local_host_id() -> str:
-    """The host identity stamped on rows this process writes."""
+    """The machine's current network hostname.
+
+    Kept as the legacy comparison point in ``pid_liveness_is_meaningful`` for
+    rows written before ``stable_host_id`` existed, and as the fallback
+    ``stable_host_id`` itself returns when it cannot persist an id. Do not
+    stamp a new row with this directly -- ``socket.gethostname()`` drifts on a
+    macOS Bonjour/DHCP rename, which is exactly the bug ``stable_host_id``
+    fixes.
+    """
     return socket.gethostname()
+
+
+_HOST_ID_FILENAME = "host_id"
+
+
+def stable_host_id() -> str:
+    """A rename-stable identity for rows this process writes.
+
+    ``local_host_id()`` (``socket.gethostname()``) drifts on a macOS
+    Bonjour/DHCP rename: after a rename every row this machine wrote earlier
+    carries a hostname nothing here answers to any more, so
+    ``pid_liveness_is_meaningful`` starts reading all of them as foreign and a
+    genuinely dead local run reads as running forever. This persists a random
+    id once, as a file named ``host_id`` in the same state directory that
+    holds ``coord.db`` (``coordharness.config.state_dir()``), and returns it
+    on every later call -- stable across a rename because nothing here reads
+    the hostname.
+
+    Read/create is write-once: an existing file's contents win, a missing one
+    gets a fresh ``uuid4().hex`` written with mode ``0600``. Any failure along
+    the way -- an unwritable state dir, an unreadable file, a race with
+    another process creating the same file -- is logged and answered with
+    ``local_host_id()`` instead of raised, so a locked-down or read-only state
+    directory degrades to the pre-existing rename-fragile behaviour rather
+    than breaking every write path.
+    """
+    path = state_dir() / _HOST_ID_FILENAME
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            existing = path.read_text(encoding="utf-8").strip()
+        except FileNotFoundError:
+            existing = ""
+        if existing:
+            return existing
+        fresh = uuid.uuid4().hex
+        try:
+            fd = os.open(str(path), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        except FileExistsError:
+            # Lost a create race to another process writing concurrently;
+            # its value is authoritative, not ours.
+            raced = path.read_text(encoding="utf-8").strip()
+            return raced or local_host_id()
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(fresh)
+        os.chmod(str(path), 0o600)
+        return fresh
+    except Exception:
+        _logger.warning(
+            "stable host id unavailable at %s; falling back to gethostname()",
+            path,
+            exc_info=True,
+        )
+        return local_host_id()
 
 
 def pid_liveness_is_meaningful(host_id: object) -> bool:
@@ -109,13 +171,20 @@ def pid_liveness_is_meaningful(host_id: object) -> bool:
 
     A pid only means something on the machine that recorded it. NULL/empty is
     the pre-migration and single-machine case and is read as local: every
-    database written before host_id existed keeps its current behaviour. A
-    host_id naming another machine makes the probe unanswerable here -- the
-    caller must report UNKNOWN and fall back to the lease/heartbeat, never
-    "dead", or a healthy remote run reads as a crash.
+    database written before host_id existed keeps its current behaviour. A row
+    is also local when its ``host_id`` matches this machine's current
+    ``stable_host_id()`` (new writes) or its current ``socket.gethostname()``
+    (writes made before ``stable_host_id`` existed) -- the OR is what keeps a
+    legacy hostname-stamped row local across the same rename that
+    ``stable_host_id`` protects new rows from. Any other host_id makes the
+    probe unanswerable here -- the caller must report UNKNOWN and fall back to
+    the lease/heartbeat, never "dead", or a healthy remote run reads as a
+    crash.
     """
     recorded = str(host_id or "").strip()
-    return not recorded or recorded == local_host_id()
+    if not recorded:
+        return True
+    return recorded == stable_host_id() or recorded == local_host_id()
 
 
 def new_work_quarantine_declaration(
@@ -341,7 +410,7 @@ def register_session(
                     cwd,
                     pid,
                     pid_started_at,
-                    local_host_id(),
+                    stable_host_id(),
                     t,
                     t,
                     t + lease_s,
@@ -6140,7 +6209,7 @@ def appear_run(
                 pid_started_at,
                 pgid,
                 resource_class,
-                local_host_id(),
+                stable_host_id(),
                 t,
                 observed_at,
                 observed_state,
