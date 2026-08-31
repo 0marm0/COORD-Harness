@@ -375,6 +375,54 @@ def _run_lifecycle_policy(conn, *, action: str, work_id: str, ident: dict, paylo
     return policy
 
 
+def _add_subparser(sub, name, **kwargs):
+    """A subparser with the standard per-subcommand ``--db`` already attached.
+
+    argparse does not let a subparser fall through to its parent's options
+    once the subcommand token is consumed, so ``coord doctor --db PATH`` died
+    with "unrecognized arguments" -- the global ``--db`` declared on ``ap``
+    only works *before* the subcommand name, and nothing said so. Every
+    subcommand that reads the database (which, here, is all of them) gets its
+    own ``--db`` so it can follow the subcommand too. It lands in ``sub_db``
+    rather than ``db`` on purpose: argparse re-applies a subparser's own
+    defaults onto the shared namespace even when the flag was not given, and
+    a same-named default of ``None`` would silently wipe out a global ``--db``
+    given before the subcommand. See ``_resolve_db_path`` for how the two are
+    reconciled after parsing.
+    """
+    parser = sub.add_parser(name, **kwargs)
+    parser.add_argument(
+        "--db", default=None, dest="sub_db", metavar="PATH",
+        help="coord.db path; equivalent to the global --db but valid after "
+             "the subcommand name (the global --db must precede it)",
+    )
+    return parser
+
+
+def _resolve_db_path(args: argparse.Namespace) -> None:
+    """Merge the global and per-subcommand ``--db`` onto ``args.db``.
+
+    Only one position is usually given, and it wins outright regardless of
+    which one it is. When both are given and agree, the global value is kept
+    -- they name the same path, so it makes no observable difference. When
+    both are given and disagree, that is not resolved by picking one: a
+    caller who typed two different paths almost certainly meant one of them,
+    and silently choosing would run the command against a database the
+    caller never actually asked for. So this refuses instead, naming both
+    positions, rather than guessing which one was the mistake.
+    """
+    global_db = args.db
+    sub_db = getattr(args, "sub_db", None)
+    if global_db is not None and sub_db is not None and str(global_db) != str(sub_db):
+        raise ValueError(
+            f"coord {args.cmd}: conflicting --db values -- {global_db!r} "
+            f"(given before the subcommand) vs {sub_db!r} (given after "
+            f"{args.cmd!r}); pass --db in one position only"
+        )
+    if global_db is None:
+        args.db = sub_db
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="coord")
     ap.add_argument("--db", default=None)
@@ -387,12 +435,12 @@ def main(argv=None) -> int:
                          "refusal")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
-    p = sub.add_parser("session")
+    p = _add_subparser(sub,"session")
     p.add_argument("action", choices=["start", "heartbeat", "end"])
     p.add_argument("--actor", default=None)
     p.add_argument("--runner-type", default=None)
 
-    p = sub.add_parser("claim")
+    p = _add_subparser(sub,"claim")
     p.add_argument("work_id")
     p.add_argument("--step", default=None)
     # Declared with the claim rather than afterwards because the window this
@@ -403,7 +451,7 @@ def main(argv=None) -> int:
                    help="a scope this claim intends to write, as path=PREFIX, "
                         "table=NAME or service=NAME; a bare value is a path. "
                         "Repeatable")
-    p = sub.add_parser(
+    p = _add_subparser(sub,
         "declare-write-set",
         help="declare which scopes a held claim intends to write",
     )
@@ -411,7 +459,7 @@ def main(argv=None) -> int:
     p.add_argument("--write-scope", action="append", required=True, default=[],
                    dest="write_scopes", metavar="[KIND=]VALUE",
                    help="a scope this claim intends to write; repeatable")
-    p = sub.add_parser(
+    p = _add_subparser(sub,
         "conflicts",
         help="which currently-held claims declare overlapping write scopes",
     )
@@ -421,7 +469,7 @@ def main(argv=None) -> int:
     # harmless concurrent work.
     p.add_argument("--include-expired", action="store_true",
                    help="also scan claims whose lease has already expired")
-    p = sub.add_parser(
+    p = _add_subparser(sub,
         "create",
         help="create the first or next proof-gated work item in this coord database",
     )
@@ -445,9 +493,9 @@ def main(argv=None) -> int:
     p.add_argument("--context-pack-ref", default=None)
     p.add_argument("--tier", choices=("T0", "T1", "T2"), default=None)
     p.add_argument("--priority", type=int, default=None)
-    p = sub.add_parser("work-context", help="read one exact row and its typed-handoff fences")
+    p = _add_subparser(sub,"work-context", help="read one exact row and its typed-handoff fences")
     p.add_argument("work_id")
-    p = sub.add_parser("handoff", help="typed, fenced transfer of existing work")
+    p = _add_subparser(sub,"handoff", help="typed, fenced transfer of existing work")
     p.add_argument("work_id")
     p.add_argument("--owner-lane", required=True, choices=_configured_lanes())
     p.add_argument("--task", required=True)
@@ -460,12 +508,13 @@ def main(argv=None) -> int:
     p.add_argument("--ref", action="append", required=True)
     p.add_argument("--constraint", action="append", required=True)
     p.add_argument("--target-intent", choices=("queued", "blocked"), default="queued")
-    p = sub.add_parser(
+    p = _add_subparser(
+        sub,
         "reassign",
         help="one-command typed handoff using a fresh exact-state snapshot",
     )
     p.add_argument("work_id")
-    p.add_argument("--owner-lane", required=True, choices=("claude", "codex"))
+    p.add_argument("--owner-lane", required=True, choices=_configured_lanes())
     p.add_argument("--task", required=True)
     p.add_argument("--why", required=True)
     p.add_argument("--acceptance", required=True)
@@ -477,7 +526,7 @@ def main(argv=None) -> int:
     p.add_argument("--ref", action="append", required=True)
     p.add_argument("--constraint", action="append", required=True)
     p.add_argument("--target-intent", choices=("queued", "blocked"), default="queued")
-    p = sub.add_parser("release")
+    p = _add_subparser(sub,"release")
     p.add_argument("claim_id")
     p.add_argument(
         "--status",
@@ -497,12 +546,14 @@ def main(argv=None) -> int:
     release_trigger = p.add_mutually_exclusive_group()
     release_trigger.add_argument("--resume-predicate", default=None)
     release_trigger.add_argument("--resume-manual", action="store_true")
-    p = sub.add_parser("done")
+    p = _add_subparser(sub,"done")
     p.add_argument("work_id")
     p.add_argument("--artifact", default=None)
-    p = sub.add_parser("board")
+    p = _add_subparser(sub,"board")
     p.add_argument("--group-by", default="module")
-    p = sub.add_parser("inbox", help="messages addressed to this actor")
+    p.add_argument("--json", action="store_true", dest="as_json",
+                   help="always print the machine-readable JSON board, even at a terminal")
+    p = _add_subparser(sub,"inbox", help="messages addressed to this actor")
     p.add_argument("--actor", default=None)
     p.add_argument("--limit", type=int, default=20)
     # Newest first is the default because the question an agent asks mid-run is
@@ -518,7 +569,7 @@ def main(argv=None) -> int:
                    help="show only messages addressed to this actor, not board-wide "
                         "broadcasts")
 
-    p = sub.add_parser("route", help="which provider has headroom, on measured usage")
+    p = _add_subparser(sub,"route", help="which provider has headroom, on measured usage")
     p.add_argument("--usage-db", required=True,
                    help="path to the usage ledger to read (never written)")
     p.add_argument("--days", type=int, default=7, help="window length in days (default 7)")
@@ -530,7 +581,7 @@ def main(argv=None) -> int:
                         "reporting its total as a floor")
     p.add_argument("--json", action="store_true", dest="as_json")
 
-    p = sub.add_parser("note", help="send a mid-flight message to the other lane")
+    p = _add_subparser(sub,"note", help="send a mid-flight message to the other lane")
     p.add_argument("work_id", help="an existing row the message is about")
     p.add_argument("--body", required=True, help="what the other lane needs to know")
     p.add_argument("--title", default=None)
@@ -545,7 +596,7 @@ def main(argv=None) -> int:
     p.add_argument("--to-session", default=None, metavar="SESSION_ID",
                    help="recipient session id, narrower than --to; the session "
                         "must exist and be live or the note is refused")
-    p = sub.add_parser(
+    p = _add_subparser(sub,
         "verdict",
         help="record this lane's independent review verdict on the other lane's work",
     )
@@ -566,7 +617,7 @@ def main(argv=None) -> int:
     )
     p.add_argument("--session", default=None,
                    help="assert the reviewing session id; must match this process")
-    p = sub.add_parser(
+    p = _add_subparser(sub,
         "request-audit",
         help="ask the other lane to review an existing row of yours",
     )
@@ -578,7 +629,7 @@ def main(argv=None) -> int:
     p.add_argument("--acceptance", default=None)
     p.add_argument("--session", default=None,
                    help="assert the requesting session id; must match this process")
-    p = sub.add_parser(
+    p = _add_subparser(sub,
         "sign-off",
         help="record a human override of the review gate on one row",
     )
@@ -593,15 +644,15 @@ def main(argv=None) -> int:
     p.add_argument("--expected-version", type=int, default=None,
                    help="assert the row version you are signing; defaults to the "
                         "version shown in the confirmation prompt")
-    p = sub.add_parser("heartbeat-claim")
+    p = _add_subparser(sub,"heartbeat-claim")
     p.add_argument("claim_id")
     p.add_argument("--step", default=None)
-    p = sub.add_parser("doctor", help="run read-only safety and integrity checks")
+    p = _add_subparser(sub,"doctor", help="run read-only safety and integrity checks")
     p.add_argument("--project-root", default=None)
     p.add_argument("--state-root", default=None)
     p.add_argument("--mcp-config", action="append", default=[])
     p.add_argument("--now", type=float, default=None)
-    p = sub.add_parser(
+    p = _add_subparser(sub,
         "onboard",
         help="verify clean-room agent instructions, configs, database, and MCP wiring",
     )
@@ -613,7 +664,14 @@ def main(argv=None) -> int:
     p.add_argument("--skip-client-probes", action="store_true")
     p.add_argument("--skip-mcp-probe", action="store_true")
 
+    p = _add_subparser(
+        sub, "demo", help="seed a disposable database with a fictional board"
+    )
+    p.add_argument("--quiet", action="store_true",
+                   help="suppress the per-row seed counts and any refusals printed")
+
     args = ap.parse_args(argv)
+    _resolve_db_path(args)
     from coordharness.bootstrap import bootstrap_database, database_current
 
     if args.cmd == "onboard":
@@ -657,6 +715,18 @@ def main(argv=None) -> int:
         _emit(report)
         return 0 if report["status"] == "PASS" else 2
 
+    if args.cmd == "demo":
+        from .. import demo as demo_module
+
+        db_path = Path(args.db) if args.db is not None else harness_config.coord_db_path()
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+        # Mirrors `python -m coordharness.demo` exactly -- same message, same
+        # seed call, same return -- so the two entry points stay one behavior
+        # with two doors, not two behaviors that can drift apart.
+        print(f"seeding demo board at {db_path}")
+        demo_module.seed(db_path, quiet=args.quiet)
+        return 0
+
     if args.cmd == "board":
         db_path = Path(args.db) if args.db is not None else harness_config.coord_db_path()
         if not database_current(db_path):
@@ -664,7 +734,11 @@ def main(argv=None) -> int:
         from coordharness.board.snapshot import _materialized_connection
 
         with _materialized_connection(db_path) as read_conn:
-            rows = coord_db.board_rows(read_conn, group_by=args.group_by)
+            # Read once, use twice: the human table's lease-remaining column
+            # needs the same instant the status derivation used, or a claim
+            # could read as expired in one column and live in the other.
+            at = coord_db.db_now(read_conn)
+            rows = coord_db.board_rows(read_conn, group_by=args.group_by, at=at)
         # `assignee` is the LANE the row belongs to, and three concurrent
         # claude sessions all render as "claude" -- which is the whole board
         # for a fleet, printed as one name. The owner fields say which session
@@ -673,13 +747,22 @@ def main(argv=None) -> int:
         # actor, so it degrades back to the lane name only when nothing better
         # was ever registered. `assignee` stays exactly where it was, because
         # everything downstream reads it.
-        _emit({"count": len(rows), "rows": [
-            {"work_id": row["work_id"], "title": row.get("title"), "status": row["status"],
-             "group": row["group"], "assignee": row.get("assignee"),
-             "owner_session_id": row.get("owner_session_id"),
-             "owner_session_actor": row.get("owner_session_actor"),
-             "owner_session_label": row.get("owner_session_label")} for row in rows
-        ]})
+        #
+        # A script reading this JSON must keep seeing exactly what it always
+        # has, so that path is untouched -- not a terminal, or --json asked
+        # for it outright. Only a human at a real terminal gets the table.
+        if sys.stdout.isatty() and not args.as_json:
+            from .board_format import render_board_table
+
+            print(render_board_table(rows, group_by=args.group_by, now=at))
+        else:
+            _emit({"count": len(rows), "rows": [
+                {"work_id": row["work_id"], "title": row.get("title"), "status": row["status"],
+                 "group": row["group"], "assignee": row.get("assignee"),
+                 "owner_session_id": row.get("owner_session_id"),
+                 "owner_session_actor": row.get("owner_session_actor"),
+                 "owner_session_label": row.get("owner_session_label")} for row in rows
+            ]})
         return 0
 
     if args.cmd == "conflicts":
