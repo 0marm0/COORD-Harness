@@ -185,6 +185,30 @@ final class StatusItemClickRoutingTests: XCTestCase {
         XCTAssertTrue(stats.contains("case .unavailable: return .secondaryLabelColor"))
     }
 
+    func testContextMenuBatteryTogglePersistsAndControlsSeparateStatusItemLifecycle() throws {
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+        let status = try String(contentsOf: root.appendingPathComponent("menubar/Sources/App/StatusItemController.swift"))
+        let delegate = try String(contentsOf: root.appendingPathComponent("menubar/Sources/App/AppDelegate.swift"))
+        let settings = try String(contentsOf: root.appendingPathComponent("menubar/Sources/UI/SettingsView.swift"))
+        let power = try String(contentsOf: root.appendingPathComponent("menubar/Sources/App/LocalPowerControls.swift"))
+
+        XCTAssertTrue(settings.contains("Show Battery as a separate menu-bar item"))
+        XCTAssertTrue(settings.contains("cfg.batteryStatusItemEnabled = batteryStatusItem.state == .on"))
+        XCTAssertTrue(status.contains("var onBatteryStatusItemVisibilityChange: ((Bool) -> Void)?"))
+        XCTAssertTrue(status.contains("var batteryStatusItemVisible = false"))
+        XCTAssertTrue(status.contains("batteryStatusItemVisible = config.batteryStatusItemEnabled"))
+        XCTAssertTrue(status.contains("let batteryItem = NSMenuItem(title: \"Battery\""))
+        XCTAssertTrue(status.contains("#selector(menuBatteryStatusItemVisibility(_:))"))
+        XCTAssertTrue(status.contains("batteryVisible.state = batteryStatusItemVisible ? .on : .off"))
+        XCTAssertTrue(status.contains("onBatteryStatusItemVisibilityChange?(!batteryStatusItemVisible)"))
+        XCTAssertTrue(delegate.contains("statusItem.onBatteryStatusItemVisibilityChange = { [weak self] visible in"))
+        XCTAssertTrue(delegate.contains("$0.batteryStatusItemEnabled = visible"))
+        XCTAssertTrue(delegate.contains("batteryStatusItem.setEnabled(cfg.batteryStatusItemEnabled)"))
+        XCTAssertTrue(power.contains("NSStatusBar.system.statusItem("))
+        XCTAssertTrue(power.contains("NSStatusBar.system.removeStatusItem(item)"))
+        XCTAssertTrue(power.contains("statusItem = nil"))
+    }
+
     func testContextMenuSettingsUsesDedicatedNonToggleRoute() throws {
         let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
         let status = try String(contentsOf: root.appendingPathComponent("menubar/Sources/App/StatusItemController.swift"))
