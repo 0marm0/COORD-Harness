@@ -75,7 +75,9 @@
     "apps/Tests/MenuBarPerformanceTests.swift": "bounded menu-bar scheduling and refresh performance regressions written fresh",
     "apps/Tests/NativeDetailPolishTests.swift": "native detail hierarchy and layout contract regressions written fresh",
     "apps/Tests/NativeNavigationTests.swift": "native compact-navigation visibility regressions written fresh",
+    "apps/Tests/NativeOperatorWritesTests.swift": "native XCTest regression asserting the native-operator action broker binds only to the fixed loopback endpoint with a private, restrictively-permissioned bearer token, checked by reading NativeOperatorTokenSource.swift and NativeCockpitActionBroker.swift as source text rather than a live network probe",
     "apps/Tests/NativeSnapshotTests.swift": "native client source",
+    "apps/Tests/PowerControlTests.swift": "native XCTest coverage for the local power subsystem written fresh: pmset battery, charge-limit, and energy-mode parsing, its fail-closed error paths, and the derived battery/caffeine presentation state",
     "apps/Tests/ReviewHardeningTests.swift": "written fresh for this repository",
     "apps/Tests/SnapshotClientTests.swift": "native client source",
     "apps/Tests/StatusItemClickRoutingTests.swift": "status-item primary and secondary click routing regressions written fresh",
@@ -84,6 +86,7 @@
     "apps/Tests/SystemTelemetryDisplayPolicyTests.swift": "menu-bar telemetry severity and compact geometry regressions written fresh",
     "apps/Tests/UsageAccountActionsTests.swift": "standalone account-action transport, redaction, and failure regressions written fresh",
     "apps/Tests/UsageDashboardTests.swift": "standalone usage decoding, retention, layout, and presentation regressions written fresh",
+    "apps/Tests/WordmarkClickRoutingTests.swift": "native XCTest regression asserting the menu-bar wordmark button routes its click through PanelAction.openCockpit end to end, checked by reading ContentStackAndRows.swift and PopoverController.swift as source text",
     "apps/brand/Assets.xcassets/AppIcon.appiconset/Contents.json": "application icon, generated from the maintainer's 1024px master",
     "apps/brand/Assets.xcassets/AppIcon.appiconset/icon_128x128.png": "application icon, generated from the maintainer's 1024px master",
     "apps/brand/Assets.xcassets/AppIcon.appiconset/icon_128x128@2x.png": "application icon, generated from the maintainer's 1024px master",
@@ -114,13 +117,17 @@
     "apps/menubar/Sources/App/AgentMarks.swift": "owner marks drawn as vector code; no image files, nothing to license",
     "apps/menubar/Sources/App/DeferredCoalescedValue.swift": "small generic main-thread coalescing primitive written fresh for menu-bar refresh stability",
     "apps/menubar/Sources/App/HarnessEndpoint.swift": "written fresh for this repository",
+    "apps/menubar/Sources/App/LocalPowerControls.swift": "local, non-networked power subsystem written fresh: pmset battery/charge-limit/energy-mode parsing that fails closed rather than inventing a percentage, the LocalPowerController driving those reads, a dedicated dockable battery status item, and the caffeine, battery-meter, and battery-details controls views",
+    "apps/menubar/Sources/App/StatsStatusItemController.swift": "written fresh: a second, independently dockable menu-bar status item devoted to system-telemetry rings, kept separate from the primary quota status item so enabling Stats never paints the same metrics twice",
     "apps/menubar/Sources/App/StatusItemClickRouting.swift": "pure status-item click destination resolver written fresh",
+    "apps/menubar/Sources/Cockpit/Core/NativeOperatorTokenSource.swift": "written fresh: resolves the native-operator bearer token from the environment or a private, owner-only on-disk file, and fixes the action broker's endpoint to 127.0.0.1 on HarnessEndpoint.defaultPort so a native write can only ever reach this machine's own harness process",
     "apps/menubar/Sources/Cockpit/Data/DeclinedRoutes.swift": "remembers routes the server declined so probes are not retried on a timer",
     "apps/menubar/Sources/Cockpit/UI/CockpitMapWebView.swift": "native client source; began as a port and now diverges deliberately \u2014 this window embeds the harness's own Mesh/Map/Atlas routes, the source product embeds its own console routes",
     "apps/menubar/Sources/Cockpit/UI/CockpitRootView.swift": "native client source; began as a port and now diverges deliberately \u2014 this window embeds the harness's own Mesh/Map/Atlas routes, the source product embeds its own console routes",
     "apps/menubar/Sources/Data/ConfigPersistence.swift": "small atomic property-list persistence helper written fresh",
     "apps/menubar/Sources/Data/SystemTelemetryDisplayPolicy.swift": "standalone compact telemetry geometry, ordering, and threshold policy written fresh",
     "apps/menubar/Sources/UI/CoordBrandFont.swift": "native client source",
+    "apps/menubar/Sources/UI/PremiumSystemTelemetryDetailView.swift": "written fresh: the dense Stats detail popover -- layout contract, module ordering, ring and battery geometry -- that the standalone dockable Stats status item opens",
     "apps/menubar/Sources/UI/SystemTelemetryDetailView.swift": "standalone AppKit telemetry detail renderer written fresh against the public telemetry model",
     "apps/menubar/Sources/UI/SystemTelemetryRow.swift": "standalone compact AppKit telemetry row written fresh against the public telemetry model",
     "apps/menubar/Sources/Usage/InstalledUsageDashboard.swift": "standalone menu-bar integration wrapper for the shared usage dashboard written fresh",
@@ -239,6 +246,7 @@
     "scripts/demo.sh": "written fresh for this repository",
     "scripts/friend_acceptance.sh": "isolated synthetic install, MCP, service, native-build, and data-preserving uninstall acceptance runner written fresh",
     "scripts/native_context_bridge.py": "read-only bridge answering the native cockpit's context palette",
+    "scripts/route_plan_snapshot.py": "CLI wrapper, written fresh, building a non-mutating RoutePlanV1 from an explicit JSON snapshot through the pure assignment_routing planner; no live telemetry adapter, never opens coord.db, never imports a lifecycle writer -- every decision timestamp and evidence value comes from the caller",
     "scripts/setup-macos.sh": "idempotent standalone macOS bootstrap wrapper",
     "scripts/setup.sh": "OS-agnostic one-command clone setup: venv, coord.db, generated client config, and an opt-in native macOS/iOS install lane",
     "src/coordharness/__init__.py": "package root",
@@ -312,6 +320,7 @@
     "src/coordharness/board/system_telemetry_proxy.py": "bounded opt-in loopback telemetry adapter independently implemented for the standalone board",
     "src/coordharness/bootstrap.py": "written fresh for this repository",
     "src/coordharness/config.py": "fresh replacement for the source project's path table",
+    "src/coordharness/coord/assignment_routing.py": "pure, evidence-bound assignment-routing planner written fresh: immutable snapshots in, hard exclusions evaluated, an expiring recommendation receipt out; never opens a database, claims work, or starts a run",
     "src/coordharness/coord/board_format.py": "human-readable table rendering for coord board at a real terminal; the JSON path (scripts, --json) is untouched by this module",
     "src/coordharness/coord/migrations/004_host_identity.sql": "migration record for the additive host_id columns on runs/agent_sessions, documenting why the ALTER itself lives in create_schema.py",
     "src/coordharness/coord/model_cli.py": "standalone model control CLI, written fresh",
@@ -366,6 +375,7 @@
     "tests/test_agent_commands.py": "regressions pinning the shipped agent slash commands against the live CLI subcommands and MCP tool catalogue, not a list kept in the test",
     "tests/test_agent_first_contact.py": "regressions for scripts/coord-mcp-launch.sh's fail-closed first-contact path and both tracked client configs invoking it",
     "tests/test_agent_onboarding.py": "fresh-clone onboarding configuration and doctor regression tests",
+    "tests/test_assignment_routing.py": "regressions for the pure assignment_routing planner written fresh: routing-policy weights, hard exclusions, and the canonical_sha256 receipt hashing",
     "tests/test_blocked_release_is_reachable.py": "regressions for the documented blocked claim release, driven from the handbook text itself",
     "tests/test_board.py": "written fresh for this repository",
     "tests/test_board_action_registry.py": "preview-only action availability, safety veto, and human-reason contract tests written fresh",
@@ -436,11 +446,13 @@
     "tests/test_mlx_runner_preflight.py": "local runner preflight regression tests",
     "tests/test_model_catalog_authority.py": "model catalog authority regression tests",
     "tests/test_model_productization.py": "model productization regression tests",
+    "tests/test_native_operator_writes.py": "regressions for the native-operator HTTP write path written fresh: default-off browser/native writes, an authenticated loopback transfer that is fenced and replay-safe, ambiguous-method and claim-conflict refusals, truthful projected action reasons, and the installer's explicit opt-in default",
     "tests/test_neutral_config_files.py": "neutral configuration publication tests",
     "tests/test_neutral_runtime_defaults.py": "neutral runtime default publication tests",
     "tests/test_no_hardcoded_endpoints.py": "standalone endpoint-neutrality regression tests",
     "tests/test_operator_ok_authority.py": "structural census of every writer that can insert an events row with a caller-chosen kind, pinning the agent-facing operator_ok surface",
     "tests/test_operator_sign_off.py": "operator review-gate sign-off regressions written fresh, including the directions an agent would take at it",
+    "tests/test_operator_reassignment.py": "regressions for the typed operator-reassignment writer in coord_db.py written fresh: an exact system-handoff receipt, non-echoing operation-id collisions, invalid-authority/CAS refusals, never stealing a live claim, refusing completed or live work, and a public event writer unable to squat the reassignment namespace",
     "tests/test_operations_atlas.py": "operational graph analytics, cycle, and health regressions",
     "tests/test_operations_atlas_above_fold_browser.py": "laptop and mobile Atlas hierarchy, topology visibility, overflow, and complete-summary browser regressions written fresh",
     "tests/test_operations_atlas_attention_browser.py": "attention-state and bounded-neighbourhood Operations Atlas browser regressions written fresh",
@@ -467,6 +479,7 @@
     "tests/test_release_claim_guard.py": "regressions for release_claim's epoch check and terminal-state guard on the paused/blocked branch",
     "tests/test_repo_citizenship.py": "root SECURITY.md/CONTRIBUTING.md/CODE_OF_CONDUCT.md citizenship regression tests written fresh",
     "tests/test_resume_trigger_contract.py": "resume-trigger contract regression tests written fresh",
+    "tests/test_route_plan_snapshot.py": "regressions for scripts/route_plan_snapshot.py written fresh: its own snapshot schema and its behavior invoked as a subprocess",
     "tests/test_runtime_module.py": "regressions for coordharness.runtime's console-release retention, native-thread guard, and served-build-identity helpers",
     "tests/test_session_addressed_notes.py": "session-addressed note writer, lane-default preservation, and dead-target refusal regressions written fresh",
     "tests/test_setup_macos_client_registration.py": "opt-in MCP client registration gating regressions for the CLI-only setup path, written fresh",
@@ -515,13 +528,13 @@
     },
     "apps/Shared/Sources/SystemTelemetry.swift": {
       "origin": "ported from a pinned private local-telemetry model, then substantially adapted for the standalone harness",
-      "reason": "The public model keeps bounded CPU, GPU, memory, and disk telemetry while replacing private service assumptions with a generic opt-in endpoint contract.",
-      "reviewed_sha256": "aea58a1e66984c4b706d58701e2da35a7d52694f02697f281cea5798da585e77"
+      "reason": "The public model keeps bounded CPU, GPU, memory, and disk telemetry while replacing private service assumptions with a generic opt-in endpoint contract. Re-reviewed (agent self-review, not independent human review) after the snapshot gained appBytes/wiredBytes/compressedBytes fields and a MemoryRingComposition type that reconciles App, Wired, Compressed, and Free segments to installed physical memory, keeping swap as metadata never drawn as a physical-memory slice; no network surface or identifier changed.",
+      "reviewed_sha256": "8cba14aa0d6b03c6e5a30c58069e42c34bfb42b56718f0cffedbce5b412fae61"
     },
     "apps/Shared/Sources/SystemTelemetryView.swift": {
       "origin": "ported from a pinned private local-telemetry view, then substantially adapted for the standalone harness",
-      "reason": "The compact shared telemetry strip was redesigned around the public system-telemetry snapshot and neutral severity presentation.",
-      "reviewed_sha256": "cb554c6b240f0c211c1e9404e40bc9b5b47841f1a261eb1d158fd14b777159eb"
+      "reason": "The compact shared telemetry strip was redesigned around the public system-telemetry snapshot and neutral severity presentation. Re-reviewed (agent self-review, not independent human review) after the four telemetry rows were reordered (RAM leads) and recolored, and the view body was split into expandedCockpitStrip/compactStrip helpers; presentation only, no new data source.",
+      "reviewed_sha256": "d5c963fe1fd6715131b35bbeb8c3db42dc62fec0055a9d31a2b2930742dcd579"
     },
     "apps/Shared/Sources/UsageAccountActions.swift": {
       "origin": "split from a pinned private provider-usage client, then substantially adapted for the standalone harness",
@@ -540,18 +553,18 @@
     },
     "apps/Shared/Sources/UsageDashboardContent.swift": {
       "origin": "split from a pinned private provider-usage dashboard, then substantially adapted for the standalone harness",
-      "reason": "Compact and expanded usage presentation was modularized and generalized around the public provider-separated usage schema.",
-      "reviewed_sha256": "70116c3ea7e1ff464a9e2a6bf3337e564ee82933bfba1c0f6801794e9cfdca1a"
+      "reason": "Compact and expanded usage presentation was modularized and generalized around the public provider-separated usage schema. Re-reviewed (agent self-review, not independent human review) after adding a per-provider visual style helper (asset name/tint), a totalTokensCost roll-up label, and an onExpandedChange callback replacing the prior @AppStorage-backed expansion state; no new endpoint or schema.",
+      "reviewed_sha256": "551015dc7592a9991406e15b5ed887e66986cf28c728002bbe16149621aeff06"
     },
     "apps/Shared/Sources/UsageIntelligence.swift": {
       "origin": "combined from pinned private provider-usage model and client mechanisms, then substantially adapted for the standalone harness",
-      "reason": "Provider quota, history, cost, retention, and forecast models were consolidated behind a neutral public schema with bounded decoding and no private ledger bytes.",
-      "reviewed_sha256": "12cac02468cdbcd801fb17c3af5f03afa5c7729058be6ed9574f6cb76f7e4cdb"
+      "reason": "Provider quota, history, cost, retention, and forecast models were consolidated behind a neutral public schema with bounded decoding and no private ledger bytes. Re-reviewed (agent self-review, not independent human review) after UsageDaily gained an optional modelBreakdowns array (UsageDailyModelBreakdown: per-model token and cost fields) and Auto mode's session/weekly selection was reworked to compare each window's own remaining percent instead of a fixed threshold order; decode-only additions, no new transport.",
+      "reviewed_sha256": "eda946e254d57fdd28b800a24e3a27edb035616bc09684aa9303f4ca26c8d0bb"
     },
     "apps/menubar/Sources/App/AppDelegate.swift": {
       "origin": "ported from a pinned private application delegate, then substantially adapted for the standalone harness",
-      "reason": "Re-reviewed after wiring concurrency-safe public Settings persistence, dedicated Settings navigation, and deterministic return to the main usage and task panel without stale popover state.",
-      "reviewed_sha256": "d2d5567930e8150e9633a872a82aac1ef6db533a0a86822e178c40237d631a3f"
+      "reason": "Re-reviewed after wiring concurrency-safe public Settings persistence, dedicated Settings navigation, and deterministic return to the main usage and task panel without stale popover state. Re-reviewed again (agent self-review, not independent human review) after wiring a LocalPowerController, a separate battery status item and a dockable Stats status item/popover, and passing telemetryStore into CockpitWindowController; local machine telemetry only, no new remote endpoint.",
+      "reviewed_sha256": "22195f05021deed64aacda6d1bf7226097fb44e8277d5de62d3962b87938969d"
     },
     "apps/menubar/Sources/App/Diagnostics.swift": {
       "origin": "ported from pinned private menu-bar diagnostics, then substantially adapted for the standalone harness",
@@ -560,13 +573,13 @@
     },
     "apps/menubar/Sources/App/PopoverController.swift": {
       "origin": "ported from a pinned private popover controller, then substantially adapted for the standalone harness",
-      "reason": "Re-reviewed after consolidating main, settings, provider-account, usage, and telemetry navigation into one state machine reset by every close and attach transition.",
-      "reviewed_sha256": "2dc515d154b4ac9a9de79dc0d7d553bae0b36f8489019f5519527b59f5d34917"
+      "reason": "Re-reviewed after consolidating main, settings, provider-account, usage, and telemetry navigation into one state machine reset by every close and attach transition. Re-reviewed again (agent self-review, not independent human review) after a battery navigation destination and a UsageWindowGeometry sizing helper were added, and the controller began taking a LocalPowerController to track and push local battery/caffeine state into the content stack; local machine state only.",
+      "reviewed_sha256": "9f1820cc9400f41efb2cb59005c5e5c1d02a07b791bf8b6441b0dbba9e2d35d6"
     },
     "apps/menubar/Sources/App/StatusItemController.swift": {
       "origin": "ported from a pinned private status-item controller, then substantially adapted for the standalone harness",
-      "reason": "Re-reviewed after adding explicit queued Settings navigation, compact provider and telemetry status items, coalesced refresh, and stable primary versus secondary click routing.",
-      "reviewed_sha256": "09af1b3335e75c9a9d49d5d3c4635a120e2d513b6b5df047b5ec847386360880"
+      "reason": "Re-reviewed after adding explicit queued Settings navigation, compact provider and telemetry status items, coalesced refresh, and stable primary versus secondary click routing. Re-reviewed again (agent self-review, not independent human review) after the primary status item stopped rendering telemetry rings itself (Stats now owns a separate dockable item, avoiding duplicate metrics) and gained a batteryStatusItemVisible flag/callback; presentation and config-forwarding only.",
+      "reviewed_sha256": "c5f69fc470f0e44de616aebeb0332d7f4bce3281da85df0c0b3354290fed1d5b"
     },
     "apps/menubar/Sources/Cockpit/Data/CockpitCapabilityInventorySource.swift": {
       "origin": "ported from a pinned private cockpit capability reader, then substantially adapted for the standalone harness",
@@ -575,8 +588,8 @@
     },
     "apps/menubar/Sources/Cockpit/Data/CockpitHTTPFallbackSource.swift": {
       "origin": "ported from a pinned private cockpit fallback reader, then substantially adapted for the standalone harness",
-      "reason": "Fallback reads now latch declined routes and expose bounded neutral errors instead of repeatedly probing an unavailable integration.",
-      "reviewed_sha256": "1818f472c05f1ca4ce8a365ae50cbeed9e34752a4bf1fc6fa372ed559a2bb3da"
+      "reason": "Fallback reads now latch declined routes and expose bounded neutral errors instead of repeatedly probing an unavailable integration. Re-reviewed (agent self-review, not independent human review) after row decoding gained workVersion, currentAssignee, assignment/claim identifiers, claim liveness, live run count, and native-operator-writes enablement/reason fields, plus ints()/strings() helpers mirroring the existing typed dictionary accessors; read-path field additions only.",
+      "reviewed_sha256": "a63cdaf148d4047767f543e9ec004d3e45dc5da44e36751e3aed473930cdfde8"
     },
     "apps/menubar/Sources/Cockpit/Data/CockpitProjectionRefresher.swift": {
       "origin": "ported from a pinned private cockpit refresher, then substantially adapted for the standalone harness",
@@ -595,18 +608,18 @@
     },
     "apps/menubar/Sources/Cockpit/UI/CockpitWindowController.swift": {
       "origin": "ported from a pinned private cockpit window controller, then substantially adapted for the standalone harness",
-      "reason": "Window ownership now integrates shared standalone usage state, public navigation, and lifecycle-safe presentation.",
-      "reviewed_sha256": "e186180efc6eb3b4f73d47deb2bcdb36b983c48e27015d31bfbee5041f6df379"
+      "reason": "Window ownership now integrates shared standalone usage state, public navigation, and lifecycle-safe presentation. Re-reviewed (agent self-review, not independent human review) after the controller began requiring a telemetryStore passed through to CockpitRootView, calling rootView.prepareForPresentation() on show, and guarding the post-capability-action projection refresh on actionResult.ok so a failed action no longer triggers a refresh.",
+      "reviewed_sha256": "ec778b42b9e6e88c282321e3b20cddea54884f02246daa5d0cf90667453e667a"
     },
     "apps/menubar/Sources/Data/Config.swift": {
       "origin": "ported from pinned private menu-bar configuration, then substantially adapted for the standalone harness",
-      "reason": "Configuration now persists neutral endpoint, compact layout, usage palette, telemetry visibility, and threshold preferences.",
-      "reviewed_sha256": "ed73c4c6b48d2ce9dd52527c396d1d73fe02bb4c9783801f3aa176ff58a1cf1e"
+      "reason": "Configuration now persists neutral endpoint, compact layout, usage palette, telemetry visibility, and threshold preferences. Re-reviewed (agent self-review, not independent human review) after batteryStatusItemEnabled was added and status-item/per-metric visibility decoding was moved behind a new MenuBarVisibilityPersistence(from:) helper, replacing direct per-key decodeIfPresent calls; same persisted keys, no new storage location.",
+      "reviewed_sha256": "6aacb96e658dffdfeaf07ed6924cd3819adc5afb624e55b2ac65a8526820a9e2"
     },
     "apps/menubar/Sources/Data/HarnessClient.swift": {
       "origin": "ported from a pinned private status client, then substantially adapted for the standalone harness",
-      "reason": "The client now uses the public endpoint policy, bounded timeouts, generic routes, and no private source-tree assumptions.",
-      "reviewed_sha256": "12128eef778d9db102bd976b4a040e6b42db602e647154a02810894bb4356e95"
+      "reason": "The client now uses the public endpoint policy, bounded timeouts, generic routes, and no private source-tree assumptions. Re-reviewed (agent self-review, not independent human review) after setMode and pauseAll gained an optional completion callback (HarnessControlOutcome) reported via a new postOutcome helper, so a caller can show verified success or failure instead of a fire-and-forget POST; same endpoints, same query parameters.",
+      "reviewed_sha256": "61a15ad3e9fdd6e6942e23d91d036c4b2672f6ba101af193b5555918af7d6148"
     },
     "apps/menubar/Sources/Data/Models.swift": {
       "origin": "ported from pinned private menu-bar models, then substantially adapted for the standalone harness",
@@ -615,18 +628,18 @@
     },
     "apps/menubar/Sources/UI/ContentStackAndRows.swift": {
       "origin": "ported from pinned private menu-bar row composition, then substantially adapted for the standalone harness",
-      "reason": "The panel composition now integrates compact usage, telemetry disclosure, task rows, neutral marks, and the standalone navigation hierarchy.",
-      "reviewed_sha256": "8021a274cbe74fcb273f4a0d9b66f28083cd335e72305f7b1ea0d88dd5d8a51a"
+      "reason": "The panel composition now integrates compact usage, telemetry disclosure, task rows, neutral marks, and the standalone navigation hierarchy. Re-reviewed (agent self-review, not independent human review) after PanelAction gained toggleCaffeine/openBatteryDetails/toggleChargeLimit cases and a CockpitWordmarkButton control was added binding the wordmark image to a press closure with an explicit accessibility label and help string.",
+      "reviewed_sha256": "f265ffc6a0d49e571d4747cb578e3afb90a461313a8386e98dda03deef01dda7"
     },
     "apps/menubar/Sources/UI/RingRenderer.swift": {
       "origin": "ported from a pinned private progress renderer, then substantially adapted for the standalone harness",
-      "reason": "The renderer now supports the public compact bar and ring geometry, palette choices, and deterministic status-item rendering.",
-      "reviewed_sha256": "c04c68fad81278210a7a4ed8d69b4d547ef9c0fab4accbabcacc83c60054d4b1"
+      "reason": "The renderer now supports the public compact bar and ring geometry, palette choices, and deterministic status-item rendering. Re-reviewed (agent self-review, not independent human review) after drawTinyBar's warning-marker stroke color became a parameter instead of a hardcoded systemRed, and the warning severity color moved to a shared Tokens.Color.statsWarningOrange token; rendering-only, no new data source.",
+      "reviewed_sha256": "7da5791c2fb85b9b0837f37230204b96e15039c99a8afb2f51d161ff88d7aaa4"
     },
     "apps/menubar/Sources/UI/SettingsView.swift": {
       "origin": "ported from pinned private menu-bar settings, then substantially adapted for the standalone harness",
-      "reason": "Settings were expanded and generalized for persistent usage, telemetry, layout, account, and standalone endpoint controls.",
-      "reviewed_sha256": "8efc44ee3c19be07ac2475ad97006b73f2b1458bb4f080f3d2e073bca36295ed"
+      "reason": "Settings were expanded and generalized for persistent usage, telemetry, layout, account, and standalone endpoint controls. Re-reviewed (agent self-review, not independent human review) after the view was restructured into a fixed-height shell with paged navigation (Page: General/Display/Usage/Power/Advanced) where only the selected page scrolls, plus onOpenPower/onOpenCockpit callbacks; still no private product vocabulary or account state.",
+      "reviewed_sha256": "953940b39f29cedcba76e026dfe3e0ee193989bae50ee4372e9ce79f38367d84"
     },
     "scripts/set_mode.sh": {
       "origin": "ported, then extended in this repository",
@@ -650,8 +663,8 @@
     },
     "src/coordharness/coord/cli.py": {
       "origin": "ported, then extended in this repository",
-      "reason": "Re-reviewed after adding standalone onboarding, generated client configuration, exact work-context reads, and typed fenced handoff commands; lifecycle writes remain explicit and database-scoped. Re-reviewed again after the CLI error-boundary pass: `--traceback` is declared for help text only, a claim collision is translated to a sentence naming the holder that the code reads back rather than infers, `work-context` now takes the not-found branch that `_work_row`'s empty-dict return had made unreachable, and `route` refuses a `--usage-db` path that is absent. No new write path and no change to any domain message. Re-reviewed after four client-surface additions: --write-scope on claim plus declare-write-set and conflicts, so the write-set overlap query the agent system prompt already instructs agents to use is reachable; owner session fields emitted beside the unchanged assignee; --to-session on note; and inbox binding to the reading session so a session-addressed note is visible from the shell. Existing output shapes gained fields and lost none. Re-reviewed after closing the claim-ownership hole: a claim_id was sufficient authority to mutate a claim held by another session, and the resulting row still attributed the action to the true holder. coord heartbeat-claim, release and done now pass this shell's resolved session identity to the coord_db mutators, so the CLI is covered by the same refusal as the MCP surface. No new command, no changed output shape. Re-reviewed after `coord create` stopped being an upsert: its existence check ran outside the write transaction and the write itself merged into whatever row it found, so two sessions choosing the same work id both reported \"created\": true and one silently overwrote the other. The verb now calls coord_db.create_work, which refuses a taken id from inside the transaction that inserts, and the emitted `created` is that call's measured result. No new command and no other changed output shape. Re-reviewed after `coord sign-off` and `coord release --reason` were added. sign-off is the only writer of operator_ok in the product and the one this file's `post_event` refusal has always named; it is deliberately absent from the MCP surface and gated on the invoking process's controlling terminal, read through /dev/tty rather than stdin, so a piped or scripted answer is never consulted. It resolves no lane identity and runs no lifecycle policy, because both read the ambient actor and an operator decision must not carry an agent's name. `release` gained `--reason`, the flag that reaches the `release_claim(reason=...)` parameter a blocked release has always required and this surface could not supply. No other command changed shape. Re-reviewed again after the durable-id generalization: the only change to this file is the work_id help example, which previously showed the extraction source's dated house convention and now shows the same generic shape the documentation teaches.",
-      "reviewed_sha256": "e11f3b061cc2defa2ef330d2b9deb68f0abd8784276b8d4dfbc0a31c773787f1"
+      "reason": "Re-reviewed after adding standalone onboarding, generated client configuration, exact work-context reads, and typed fenced handoff commands; lifecycle writes remain explicit and database-scoped. Re-reviewed again after the CLI error-boundary pass: `--traceback` is declared for help text only, a claim collision is translated to a sentence naming the holder that the code reads back rather than infers, `work-context` now takes the not-found branch that `_work_row`'s empty-dict return had made unreachable, and `route` refuses a `--usage-db` path that is absent. No new write path and no change to any domain message. Re-reviewed after four client-surface additions: --write-scope on claim plus declare-write-set and conflicts, so the write-set overlap query the agent system prompt already instructs agents to use is reachable; owner session fields emitted beside the unchanged assignee; --to-session on note; and inbox binding to the reading session so a session-addressed note is visible from the shell. Existing output shapes gained fields and lost none. Re-reviewed after closing the claim-ownership hole: a claim_id was sufficient authority to mutate a claim held by another session, and the resulting row still attributed the action to the true holder. coord heartbeat-claim, release and done now pass this shell's resolved session identity to the coord_db mutators, so the CLI is covered by the same refusal as the MCP surface. No new command, no changed output shape. Re-reviewed after `coord create` stopped being an upsert: its existence check ran outside the write transaction and the write itself merged into whatever row it found, so two sessions choosing the same work id both reported \"created\": true and one silently overwrote the other. The verb now calls coord_db.create_work, which refuses a taken id from inside the transaction that inserts, and the emitted `created` is that call's measured result. No new command and no other changed output shape. Re-reviewed after `coord sign-off` and `coord release --reason` were added. sign-off is the only writer of operator_ok in the product and the one this file's `post_event` refusal has always named; it is deliberately absent from the MCP surface and gated on the invoking process's controlling terminal, read through /dev/tty rather than stdin, so a piped or scripted answer is never consulted. It resolves no lane identity and runs no lifecycle policy, because both read the ambient actor and an operator decision must not carry an agent's name. `release` gained `--reason`, the flag that reaches the `release_claim(reason=...)` parameter a blocked release has always required and this surface could not supply. No other command changed shape. Re-reviewed again after the durable-id generalization: the only change to this file is the work_id help example, which previously showed the extraction source's dated house convention and now shows the same generic shape the documentation teaches. Re-reviewed again (agent self-review, not independent human review) after `coord board` gained a human-readable table renderer (board_format.render_board_table) for a real terminal, subcommands began accepting `--db` after the verb via a shared `_add_subparser` helper reconciled in `_resolve_db_path`, `coord demo` was added to seed a disposable fictional board, and cross-lane verbs began requiring a configured counterpart lane via `_require_counterpart` (refusing rather than silently defaulting when only one lane is configured) instead of a hardcoded claude/codex pair; also fixes a sign-off terminal-confirmation bug that had refused every real terminal, by opening /dev/tty as two one-directional handles instead of one seek-required handle.",
+      "reviewed_sha256": "2eaef6e127878b16c54658df4b9cd5c6affbd1c453c8a0a58917aeed833009dd"
     },
     "src/coordharness/coord/coord_db.py": {
       "origin": "ported, then extended in this repository",
@@ -750,8 +763,8 @@
     },
     "src/coordharness/usage/dashboard_proxy.py": {
       "origin": "adapted from a pinned private provider-usage producer into a standalone read-only proxy boundary",
-      "reason": "Re-reviewed after binding the standalone local usage producer, last-good behavior, and neutral endpoint contract; no private ledger or companion-app dependency remains.",
-      "reviewed_sha256": "4c6a1d4b9c8d34ba15bc962fe4d1514c46dae63175555b8e7dbcec765495fa42"
+      "reason": "Re-reviewed after binding the standalone local usage producer, last-good behavior, and neutral endpoint contract; no private ledger or companion-app dependency remains. Re-reviewed again (agent self-review, not independent human review) after daily sanitization gained cache_create_5m_tokens/cache_create_1h_tokens integer fields and an optional model_breakdowns list (bounded, sanitized per-model through the same integer-field and safe-string helpers as the parent row); no relaxation of the existing invalid_contract refusals.",
+      "reviewed_sha256": "c28399a081712608ddaef5ef66d33c488443723e52f79c454c7df41e1e5b4e93"
     },
     "src/coordharness/usage/provider_management.py": {
       "origin": "ported from a pinned private provider-management mechanism, then substantially adapted for the standalone harness",
