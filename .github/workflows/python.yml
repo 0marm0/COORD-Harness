@@ -61,6 +61,32 @@ jobs:
           test "${#browser_tests[@]}" -gt 0
           pytest -q "${browser_tests[@]}"
 
+  doctor:
+    name: Safety doctor (CI gate)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install package
+        run: |
+          python -m pip install --upgrade pip 'setuptools>=83'
+          python -m pip install -e .
+      - name: Seed a fresh demo board and run the safety doctor
+        # COORD_HOME points the whole state tree (database, WAL, job
+        # sidecars) at a runner-private temp directory, so this needs no
+        # board process up, no port free beyond the one doctor itself
+        # probes, and touches nothing the checkout brought with it.
+        env:
+          COORD_HOME: ${{ runner.temp }}/coord-doctor-demo
+        run: |
+          python -m coordharness.demo --quiet
+          coord doctor
+
   packaging:
     name: Wheel and sdist clean installs
     runs-on: ubuntu-latest
