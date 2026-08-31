@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
+import socket
 import pytest
 
 from coordharness.bootstrap import bootstrap_database
@@ -10,6 +11,20 @@ from coordharness.coord.config import connect
 from coordharness.safety.doctor import run_doctor
 from coordharness.safety.mcp import read_config, security_issues
 from coordharness.safety.paths import PathSafetyError, resolve_under_root
+
+
+@pytest.fixture(autouse=True)
+def _isolated_board_port(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`doctor.board_port` probes whatever port is actually configured; a
+    real `coord-board` on this machine's default port would otherwise leak
+    into every doctor report these tests assert on. Point it at a port
+    that was free the instant it was chosen instead.
+    """
+    probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    probe.bind(("127.0.0.1", 0))
+    free_port = probe.getsockname()[1]
+    probe.close()
+    monkeypatch.setenv("COORD_BOARD_PORT", str(free_port))
 
 
 @pytest.fixture
@@ -61,6 +76,8 @@ def test_doctor_is_read_only_on_a_current_empty_harness(current_harness) -> None
     assert db.stat().st_mtime_ns == before_mtime
     assert sorted(path.relative_to(state).as_posix() for path in state.rglob("*")) == before_entries
     assert {item["id"] for item in report["findings"]} == {
+        "doctor.board_port",
+        "doctor.db_file_modes",
         "doctor.jobs_projection",
         "doctor.leases_reviews",
         "doctor.lifecycle_writers",
