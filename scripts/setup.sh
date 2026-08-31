@@ -21,6 +21,27 @@ DB_PATH="$ROOT/.coordharness/coord.db"
 VENV="$ROOT/.venv"
 PYTHON_COMMAND="${COORD_PYTHON:-python3}"
 
+# Minimum Python version this project supports. Parsed from pyproject.toml's
+# `requires-python` line so this guard cannot silently drift from the source
+# of truth; if that line is ever missing or reshaped, fall back to a
+# hardcoded floor -- keep it in sync with pyproject.toml's [project] table by
+# hand if it does. Computed here (rather than just before the version check
+# below) so it is also available to the --help text.
+REQUIRED_PYTHON="$(grep -m1 '^requires-python' "$ROOT/pyproject.toml" 2>/dev/null | grep -oE '[0-9]+\.[0-9]+' | head -n1 || true)"
+if [[ -z "$REQUIRED_PYTHON" ]]; then
+  REQUIRED_PYTHON="3.11"  # fallback only -- keep in sync with pyproject.toml's requires-python
+fi
+
+check_python_version() {
+  # $1: a python executable. Exit 0 if its version is >= $REQUIRED_PYTHON,
+  # non-zero otherwise (including if the executable is missing or broken).
+  "$1" -c "
+import sys
+required = tuple(int(p) for p in '$REQUIRED_PYTHON'.split('.'))
+raise SystemExit(0 if sys.version_info[: len(required)] >= required else 1)
+" 2>/dev/null
+}
+
 NATIVE=0
 REGISTER_CLIENTS=0
 DRY_RUN=0
@@ -57,6 +78,12 @@ Options:
                          \`coord doctor\`) and exit with doctor's exit code;
                          nothing is created or written.
   -h, --help             show this help and exit
+
+Environment:
+  COORD_PYTHON           the python3 command this script uses to create the
+                         venv (default: python3). Set this when the default
+                         python3 is below Python $REQUIRED_PYTHON, e.g.:
+                           COORD_PYTHON=python3.11 ./scripts/setup.sh
 
 Any other option is forwarded to apps/install.sh (native lane only).
 EOF
@@ -131,6 +158,18 @@ command -v "$PYTHON_COMMAND" >/dev/null || {
   echo "FAIL: $PYTHON_COMMAND was not found" >&2
   exit 2
 }
+
+if ! check_python_version "$PYTHON_COMMAND"; then
+  echo "FAIL: $PYTHON_COMMAND is $("$PYTHON_COMMAND" -V 2>&1), but COORD needs Python $REQUIRED_PYTHON+." >&2
+  echo "  Install Python $REQUIRED_PYTHON+ and re-run, or point this script at one:" >&2
+  echo "    COORD_PYTHON=python3.11 ./scripts/setup.sh" >&2
+  exit 2
+fi
+
+if [[ -x "$VENV/bin/python" ]] && ! check_python_version "$VENV/bin/python"; then
+  echo "existing .venv uses $("$VENV/bin/python" -V 2>&1), below the required Python $REQUIRED_PYTHON+ -- rebuilding it" >&2
+  rm -rf "$VENV"
+fi
 if [[ ! -x "$VENV/bin/python" ]]; then
   "$PYTHON_COMMAND" -m venv "$VENV"
 fi
