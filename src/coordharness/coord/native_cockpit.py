@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import fcntl
 import json
+import logging
 import os
 from pathlib import Path
 import re
@@ -10,10 +10,23 @@ import stat
 import time
 from typing import Any
 
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - exercised on non-POSIX installs
+    fcntl = None
+
 from coordharness import config as _harness_config
 from . import config as _coord_config
 from . import coord_db, process_liveness
 from coordharness.jobs import sidecar_snapshot, status as jobstatus
+
+_logger = logging.getLogger(__name__)
+
+# Whether the OS-level advisory lock used to serialize projection-maintenance
+# flushes across processes is available on this platform. When it is not,
+# flush_requested_refresh() degrades to running unlocked -- see there.
+FCNTL_AVAILABLE = fcntl is not None
+_fcntl_unavailable_logged = False
 
 CONTRACT = "native_cockpit.v1"
 
@@ -1133,6 +1146,27 @@ def flush_requested_refresh(
     force: bool = False,
     min_interval_s: float = 5.0,
 ) -> dict[str, Any]:
+    if fcntl is None:
+        # No cross-process exclusion is available on this platform. The lock
+        # only serializes concurrent flushes of the same batched refresh
+        # generation against each other -- a race here means at most a
+        # redundant rebuild of the projection, not a corrupt one -- so we
+        # degrade to running unlocked rather than refusing to refresh at
+        # all. FCNTL_AVAILABLE lets a caller detect and surface this.
+        global _fcntl_unavailable_logged
+        if not _fcntl_unavailable_logged:
+            _fcntl_unavailable_logged = True
+            _logger.warning(
+                "native_cockpit: 'fcntl' is unavailable on this platform; "
+                "flush_requested_refresh() is running WITHOUT cross-process "
+                "mutual exclusion, so concurrent flushes from separate "
+                "processes are no longer serialized (FCNTL_AVAILABLE=False)."
+            )
+        return _flush_requested_refresh_unlocked(
+            conn,
+            force=force,
+            min_interval_s=min_interval_s,
+        )
     PROJECTION_MAINTENANCE_EXCLUSION.parent.mkdir(parents=True, exist_ok=True)
     exclusion = PROJECTION_MAINTENANCE_EXCLUSION.open("a+b")
     try:
