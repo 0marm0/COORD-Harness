@@ -108,6 +108,32 @@ surfaces second, everything else T0 last — then by how long the request has wa
 runs the same check backwards over rows already in a terminal state, to find anything that closed without
 ever picking up its verdict.
 
+### Claim readiness, and why the two surfaces disagree on purpose
+
+Before a row can be claimed it is checked for the fields a review depends on: a descriptive title, a
+`done_signal`, and — for T0/T1 — acceptance criteria. That is `claim_readiness()` in `coord_db.py`, the
+single definition both surfaces call.
+
+The two surfaces do different things with the same answer, and the asymmetry is deliberate rather than an
+oversight:
+
+| Surface | Row missing fields | Why |
+| --- | --- | --- |
+| MCP `claim_work` | **refuses**, listing the missing fields (`ClaimReadinessError`, which carries `.missing`) | This is the door agents come through. A row claimed without a `done_signal` cannot be closed against anything, so the cheapest place to stop is before the lease exists. |
+| CLI `coord claim` | **warns on stderr and proceeds**, and repeats the field list in its JSON under `claim_readiness` | The CLI is also the repair tool. Refusing here would make the incomplete row unclaimable from the one surface available to a headless shell session. |
+
+`COORD_CLAIM_STRICT` is the only knob, read in exactly one place
+(`claim_readiness_enforcement()`):
+
+- `COORD_CLAIM_STRICT=1` — both surfaces refuse. Use this in CI, or on any deployment where every row is
+  expected to be born complete.
+- `COORD_CLAIM_STRICT=0` — both surfaces warn and proceed. The MCP response then carries the same
+  `claim_readiness` block the CLI's JSON does.
+- unset (or anything unrecognised) — each surface keeps the default in the table above.
+
+Either way the fields are named. A warning that does not say *which* field is missing is the failure mode
+this replaced.
+
 ## 5. Limits, as shipped
 
 The tier and integrity checks are pure functions over the database — they compute, they do not enforce

@@ -5,6 +5,12 @@ import time
 from typing import Any, Iterable
 
 from . import coord_db
+from .config import (
+    configured_lanes as _configured_lanes,
+    counterpart_lane as _counterpart_lane,
+    lane_set as _independent_lanes,
+    lanes_display as _lanes_display,
+)
 
 REASON_SELF_VERDICT = "self_verdict"
 REASON_CROSS_ROW_VERDICT = "cross_row_verdict"
@@ -17,7 +23,10 @@ UNREVIEWED_REASONS = (
     REASON_MOOT_CLOSED,
 )
 
-_INDEPENDENT_LANES = frozenset({"claude", "codex"})
+# The lanes whose verdicts can clear another lane's work are exactly the
+# configured lanes (``COORD_LANES``). Independence is lane INEQUALITY with
+# the author -- never membership in one hardcoded pair -- so a lane added by
+# configuration reviews on the same terms, and still cannot clear itself.
 _REVIEW_VERDICTS = frozenset({"PASS", "FLAG", "BLOCKED"})
 _EXPLICIT_REVIEW_READY_REASONS = frozenset(
     {
@@ -113,10 +122,11 @@ def _never_claimed_superseded_without_artifact(
         "SELECT 1 FROM claims WHERE work_id=? LIMIT 1", (work_id,)
     ).fetchone() is not None:
         return False
+    claim_kinds = tuple(f"{lane}_claim" for lane in _configured_lanes())
     if conn.execute(
         "SELECT 1 FROM events WHERE work_id=?"
-        " AND kind IN ('claude_claim','codex_claim') LIMIT 1",
-        (work_id,),
+        f" AND kind IN ({','.join('?' for _ in claim_kinds)}) LIMIT 1",
+        (work_id, *claim_kinds),
     ).fetchone() is not None:
         return False
     if coord_db.done_signal_satisfied(conn, row_d.get("done_signal")):
@@ -177,7 +187,7 @@ def classify_verdict_status(
 
     for event in own_verdicts:
         actor = str(event["actor"] or "").strip().lower()
-        if actor in _INDEPENDENT_LANES and actor != author_lane:
+        if actor in _independent_lanes() and actor != author_lane:
             return {
                 "work_id": work_id,
                 "reviewed": True,
@@ -278,8 +288,8 @@ def review_ready_t0_queue(
 ) -> list[dict[str, Any]]:
 
     clean_reviewer = str(reviewer_lane or "").strip().lower() or None
-    if clean_reviewer not in {None, "claude", "codex"}:
-        raise ValueError("reviewer_lane must be claude|codex")
+    if clean_reviewer is not None and clean_reviewer not in _independent_lanes():
+        raise ValueError(f"reviewer_lane must be {_lanes_display()}")
     now = float(at if at is not None else time.time())
     state_placeholders = ",".join("?" for _ in _ACTIVE_REVIEW_STATES)
     rows = conn.execute(
@@ -298,10 +308,16 @@ def review_ready_t0_queue(
         if coord_db.effective_review_tier_for_work(conn, work_id, row=row) != "T0":
             continue
         author_lane = coord_db._latest_claim_author_lane_unlocked(conn, work_id)
-        if author_lane not in _INDEPENDENT_LANES:
+        if author_lane not in _independent_lanes():
             continue
-        required_reviewer = "claude" if author_lane == "codex" else "codex"
-        if clean_reviewer is not None and required_reviewer != clean_reviewer:
+        # Any configured lane that is not the author's can clear this row. When
+        # a reviewer asks for its own queue, the only rows it must not see are
+        # the ones it wrote itself -- the same guarantee the two-lane version
+        # gave, stated as the inequality it always actually was.
+        if clean_reviewer is not None and clean_reviewer == author_lane:
+            continue
+        required_reviewer = clean_reviewer or _counterpart_lane(author_lane)
+        if required_reviewer is None:
             continue
         latest_request = _latest_audit_request_event(conn, work_id)
         reason_class = str(row.get("blocked_reason_class") or "").strip().lower()
@@ -364,8 +380,8 @@ def review_ready_t0_summary(
 
     now = float(at if at is not None else time.time())
     queue = review_ready_t0_queue(conn, at=now)
-    by_author = {lane: 0 for lane in sorted(_INDEPENDENT_LANES)}
-    by_reviewer = {lane: 0 for lane in sorted(_INDEPENDENT_LANES)}
+    by_author = {lane: 0 for lane in sorted(_independent_lanes())}
+    by_reviewer = {lane: 0 for lane in sorted(_independent_lanes())}
     by_priority: dict[str, int] = {}
     for item in queue:
         by_author[str(item["author_lane"])] += 1

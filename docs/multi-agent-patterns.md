@@ -186,14 +186,66 @@ sequenceDiagram
     Note over P,E: A second handoff attempt with the<br/>same expected_version=4 now fails:<br/>"version CAS failed: expected 4, observed 5"
 ```
 
-The validation as shipped constrains the two lane values a typed handoff
-moves between to `claude` and `codex`, requiring `owner_lane` to differ
-from the caller — a handoff always crosses an actor boundary. A background
-job or local model handing off work uses the same underlying mechanism,
-addressed to whichever lane picks it up next; the lane vocabulary is a
-narrow, intentionally strict starting point, not a ceiling built into the
-schema. A handoff also requires at least one ref and one explicit
-constraint — an empty "here, take it" is rejected outright.
+A typed handoff moves work between *lanes*, and requires `owner_lane` to
+differ from the caller — a handoff always crosses an actor boundary. A
+handoff also requires at least one ref and one explicit constraint; an
+empty "here, take it" is rejected outright.
+
+### Configuring the lanes: `COORD_LANES`
+
+The lane vocabulary is configuration, not a fixed pair. `COORD_LANES` is a
+comma-separated list of lane names; tokens are trimmed and lowercased,
+duplicates collapse, and each must satisfy the same public-identifier
+grammar as `COORD_ACTOR` (start with a letter; lowercase letters, digits,
+dot, underscore or hyphen; 64 characters at most). Unset, it means
+`claude,codex` — the pair this harness shipped with, so an existing
+deployment sees no change. Set to an empty or whitespace-only value it is a
+configuration error rather than a silent fallback, because an empty lane set
+would refuse every actor.
+
+```bash
+export COORD_LANES=claude,codex,gemini
+export COORD_ACTOR=gemini
+export COORD_SESSION_ID=gemini:review-1
+coord claim DEMO-CDX-EXAMPLE --step "reading the derivation"
+```
+
+A lane named here is a first-class lane: it registers a session, claims
+rows, receives a typed handoff as `--owner-lane`, and appears in the
+`choices` of every lane-valued CLI flag (the parser reads the configured set
+when it is built, so `coord handoff --help` shows exactly the lanes this
+deployment recognises). An actor that is *not* in the set is refused by the
+lane-exact verbs, and the refusal names the configured lanes rather than a
+hardcoded pair.
+
+Two invariants are independent of how many lanes are configured, and stay
+enforced:
+
+* **`owner_lane` must differ from the actor.** A lane cannot hand work to
+  itself. Where a verb needs a default cross-lane address — an unaddressed
+  note, a verdict with no `--to-lane`, an audit request — it resolves to the
+  first configured lane that is not the actor's own. With the default pair
+  that is exactly "the other one"; with three or more it is deterministic
+  and still never the actor.
+* **A same-lane verdict never counts.** The lane that authored a row cannot
+  PASS it, and the author lane is derived from the row's claim history
+  rather than from a caller-supplied label. Independent review is defined as
+  a verdict whose actor is a configured lane *other than the author's* —
+  inequality with the author, never membership in one privileged pair — so a
+  configured lane's verdict clears another lane's row on the same terms the
+  original two had, and a same-lane verdict that does land (a `FLAG`, say)
+  still leaves the row unreviewed.
+
+The per-lane machinery follows the configured set with the lane: the
+lifecycle event kinds (`gemini_claim`, `gemini_done`, `gemini_block`, …), the
+`actor:<lane>` selectors that address a lane, and the request-consumption
+backfill that reads them are all derived from `COORD_LANES` rather than
+enumerated. A verb that needs a cross-lane address and finds no second lane
+configured refuses and says so, rather than quietly addressing the caller.
+
+Adding a lane is a deployment decision with a governance consequence: the
+lanes are who may review whom. Name only agents you would accept as
+independent eyes on the others' work.
 
 ## Avoiding collisions on the same files
 

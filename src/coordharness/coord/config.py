@@ -18,6 +18,9 @@ _WAREHOUSE_MARKERS = tuple(
     if part.strip()
 )
 
+DEFAULT_LANES: tuple[str, ...] = ("claude", "codex")
+_LANES_ENV_VAR = "COORD_LANES"
+
 _JOURNAL_SIZE_LIMIT = 33_554_432
 WAL_AUTOCHECKPOINT_PAGES = int(os.environ.get("COORD_COORD_WAL_AUTOCHECKPOINT_PAGES", "1000"))
 SQLITE_HEADER = b"SQLite format 3\x00"
@@ -55,6 +58,62 @@ def _register_coord_functions(conn: sqlite3.Connection) -> None:
     conn.create_function(
         "coord_declaration_core_sha256", 1, _declaration_core_sha256, deterministic=True
     )
+
+
+def configured_lanes() -> tuple[str, ...]:
+    """The coordination lanes this deployment recognises, in declared order.
+
+    Read from ``COORD_LANES`` (comma-separated) on every call so a test or a
+    supervisor can rebind the set without reimporting the control plane. Tokens
+    are trimmed and lowercased, duplicates collapse to their first appearance,
+    and each token must satisfy the same public-identifier grammar as
+    ``COORD_ACTOR``. An empty or whitespace-only value is a configuration error
+    rather than a silent fallback: a deployment that sets the variable meant to
+    say something, and an empty lane set would refuse every actor.
+    """
+    raw = os.environ.get(_LANES_ENV_VAR)
+    if raw is None:
+        return DEFAULT_LANES
+    lanes: list[str] = []
+    for token in str(raw).split(","):
+        clean = token.strip().lower()
+        if not clean:
+            continue
+        _harness_config.actor_name(clean)
+        if clean not in lanes:
+            lanes.append(clean)
+    if not lanes:
+        raise ValueError(
+            f"{_LANES_ENV_VAR} must name at least one lane "
+            f"(comma-separated, e.g. {','.join(DEFAULT_LANES)})"
+        )
+    return tuple(lanes)
+
+
+def lane_set() -> frozenset[str]:
+    """``configured_lanes`` as a set, for membership tests."""
+    return frozenset(configured_lanes())
+
+
+def lanes_display() -> str:
+    """The configured lanes rendered for an error message: ``claude|codex``."""
+    return "|".join(configured_lanes())
+
+
+def counterpart_lane(actor: str | None) -> str | None:
+    """The lane a cross-lane message from ``actor`` defaults to.
+
+    With the default two lanes this is exactly the other one. With more than
+    two it is the first configured lane that is not ``actor`` -- deterministic,
+    and still never the actor's own lane, which is the invariant that matters
+    (a lane may not review or hand off to itself). Returns ``None`` when no
+    other lane is configured.
+    """
+    clean = str(actor or "").strip().lower()
+    for lane in configured_lanes():
+        if lane != clean:
+            return lane
+    return None
 
 
 def assert_outside_warehouse(path: Path) -> None:

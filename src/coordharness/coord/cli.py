@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import logging
 import os
 from pathlib import Path
 import sqlite3
@@ -10,13 +11,21 @@ import sys
 
 from coordharness import config as harness_config
 from . import coord_db
-from .config import connect
+from .config import (
+    connect,
+    configured_lanes as _configured_lanes,
+    counterpart_lane as _counterpart_lane,
+    lane_set as _lane_set,
+    lanes_display as _lanes_display,
+)
 from .continuation_contract import (
     normalize_resume_trigger_contract,
     require_park_resume_contract,
 )
 from .ingest import normalize_session_id, resolve_identity
 from .policy.pipeline import run_boundary_policy
+
+_logger = logging.getLogger("coord")
 
 AUDIT_VERDICTS = ("PASS", "FLAG", "BLOCKED")
 _REF_LIMIT = 32
@@ -43,6 +52,23 @@ def _claim_work_id(conn, claim_id: str) -> str:
 def _work_row(conn, work_id: str) -> dict:
     row = conn.execute("SELECT * FROM work_items WHERE work_id=?", (work_id,)).fetchone()
     return dict(row) if row is not None else {}
+
+
+
+def _require_counterpart(actor: str, verb: str) -> str:
+    """The cross-lane recipient for ``verb``, or a refusal naming the config.
+
+    Every cross-lane verb needs a lane that is not the actor's own. With a
+    single configured lane there is no such address, and defaulting to the
+    actor's own lane would silently turn independent review into a self-review.
+    """
+    lane = _counterpart_lane(actor)
+    if lane is None:
+        raise ValueError(
+            f"coord {verb} requires a second configured lane; COORD_LANES names "
+            f"only {_lanes_display()}"
+        )
+    return lane
 
 
 def _register_identity_session(
@@ -89,10 +115,11 @@ def _review_identity(ident: dict, *, session: str | None, action: str) -> tuple[
     """
     actor = str(ident.get("actor") or "").strip().lower()
     sid = str(ident.get("session_id") or "").strip()
-    if actor not in {"claude", "codex"}:
+    if actor not in _lane_set():
         raise ValueError(
             f"{action} requires an exact coordination lane, got actor "
-            f"{actor or '<unset>'!r}; set COORD_ACTOR=claude or COORD_ACTOR=codex"
+            f"{actor or '<unset>'!r}; set COORD_ACTOR to one of "
+            f"{_lanes_display()}"
         )
     if (
         not sid
@@ -422,13 +449,13 @@ def main(argv=None) -> int:
     p.add_argument("work_id")
     p = sub.add_parser("handoff", help="typed, fenced transfer of existing work")
     p.add_argument("work_id")
-    p.add_argument("--owner-lane", required=True, choices=("claude", "codex"))
+    p.add_argument("--owner-lane", required=True, choices=_configured_lanes())
     p.add_argument("--task", required=True)
     p.add_argument("--why", required=True)
     p.add_argument("--acceptance", required=True)
     p.add_argument("--operation-id", required=True)
     p.add_argument("--expected-version", required=True, type=int)
-    p.add_argument("--expected-assignee", required=True, choices=("claude", "codex"))
+    p.add_argument("--expected-assignee", required=True, choices=_configured_lanes())
     p.add_argument("--expected-head-event-id", action="append", type=int, default=[])
     p.add_argument("--ref", action="append", required=True)
     p.add_argument("--constraint", action="append", required=True)
@@ -509,7 +536,7 @@ def main(argv=None) -> int:
     p.add_argument("--title", default=None)
     p.add_argument("--ref", action="append", default=[], dest="refs",
                    help="pointer to the evidence; repeatable")
-    p.add_argument("--to", default=None, choices=("claude", "codex"),
+    p.add_argument("--to", default=None, choices=_configured_lanes(),
                    help="recipient lane; defaults to the row's other lane")
     # A lane address reaches every session in that lane, which is the right
     # default and the wrong one for a fleet: three concurrent claude sessions
@@ -527,7 +554,7 @@ def main(argv=None) -> int:
     p.add_argument("--severity", default=None)
     p.add_argument("--ref", action="append", required=True, default=[], dest="refs",
                    help="pointer to the evidence actually read; repeatable, at least one")
-    p.add_argument("--to-lane", default=None, choices=("claude", "codex"),
+    p.add_argument("--to-lane", default=None, choices=_configured_lanes(),
                    help="the authoring lane under review; defaults to the lane this "
                         "reviewer is not")
     p.add_argument("--title", default=None)
@@ -885,6 +912,35 @@ def main(argv=None) -> int:
                 ident=ident,
                 payload={"step": args.step},
             )
+            # Readiness is the same question the MCP surface asks; the two
+            # differ only in the answer. This surface warns and proceeds unless
+            # COORD_CLAIM_STRICT=1 upgrades it to a refusal.
+            claim_row_before = conn.execute(
+                "SELECT * FROM work_items WHERE work_id=?", (args.work_id,)
+            ).fetchone()
+            readiness_missing = coord_db.claim_readiness(
+                args.work_id,
+                dict(claim_row_before) if claim_row_before else None,
+                actor=ident["actor"],
+            )
+            readiness_warning = None
+            if readiness_missing:
+                message = coord_db.claim_readiness_message(
+                    args.work_id, readiness_missing
+                )
+                if coord_db.claim_readiness_enforcement(
+                    default=coord_db.CLAIM_READINESS_WARN
+                ) == coord_db.CLAIM_READINESS_REFUSE:
+                    raise coord_db.ClaimReadinessError(
+                        args.work_id, readiness_missing, f"refusing {message}"
+                    )
+                readiness_warning = {
+                    "code": "claim_not_ready",
+                    "message": message,
+                    "missing": list(readiness_missing),
+                    "enforcement": coord_db.CLAIM_READINESS_WARN,
+                    "env": coord_db.CLAIM_STRICT_ENV,
+                }
             _register_identity_session(conn, ident)
             try:
                 cid = coord_db.claim_work(conn, sid, args.work_id, step=args.step)
@@ -920,6 +976,21 @@ def main(argv=None) -> int:
                 "work_id": args.work_id,
                 "policy": policy,
             }
+            if readiness_warning is not None:
+                result["claim_readiness"] = readiness_warning
+                # Logged, not printed, and only once the claim is actually held.
+                # stdout is the JSON document and stderr is the error boundary's
+                # channel -- neither is free for an advisory, and a warning about
+                # a claim that was then refused for another reason would be noise
+                # on top of the refusal. With no handler configured this still
+                # reaches the terminal on stderr, one line, via logging's
+                # last-resort handler.
+                _logger.warning(
+                    "coord: warning: claimed %s with missing %s (set %s=1 to refuse instead)",
+                    args.work_id,
+                    ", ".join(readiness_missing),
+                    coord_db.CLAIM_STRICT_ENV,
+                )
             if write_scopes:
                 from .work_contracts import declare_write_set, write_set_overlaps
 
@@ -1177,7 +1248,7 @@ def main(argv=None) -> int:
             # Default the recipient to the other lane: a mid-flight note is
             # almost always addressed across the pen split, and an unaddressed
             # note is a broadcast that everyone skims and nobody answers.
-            recipient = args.to or ("codex" if sender == "claude" else "claude")
+            recipient = args.to or _require_counterpart(sender, "note")
             target_session = str(args.to_session or "").strip()
             receipt = coord_db.post_note(
                 conn,
@@ -1213,7 +1284,7 @@ def main(argv=None) -> int:
             # The author lane is the lane the reviewer is not. Naming it
             # explicitly is allowed, naming your own lane is not: a verdict is
             # cross-lane review, and coord_db refuses a same-lane PASS outright.
-            author_lane = args.to_lane or ("claude" if reviewer == "codex" else "codex")
+            author_lane = args.to_lane or _require_counterpart(reviewer, "verdict")
             if author_lane == reviewer:
                 raise ValueError(
                     f"coord verdict --to-lane {author_lane} is this reviewer's own "
@@ -1365,7 +1436,7 @@ def main(argv=None) -> int:
                 raise ValueError("coord request-audit requires a non-empty --task")
             if not why:
                 raise ValueError("coord request-audit requires a non-empty --why")
-            target_lane = "codex" if requester == "claude" else "claude"
+            target_lane = _require_counterpart(requester, "request-audit")
             _register_identity_session(conn, ident)
             row = conn.execute(
                 "SELECT assignee FROM work_items WHERE work_id=?", (args.work_id,)
@@ -1376,7 +1447,7 @@ def main(argv=None) -> int:
                     "requests are events on an existing author row"
                 )
             assignee = str(row["assignee"] or "").strip().lower()
-            if assignee in {"claude", "codex"} and assignee == target_lane:
+            if assignee in _lane_set() and assignee == target_lane:
                 raise ValueError(
                     f"coord request-audit self-target refused: work {args.work_id} is "
                     f"assigned to {assignee}, the same lane this request targets "
