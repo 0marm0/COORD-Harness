@@ -14,8 +14,7 @@ which calls `done_signal_custodied` / `completion_proof_is_tracked` in
 the function that actually runs `git ls-files` against the repo the artifact
 claims to live in. Reached through `coord done --artifact` in
 [`src/coordharness/coord/cli.py`](../../src/coordharness/coord/cli.py).
-(No line numbers quoted: `coord_db.py` is under active edit by other lanes
-in this worktree as this recipe is being written; `grep -n def complete_claim
+(No line numbers quoted: they go stale. `grep -n def complete_claim
 src/coordharness/coord/coord_db.py` finds the current one.)
 
 ## Run it
@@ -39,7 +38,7 @@ any database that existed before it ran.
 5. `git add` the file (staged only — not committed) and retry the identical
    `coord done` command — succeeds.
 
-## Expected output (captured 2026-08-31, real run against this worktree)
+## Expected output (captured 2026-08-31, real run against this repository at commit `2477d887`)
 
 ```
 [3/5] Attempt `coord done` before the artifact file exists at all

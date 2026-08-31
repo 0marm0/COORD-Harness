@@ -41,7 +41,7 @@ any database that existed before it ran.
    Write a summary artifact that cites all three, stage it, and `coord done`
    the one row. `coord board` afterward still shows exactly one row.
 
-## Expected output (captured 2026-08-31, real run against this worktree)
+## Expected output (captured 2026-08-31, real run against this repository at commit `2477d887`)
 
 ```
 [2/5] GUARD: recording a child attempt against a claim nobody holds fails
