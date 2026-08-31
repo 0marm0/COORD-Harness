@@ -1,0 +1,27 @@
+[1/4] Claude creates and claims its own row, declaring src/billing/
+    $ coord create DEMO-CLA-BILLING-RATES --title Rework rate lookup --module billing --tier T1 --done-signal docs/reports/billing-rates.md --acceptance rate lookup reads the new table --note two-agents-one-file example   [session=claude:frontend]
+    -> {"ok": true, "created": true, "work_id": "DEMO-CLA-BILLING-RATES", "assignee": "claude", "done_signal": "docs/reports/billing-rates.md", "tier": "T1"}
+    $ coord claim DEMO-CLA-BILLING-RATES --write-scope src/billing/   [session=claude:frontend]
+    -> claim clm-a00aabffec7d, write_set=[{'kind': 'path', 'value': 'src/billing'}], write_set_conflicts.count=0
+
+[2/4] Codex creates and claims a DIFFERENT row, declaring a file INSIDE that directory
+    $ coord create DEMO-CDX-BILLING-RETRY --title Fix retry backoff --module billing --tier T1 --done-signal docs/reports/billing-retry.md --acceptance retries back off exponentially --note two-agents-one-file example   [session=codex:backend]
+    -> {"ok": true, "created": true, "work_id": "DEMO-CDX-BILLING-RETRY", "assignee": "codex", "done_signal": "docs/reports/billing-retry.md", "tier": "T1"}
+    $ coord claim DEMO-CDX-BILLING-RETRY --write-scope path=src/billing/retries.py   [session=codex:backend]
+    -> claim clm-ebd2e6b3993f, write_set=[{'kind': 'path', 'value': 'src/billing/retries.py'}]
+
+[3/4] The SECOND claim's own response names the collision immediately:
+    write_set_conflicts = {
+  "count": 1,
+  "findings": [
+    "path scope collision: DEMO-CLA-BILLING-RATES (clm-a00aabffec7d) declares 'src/billing' while DEMO-CDX-BILLING-RETRY (clm-ebd2e6b3993f) declares 'src/billing/retries.py'"
+  ]
+}
+
+[4/4] `coord conflicts` names both sides of the collision by row, claim, session, and scope:
+    $ coord conflicts   [session=claude:frontend]
+    -> path scope collision: DEMO-CLA-BILLING-RATES (clm-a00aabffec7d) declares 'src/billing' while DEMO-CDX-BILLING-RETRY (clm-ebd2e6b3993f) declares 'src/billing/retries.py'
+
+Note: this is a REPORT, not a lock. Both claims still stand, and either agent can still edit -- `conflicts` is what an orchestrator checks BEFORE assigning the second job, or what a human checks when something looks wrong. It never silently blocks a write.
+
+OK: the collision was surfaced by name, not discovered by a broken build.
