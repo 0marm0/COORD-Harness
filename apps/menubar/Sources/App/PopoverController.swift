@@ -23,7 +23,7 @@ struct PopoverNavigationState {
 }
 
 private enum UsageWindowGeometry {
-    static let preferredHeight: CGFloat = 860
+    static let preferredHeight: CGFloat = 880
     static let detachedScreenInset: CGFloat = 40
 
     static func detachedHeight(_ desired: CGFloat, screen: NSScreen?) -> CGFloat {

@@ -143,6 +143,12 @@ def test_no_upstream_dashboard_uses_only_local_state_and_honest_quota(tmp_path: 
     )
     assert document["providers"]["codex"]["windows"][0]["remaining_percent"] == 80
     assert document["providers"]["codex"]["history"]["rolling_7d_total_tokens"] == 42
+    claude_day = document["providers"]["claude"]["history"]["daily"][0]
+    codex_day = document["providers"]["codex"]["history"]["daily"][0]
+    assert claude_day["model_breakdowns"][0]["label"] == "claude-test"
+    assert claude_day["model_breakdowns"][0]["total_tokens"] == 37
+    assert codex_day["model_breakdowns"][0]["label"] == "gpt-test"
+    assert codex_day["model_breakdowns"][0]["total_tokens"] == 42
     serialized = json.dumps(document)
     for private in (str(home), "/private/project", "private prompt", "private answer", "secret"):
         assert private not in serialized
