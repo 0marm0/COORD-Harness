@@ -145,7 +145,22 @@ def _validate_existing_db_file(path: Path) -> None:
         }
     finally:
         ro.close()
-    if tables and not (tables & _COORD_SENTINEL_TABLES):
+    if not tables:
+        # A valid, openable SQLite file with zero user tables previously fell
+        # through here: `tables and not (tables & _COORD_SENTINEL_TABLES)` is
+        # False when `tables` is empty, so this looked exactly like a legal
+        # not-yet-bootstrapped coord.db instead of what it actually is -- a
+        # database nothing has ever run `bootstrap_database()` against, or an
+        # unrelated empty file. `connect()`/`connect_ro()` are read/write
+        # accessors, not the bootstrapper, so they must refuse it the same way
+        # they refuse a foreign schema below rather than silently opening it.
+        raise RuntimeError(
+            f"coord.db at {path} is a valid SQLite file with no tables at all "
+            "(not even the coordination schema); refusing to open. Fix: run "
+            "bootstrap_database() against this path to initialize it, or point "
+            "COORD_DB / --db at the correct existing coord.db."
+        )
+    if not (tables & _COORD_SENTINEL_TABLES):
         raise RuntimeError(
             f"coord.db at {path} appears to be a foreign SQLite database "
             f"(tables={sorted(tables)[:5]}); refusing to open"

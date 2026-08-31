@@ -1800,6 +1800,15 @@ def main(argv: list[str] | None = None) -> int:
         # `_foreign_database_message`.
         print(_foreign_database_message(args.db), file=sys.stderr)
         return 2
+    except RuntimeError as exc:
+        # config's own db validation (zero-byte, foreign header, no tables,
+        # failed integrity_check) refuses with RuntimeError before any query
+        # runs. Validation may run against a staging copy, so the exception
+        # text can name a temp path; the headline must name the path the
+        # caller actually gave.
+        print(_foreign_database_message(args.db), file=sys.stderr)
+        print(f"coord-board: underlying refusal: {exc}", file=sys.stderr)
+        return 2
     except ValueError as exc:
         # Configuration this process refuses to honour -- a brand name too long
         # for the shell, or one carrying control characters. The message names
