@@ -912,6 +912,47 @@ final class UsageDashboardTests: XCTestCase {
         XCTAssertNotEqual(retainedCost.points, reportedCost.points)
     }
 
+
+    func testDailyModelBreakdownsDecodeExactDayTotalsAndOptionalCosts() throws {
+        let daily = try decoder().decode(UsageDaily.self, from: Data(#"""
+        {
+          "date":"2026-08-27",
+          "total_tokens":1200,
+          "provider_native_cost_nanos":1500000000,
+          "api_rate_estimate_nanos":2100000000,
+          "model_breakdowns":[
+            {
+              "key":"claude-opus",
+              "label":"Claude Opus",
+              "total_tokens":900,
+              "input_tokens":600,
+              "output_tokens":300,
+              "api_rate_estimate_nanos":1800000000
+            },
+            {
+              "key":"claude-sonnet",
+              "label":"Claude Sonnet",
+              "total_tokens":300,
+              "provider_native_cost_nanos":400000000
+            }
+          ]
+        }
+        """#.utf8))
+
+        XCTAssertEqual(daily.date, "2026-08-27")
+        XCTAssertEqual(daily.totalTokens, 1_200)
+        XCTAssertEqual(daily.providerNativeCostNanos, 1_500_000_000)
+        XCTAssertEqual(daily.apiRateEstimateNanos, 2_100_000_000)
+        let models = try XCTUnwrap(daily.modelBreakdowns)
+        XCTAssertEqual(models.map(\.displayLabel), ["Claude Opus", "Claude Sonnet"])
+        XCTAssertEqual(models.map(\.totalTokens), [900, 300])
+        XCTAssertEqual(models[0].inputTokens, 600)
+        XCTAssertEqual(models[0].apiRateEstimateNanos, 1_800_000_000)
+        XCTAssertNil(models[0].providerNativeCostNanos)
+        XCTAssertEqual(models[1].providerNativeCostNanos, 400_000_000)
+        XCTAssertNil(models[1].apiRateEstimateNanos)
+    }
+
     func testEarnedResetInventoryNeverClaimsCurrentResetEligibility() throws {
         let snapshot = try decoder().decode(UsageIntelligenceSnapshot.self, from: Data(#"""
         {
@@ -1449,7 +1490,7 @@ final class UsageDashboardTests: XCTestCase {
         XCTAssertTrue(coordContent.contains("Provider settings"))
     }
 
-    func testUsageWindowUsesDollarCostLabelsAndAContainedTallerCodexPlot() throws {
+    func testUsageWindowUsesDollarCostLabelsAndAccessibleDenseHoverDetails() throws {
         let projectRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
@@ -1468,7 +1509,7 @@ final class UsageDashboardTests: XCTestCase {
 
         XCTAssertTrue(popover.contains("let usageWindowWidth: CGFloat = 460"))
         XCTAssertTrue(popover.contains("max(usageWindowWidth, detachedSize?.width ?? usageWindowWidth)"))
-        XCTAssertTrue(popover.contains("preferredHeight: CGFloat = 860"))
+        XCTAssertTrue(popover.contains("preferredHeight: CGFloat = 880"))
         XCTAssertTrue(popover.contains("detachedScreenInset: CGFloat = 40"))
         XCTAssertTrue(popover.contains("visibleFrame.height"))
         XCTAssertTrue(popover.contains("min(UsageWindowGeometry.preferredHeight, availablePopoverHeight())"))
@@ -1476,28 +1517,51 @@ final class UsageDashboardTests: XCTestCase {
         XCTAssertTrue(content.contains("private enum UsageDashboardCostFormat"))
         XCTAssertTrue(content.contains("replacingOccurrences(of: \"USD \", with: \"$\")"))
         XCTAssertTrue(dense.contains("UsageDashboardCostFormat.display(totalEstimatedCostNanos)"))
-        XCTAssertTrue(content.contains("static func peakDay(_ day: String, nanos: Int64, currency: String?) -> String"))
+        XCTAssertFalse(content.contains("static func peakDay"))
+        XCTAssertTrue(dense.contains("VStack(alignment: .center, spacing: 3)"))
+        XCTAssertTrue(dense.contains(".multilineTextAlignment(.center)"))
+        XCTAssertTrue(dense.contains(".frame(maxWidth: .infinity, alignment: .center)"))
         XCTAssertTrue(dense.contains("Text(peakDailyCost)"))
-        XCTAssertTrue(dense.contains("UsageDashboardCostFormat.peakDay(peak.day, nanos: peak.nanos, currency: peak.currency)"))
-        XCTAssertTrue(dense.contains("UsageDashboardCostFormat.peakDay(peakPoint.day, nanos: peakPoint.nanos, currency: peakPoint.currency)"))
+        XCTAssertTrue(dense.contains("return UsageDashboardCostFormat.display(peak.nanos, currency: peak.currency)"))
+        XCTAssertTrue(dense.contains("@State private var hoveredPoint"))
+        XCTAssertTrue(dense.contains(".onContinuousHover"))
+        XCTAssertTrue(dense.contains(".contentShape(Rectangle())"))
+        XCTAssertTrue(dense.contains("UsageDenseDailyHoverCard("))
+        XCTAssertTrue(dense.contains("private var topModels"))
+        XCTAssertTrue(dense.contains("max(minimumX, hoverLocation.x)"))
+        XCTAssertTrue(dense.contains(".help(hoverDetail(for: point))"))
+        XCTAssertTrue(dense.contains("Date: \\(point.day)"))
+        XCTAssertTrue(dense.contains("Cost: \\(UsageDashboardCostFormat.display(point.nanos, currency: point.currency))"))
+        XCTAssertTrue(dense.contains("Tokens: \\(tokens)"))
+        XCTAssertTrue(dense.contains("dailyRowsByDay: [String: UsageDaily]"))
+        XCTAssertTrue(dense.contains("row?.modelBreakdowns ?? []"))
+        XCTAssertTrue(dense.contains("No per-day model detail"))
+        XCTAssertTrue(dense.contains("Models: \\(modelDetail(for: row))"))
+        XCTAssertEqual(dense.components(separatedBy: "\"Session\"").count - 1, 1)
+        XCTAssertEqual(dense.components(separatedBy: "\"Weekly\"").count - 1, 1)
+        XCTAssertEqual(dense.components(separatedBy: "\"Fable\"").count - 1, 1)
+        XCTAssertFalse(dense.contains("UsageDashboardCostFormat.peakDay"))
         XCTAssertTrue(dense.contains(".lineLimit(1)"), "Peak date/cost labels must remain contained at narrow widths.")
         XCTAssertTrue(dense.contains(".accessibilityLabel(\"Peak daily cost \\(peakDailyCost)\")"))
-        XCTAssertTrue(dense.contains("private struct UsageDensePeakBadge: View"))
-        XCTAssertTrue(dense.contains("let badgeWidth = min(CGFloat(96), chartWidth)"))
-        XCTAssertTrue(dense.contains("let peakCenter = barWidth * (CGFloat(peakIndex) + 0.5)"))
-        XCTAssertTrue(dense.contains(".position("), "Peak badge must be anchored over the peak bar.")
+        XCTAssertFalse(dense.contains("UsageDensePeakBadge"))
+        XCTAssertFalse(dense.contains("let badgeWidth = min"))
+        XCTAssertFalse(dense.contains("let peakCenter ="))
+        XCTAssertTrue(dense.contains(".position("), "Hover card must be visibly positioned inside the plot.")
         XCTAssertTrue(dense.contains("UsageDashboardCostFormat.display(point.nanos, currency: point.currency)"))
-        XCTAssertTrue(dense.contains("Text(point.day)"))
+        XCTAssertTrue(dense.contains("Text(point.day)"), "Hover card must show the selected day.")
         XCTAssertTrue(dense.contains(".allowsHitTesting(false)"))
 
         XCTAssertTrue(content.contains("claudeChartPlotHeight: CGFloat = 82"))
-        XCTAssertTrue(content.contains("codexChartPlotHeight: CGFloat = 136"))
+        XCTAssertTrue(content.contains("codexChartPlotHeight: CGFloat = 120"))
         XCTAssertTrue(dense.contains("case \"claude\": return UsageDenseRouteLayout.claudeChartPlotHeight"))
         XCTAssertTrue(dense.contains("case \"codex\": return UsageDenseRouteLayout.codexChartPlotHeight"))
         XCTAssertTrue(dense.contains("plotHeight: effectiveChartPlotHeight"))
         XCTAssertTrue(dense.contains("chartPanelHeight"))
         XCTAssertTrue(dense.contains("chart.frame(width: UsageDenseRouteLayout.providerChartWidth, height: chartPanelHeight)"))
-        XCTAssertTrue(dense.contains(".frame(height: plotHeight, alignment: .bottom)"))
+        XCTAssertTrue(dense.contains("GeometryReader"))
+        XCTAssertTrue(dense.contains(".frame(height: plotHeight)"))
+        XCTAssertTrue(dense.contains("providerContentSpacing: CGFloat { isClaude ? 8 : 11 }"))
+        XCTAssertTrue(dense.contains("factsSpacing: CGFloat { isClaude ? 10 : 16 }"))
         XCTAssertTrue(dense.contains("ScrollView"), "Taller Codex content must remain scrollable rather than clip.")
     }
     private func fixture(named name: String = "usage-dashboard-v1") throws -> UsageIntelligenceSnapshot {

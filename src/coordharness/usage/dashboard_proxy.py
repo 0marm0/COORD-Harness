@@ -342,6 +342,8 @@ _DAILY_INTEGER_FIELDS = (
     "input_tokens",
     "output_tokens",
     "cache_read_tokens",
+    "cache_create_5m_tokens",
+    "cache_create_1h_tokens",
     "cache_create_other_tokens",
     "provider_native_cost_nanos",
     "api_rate_estimate_nanos",
@@ -365,7 +367,30 @@ def _sanitize_daily(value: Any) -> list[dict[str, Any]]:
             _optional_int(row, item, field)
         if item.get("total_tokens") is None:
             raise UsageDashboardError("invalid_contract")
+        if "model_breakdowns" in row:
+            models = _bounded_list(
+                row["model_breakdowns"],
+                field="history.daily.model_breakdowns",
+                limit=MAX_BREAKDOWN_ITEMS,
+            )
+            item["model_breakdowns"] = [
+                _sanitize_daily_model_breakdown(model) for model in models
+            ]
         clean.append(item)
+    return clean
+
+
+def _sanitize_daily_model_breakdown(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise UsageDashboardError("invalid_contract")
+    clean: dict[str, Any] = {
+        "key": _safe_string(value.get("key"), pattern=_SAFE_TOKEN),
+        "label": _safe_text(value.get("label"), maximum=80),
+    }
+    for field in _DAILY_INTEGER_FIELDS:
+        _optional_int(value, clean, field)
+    if clean.get("total_tokens") is None:
+        raise UsageDashboardError("invalid_contract")
     return clean
 
 
