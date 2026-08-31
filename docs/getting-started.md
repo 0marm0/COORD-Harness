@@ -42,34 +42,39 @@ python -m pip install -e '.[mcp,dev]'
 
 If you only need the core Python API and `coord` CLI, install `-e .`. The MCP server needs `[mcp]`; development checks need `[dev]`.
 
-Want the native macOS/iOS apps too? On macOS, with Xcode's command-line tools selected
-and XcodeGen installed (`brew install xcodegen`), one command after cloning owns the
-clone's `.coordharness/coord.db`, installs the native apps, and starts the sole local
-board service on port 7870:
+Prefer one command instead? `scripts/setup.sh` does the same `.venv` and
+`.coordharness/coord.db` setup as the manual CLI steps above, and also writes this
+clone's `.codex/config.toml` and `.mcp.json` if they are absent. It has no macOS
+dependency and runs on any OS with Python 3.11+:
 
 ```bash
-./scripts/setup-macos.sh
+./scripts/setup.sh
 ```
 
-Without Xcode/XcodeGen — or if you only want the CLI and board — pass `--no-native` to
-skip that requirement and the native build entirely; it does the same `.venv` and
-`.coordharness/coord.db` setup as the manual CLI steps above, in one command, and also
-writes this clone's `.codex/config.toml` and `.mcp.json` if they are absent:
+It stops there by default: nothing native-side installs, and nothing is registered
+with the Codex/Claude MCP clients on your machine (that would write configuration
+*outside* the clone — on the Codex side, your global config). Both are opt-in:
 
 ```bash
-./scripts/setup-macos.sh --no-native
+./scripts/setup.sh --register-clients   # also register this clone with installed MCP clients
+./scripts/setup.sh --native             # also install the native macOS/iOS apps (macOS only;
+                                         # requires Xcode's command-line tools + XcodeGen,
+                                         # `brew install xcodegen`)
 ```
 
-It stops there. Registering this clone with the Codex and Claude MCP clients installed on
-your machine writes configuration *outside* the clone — on the Codex side, your global
-config — so under `--no-native` you have to ask for it:
+Use `--dry-run` to see exactly what a given flag combination would do without touching
+anything, and `--check` to verify an existing install (`.venv`, `coord.db`, `coord
+doctor`) without creating or writing anything:
 
 ```bash
-./scripts/setup-macos.sh --no-native --register-clients
+./scripts/setup.sh --dry-run --native --register-clients
+./scripts/setup.sh --check
 ```
 
-The default path above, which installs the native apps system-wide anyway, still
-registers them without the flag.
+A real run (without `--dry-run`/`--check`) ends with a receipt: the clone path, the db
+path, whether clients were registered, whether native apps were installed, the `coord
+doctor` verdict, the next command to run, and the uninstall command. `scripts/setup-macos.sh`
+still works as a thin shim to the same script, for anything that links the old name.
 
 Verify entry points (works after either path above — both leave a `.venv` at the repo root):
 
@@ -221,6 +226,31 @@ Use the `claim_id` returned by `coord claim`:
 ```
 
 For a real blocker, use `--status blocked` with a durable next step and resume trigger. Use the default `released` status when you are simply giving up ownership. Paused and blocked are not euphemisms for unfinished work; they preserve why execution stopped.
+
+### `coord session` (start, heartbeat, end)
+
+`coord session {start,heartbeat,end}` registers, renews, and closes this process's
+own presence on the board — separate from any work claim above. It resolves the same
+actor/session identity as every other command (`COORD_ACTOR` + `COORD_SESSION_ID`, or
+whatever an MCP client's profile supplies) and refuses the same way `claim` does —
+`ambiguous agent identity` — when both a Codex session variable and
+`CLAUDE_CODE_SESSION_ID` are set in the environment:
+
+```bash
+export COORD_ACTOR="claude"
+export COORD_SESSION_ID="claude:my-project"
+.venv/bin/coord session start
+.venv/bin/coord session heartbeat
+.venv/bin/coord session end
+```
+
+`start` accepts `--actor` to register the session under a different actor than the
+resolved identity, and `--runner-type` to record what kind of process this is.
+`heartbeat` renews the session's lease the same way `heartbeat-claim` renews a claim's
+lease; call it periodically for a long-running process. `end` closes the session
+outright. Board and menu-bar projections read a session as live only between a
+matching `start` and its `end` (or lease expiry) — an unclaimed chat with no `coord
+session start` is invisible to them even while the process itself is running.
 
 ## Connect Claude Code and Codex
 
