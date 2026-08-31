@@ -1,7 +1,7 @@
 # Comparison
 
-**COORD's one-sentence differentiator:** completion of a Markdown proof
-artifact is refused until it is in git's index, status is derived at read
+**COORD's one-sentence differentiator:** completion is refused until the
+declared proof artifact is in git's index, status is derived at read
 time and never stored, and — for work tiered as needing independent
 review — a lane cannot pass its own work.
 
@@ -18,10 +18,10 @@ this repository's evidence reaches.
 
 ## The differentiator, with receipts
 
-**1. Completion of a Markdown proof artifact is refused until it is in
+**1. Completion of a declared proof artifact is refused until it is in
 git's index.** `complete_claim` in
 [`src/coordharness/coord/coord_db.py`](../src/coordharness/coord/coord_db.py)
-calls `done_signal_satisfied`, which for a Markdown proof defers to
+calls `done_signal_satisfied`, which defers to
 `done_signal_custodied` in
 [`src/coordharness/jobs/status.py`](../src/coordharness/jobs/status.py) —
 and that function's deciding check is `completion_proof_is_tracked(path,
@@ -29,14 +29,19 @@ root)`, a few lines above it in the same file, which shells out to `git
 ls-files` and checks the artifact's path is in the result. A file that
 exists on disk but was never `git add`ed fails this check; `complete_claim`
 then raises with the exact `git add <path>` command to run, quoted verbatim
-in that function's `raise ValueError(...)` block. **This custody check is
-scoped to `.md` proofs only** — a declared proof with any other suffix
-(`.txt`, `.json`, `.rst`, ...) is accepted on existence alone, untracked or
-not; see `done_signal_custodied` in `src/coordharness/jobs/status.py` for
-the exact suffix test.
-[`examples/proof-gated-done/`](../examples/proof-gated-done) runs the
-Markdown case end to end, including the refusal text captured verbatim from
-a real invocation.
+in that function's `raise ValueError(...)` block. **The check covers every
+artifact type**, with one narrow exemption: the suffixes in
+`DEFAULT_CUSTODY_EXEMPT_SUFFIXES` — `.parquet`, `.duckdb`, `.db`, `.joblib`,
+`.bz2`, `.backup` — name databases, dataset dumps, serialized models and
+archives, which cannot live in a git index at all. Those must still **exist**;
+the exemption is about custody, not about proof. One environment variable,
+`COORD_COMPLETION_CUSTODY_EXEMPT`, rebinds that list (or, set to `*`, turns
+the requirement off), read in exactly one place so no surface can drift from
+it. Before 0.1.0 the check was scoped to `.md` alone and every other suffix
+completed on existence alone; widening it refuses completions that used to
+succeed, which [`CHANGELOG.md`](../CHANGELOG.md) records as a behavior change.
+[`examples/proof-gated-done/`](../examples/proof-gated-done) runs the case end
+to end, including the refusal text captured verbatim from a real invocation.
 
 **2. Status is derived at read time, never stored.** There is no code path
 that writes `status = "running"` into a row and walks away — see
@@ -123,11 +128,11 @@ portable, and easier to inspect by hand than a SQLite ledger with a fenced
 write API. COORD is a worse choice than a plain task list for a single agent
 working through a checklist with no collision risk and no completion claim
 that needs independent proof. What COORD adds — and what a status column in
-a Markdown table cannot — is that "done" against a Markdown proof is not
+a Markdown table cannot — is that "done" is not
 just a field someone set: it is refused unless the declared proof is
-actually in git's index (`examples/proof-gated-done/`) — non-Markdown
-proofs are accepted on existence alone (see the differentiator section
-above) — and "running" is not just a field someone
+actually in git's index (`examples/proof-gated-done/`), whatever type of
+artifact it is, apart from the handful of kinds that cannot be tracked at
+all (see the differentiator section above) — and "running" is not just a field someone
 forgot to update: it is derived from a live, unexpired claim on every read.
 If nothing in your workflow needs either guarantee enforced rather than
 asked-for, the simpler store is the right call.

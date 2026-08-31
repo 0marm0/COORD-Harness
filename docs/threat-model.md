@@ -286,13 +286,21 @@ critically, the work item must carry a **controller-declared `done_signal`** —
 explicit `artifact_path` is also supplied it must resolve, through `realpath`, to
 the same file. `done_signal_satisfied()` then requires either that a
 `coord:event:<id>` proof names an event that exists, or that the declared file is
-actually present — and, for a proof whose suffix is `.md`, also carried by
+actually present — and also carried by
 git's index: `done_signal_custodied()` in `src/coordharness/jobs/status.py`
 shells out to `git ls-files` and refuses completion until the file is staged.
-**This custody leg is scoped to `.md` proofs only** — a declared proof with
-any other suffix (`.txt`, `.json`, `.rst`, ...) is accepted on existence
-alone, tracked by git or not (`status.py`'s `path.suffix.lower() != ".md" or
-completion_proof_is_tracked(path, root)` test). `done_signal_blocking_declaration()`
+**This custody leg covers every artifact type**, with one narrow exemption:
+the suffixes named in `DEFAULT_CUSTODY_EXEMPT_SUFFIXES` (`.parquet`,
+`.duckdb`, `.db`, `.joblib`, `.bz2`, `.backup`) are databases, dataset dumps,
+serialized models and archives, which a git index cannot hold; those must
+still exist, and nothing waives existence. `COORD_COMPLETION_CUSTODY_EXEMPT`
+rebinds that list, and set to `*` disables the custody leg entirely — which is
+the honest residual risk here: an operator (or anything that can set that
+process's environment) can turn this leg off, exactly as `COORD_CLAIM_STRICT`
+can move the claim-readiness leg. Before 0.1.0 the leg was scoped to `.md`
+and every other suffix passed on existence alone, so a `.json` or `.html`
+report could be declared done and never committed.
+`done_signal_blocking_declaration()`
 additionally reads the first twelve lines of a Markdown/text proof and refuses
 a completion whose own artifact says `NOT READY`, `FAILED`, `BLOCKED` or
 `INCOMPLETE`.
