@@ -1,7 +1,10 @@
 import AppKit
 
 final class CockpitLauncherAppDelegate: NSObject, NSApplicationDelegate {
-    private lazy var cockpitWindow = CockpitWindowController()
+    private lazy var telemetryStore: SystemTelemetryStore = MainActor.assumeIsolated {
+        SystemTelemetryStore()
+    }
+    private lazy var cockpitWindow = CockpitWindowController(telemetryStore: telemetryStore)
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)

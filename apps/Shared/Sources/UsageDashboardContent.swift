@@ -1,5 +1,17 @@
 import SwiftUI
 
+private enum UsageProviderVisualStyle {
+    static func assetName(_ providerID: String) -> String {
+        providerID.lowercased() == "claude" ? "claude-menu" : "codex-menu"
+    }
+
+    static func tint(_ providerID: String) -> Color {
+        providerID.lowercased() == "claude"
+            ? Color(red: 0.95, green: 0.47, blue: 0.24)
+            : Color(red: 0.64, green: 0.43, blue: 0.96)
+    }
+}
+
 struct UsageCompactBoardStrip: View {
     let state: UsageDashboardState
     let systemTelemetry: SystemTelemetrySnapshot?
@@ -7,18 +19,26 @@ struct UsageCompactBoardStrip: View {
     var showDisk = true
     var barPalette: UsageBarPalette = .colored
     var onOpenDetails: (() -> Void)?
-    @AppStorage("coord.cockpit.usage-strip-expanded") private var expanded = false
+    var onExpandedChange: ((Bool) -> Void)?
+    @State private var expanded = false
 
     private var providers: [UsageCompactProviderSummary] {
         UsageCompactProviderSummary.summaries(from: state.snapshot)
             .filter { ["claude", "codex"].contains($0.id.lowercased()) }
     }
 
+    private var totalTokensCost: String {
+        let values = providers.compactMap(\.retainedUSDEstimateNanos)
+        return UsageFormat.costNanos(values.isEmpty ? nil : values.reduce(0, +), currency: "USD")
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 10) {
                 Button {
-                    withAnimation(.easeInOut(duration: 0.16)) { expanded.toggle() }
+                    let next = !expanded
+                    withAnimation(.easeInOut(duration: 0.16)) { expanded = next }
+                    onExpandedChange?(next)
                 } label: {
                     HStack(spacing: 5) {
                         Image(systemName: expanded ? "chevron.down" : "chevron.right")
@@ -37,7 +57,21 @@ struct UsageCompactBoardStrip: View {
                         .font(.caption.weight(.medium))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
-                } else {
+                }
+
+                VStack(alignment: .leading, spacing: 0) {
+                    Text("TOTAL TOKEN COST")
+                        .font(.system(size: 6.5, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                    Text(totalTokensCost)
+                        .font(.system(size: 9.5, weight: .semibold, design: .rounded))
+                        .monospacedDigit()
+                        .lineLimit(1)
+                }
+                .layoutPriority(4)
+                .accessibilityElement(children: .combine)
+
+                if !providers.isEmpty {
                     ForEach(providers) { provider in
                         compactProvider(provider)
                         if provider.id != providers.last?.id {
@@ -48,7 +82,7 @@ struct UsageCompactBoardStrip: View {
                 if showSystemTelemetry {
                     Divider().frame(height: 18).opacity(0.28)
                     SystemTelemetryStrip(
-                        snapshot: systemTelemetry, showDisk: showDisk, embedded: true
+                        snapshot: systemTelemetry, showDisk: true, embedded: true
                     )
                 }
 
@@ -71,10 +105,10 @@ struct UsageCompactBoardStrip: View {
                 Divider().opacity(0.24)
                 VStack(alignment: .leading, spacing: 7) {
                     if !providers.isEmpty {
-                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 230), spacing: 12, alignment: .topLeading)], alignment: .leading, spacing: 8) {
+                        HStack(alignment: .top, spacing: 12) {
                             ForEach(providers) { provider in
                                 expandedProvider(provider)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .frame(maxWidth: .infinity, alignment: .topLeading)
                             }
                         }
                     }
@@ -85,7 +119,7 @@ struct UsageCompactBoardStrip: View {
                         SystemTelemetryStrip(
                             snapshot: systemTelemetry,
                             expanded: true,
-                            showDisk: showDisk,
+                            showDisk: true,
                             embedded: true
                         )
                     }
@@ -100,6 +134,10 @@ struct UsageCompactBoardStrip: View {
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .stroke(Color.primary.opacity(0.09), lineWidth: 1)
         }
+        .onAppear {
+            expanded = false
+            onExpandedChange?(false)
+        }
     }
 
     private func compactWindows(_ provider: UsageCompactProviderSummary) -> [(String, UsageQuotaWindow)] {
@@ -111,9 +149,7 @@ struct UsageCompactBoardStrip: View {
     }
 
     private func tint(_ provider: UsageCompactProviderSummary) -> Color {
-        provider.id.lowercased() == "claude"
-            ? .orange
-            : Color(red: 0.64, green: 0.43, blue: 0.96)
+        UsageProviderVisualStyle.tint(provider.id)
     }
 
     private func quotaTint(_ providerColor: Color) -> Color {
@@ -125,7 +161,7 @@ struct UsageCompactBoardStrip: View {
         let color = tint(provider)
         let barColor = quotaTint(color)
         return HStack(spacing: 6) {
-            Image(provider.id.lowercased() == "claude" ? "claude-menu" : "codex-menu")
+            Image(UsageProviderVisualStyle.assetName(provider.id))
                 .resizable()
                 .renderingMode(.template)
                 .foregroundStyle(color)
@@ -154,12 +190,15 @@ struct UsageCompactBoardStrip: View {
     private func expandedProvider(_ provider: UsageCompactProviderSummary) -> some View {
         let color = tint(provider)
         let barColor = quotaTint(color)
-        let windows: [(String, UsageQuotaWindow?)] = [
+        var windows: [(String, UsageQuotaWindow?)] = [
             ("Session", provider.session), ("Weekly", provider.weekly), ("Fable", provider.fable),
         ]
+        if provider.fable == nil {
+            windows.removeLast()
+        }
         return VStack(alignment: .leading, spacing: 5) {
             HStack(spacing: 6) {
-                Image(provider.id.lowercased() == "claude" ? "claude-menu" : "codex-menu")
+                Image(UsageProviderVisualStyle.assetName(provider.id))
                     .resizable().renderingMode(.template).foregroundStyle(color).scaledToFit()
                     .frame(width: 14, height: 14)
                 Text(provider.displayName).font(.caption.weight(.bold))
@@ -175,22 +214,23 @@ struct UsageCompactBoardStrip: View {
                 .accessibilityLabel("Cost \(UsageFormat.costNanos(provider.retainedUSDEstimateNanos, currency: "USD"))")
             }
             ForEach(windows, id: \.0) { label, window in
-                if let window {
-                    HStack(spacing: 7) {
-                        Text(label).frame(width: 46, alignment: .leading)
-                        ProgressView(value: window.resolvedRemainingPercent ?? 0, total: 100).tint(barColor)
-                        Text(window.resolvedRemainingPercent.map { "\(Int($0.rounded()))%" } ?? "N/A")
-                            .fontWeight(.bold)
-                            .foregroundStyle(window.resolvedRemainingPercent == nil ? Color.secondary : barColor)
-                            .frame(width: 34, alignment: .trailing)
-                        Text("↻ \(duration(window.countdownSeconds))")
-                        if window.pace?.secondsToExhaustion != nil {
-                            Text("out \(duration(window.pace?.secondsToExhaustion))")
-                        }
+                HStack(spacing: 7) {
+                    Text(label).frame(width: 46, alignment: .leading)
+                    ProgressView(value: window?.resolvedRemainingPercent ?? 0, total: 100)
+                        .tint(window == nil ? Color.secondary : barColor)
+                    Text(window?.resolvedRemainingPercent.map { "\(Int($0.rounded()))%" } ?? "N/A")
+                        .fontWeight(.bold)
+                        .foregroundStyle(window?.resolvedRemainingPercent == nil ? Color.secondary : barColor)
+                        .frame(width: 34, alignment: .trailing)
+                    Text("↻ \(duration(window?.countdownSeconds))")
+                        .frame(width: 58, alignment: .leading)
+                    if window?.pace?.secondsToExhaustion != nil {
+                        Text("out \(duration(window?.pace?.secondsToExhaustion))")
+                            .frame(width: 48, alignment: .leading)
                     }
-                    .font(.system(size: 9.5).monospacedDigit())
-                    .foregroundStyle(.secondary)
                 }
+                .font(.system(size: 9.5).monospacedDigit())
+                .foregroundStyle(.secondary)
             }
         }
     }
@@ -203,8 +243,12 @@ struct UsageCompactBoardStrip: View {
 struct UsageDashboardContent: View {
     let state: UsageDashboardState
     var forceCompact = false
+    /// The installed COORD route uses the deliberately dense cockpit composition.
+    /// Other hosts retain the broader adaptive dashboard while they migrate.
+    var usesDenseRoute = false
     var onClose: (() -> Void)?
     var onOpenSettings: (() -> Void)?
+    var onRefresh: (() -> Void)?
 
     private var cards: [UsageProviderCardState] {
         UsageProviderCardState.cards(from: state.snapshot)
@@ -223,7 +267,28 @@ struct UsageDashboardContent: View {
         }
     }
 
+    /// The route-level total stays limited to USD API-rate estimates. It is a retained
+    /// estimate, never subscription spend or a cross-currency aggregation.
+    private var totalEstimatedCostNanos: Int64? {
+        let values = state.snapshot?.providers.values.compactMap { provider -> Int64? in
+            let estimate = provider.costs?.apiRateEstimate
+            return estimate?.byCurrency?["USD"]
+                ?? (estimate?.currency == "USD" ? estimate?.amountNanos : nil)
+        } ?? []
+        return values.isEmpty ? nil : values.reduce(0, +)
+    }
+
     var body: some View {
+        if usesDenseRoute {
+            UsageDenseRoute(
+                state: state,
+                cards: cards,
+                totalEstimatedCostNanos: totalEstimatedCostNanos,
+                onClose: onClose,
+                onOpenSettings: onOpenSettings,
+                onRefresh: onRefresh
+            )
+        } else {
         GeometryReader { proxy in
             let layout = UsageDashboardLayout.plan(
                 forWidth: Double(proxy.size.width),
@@ -233,6 +298,7 @@ struct UsageDashboardContent: View {
                 UsageDashboardHeader(
                     state: state,
                     layout: layout,
+                    totalEstimatedCostNanos: totalEstimatedCostNanos,
                     onClose: onClose,
                     onOpenSettings: onOpenSettings
                 )
@@ -269,13 +335,395 @@ struct UsageDashboardContent: View {
                     }
                     .padding(layout.widthClass == .compact ? 14 : 22)
                 }
+
+                Divider().opacity(0.28)
+                UsageDashboardFooter(
+                    state: state,
+                    onRefresh: onRefresh,
+                    onOpenSettings: onOpenSettings
+                )
+                .padding(.horizontal, layout.widthClass == .compact ? 14 : 22)
+                .padding(.vertical, 8)
             }
             .background(Color.clear)
+        }
         }
     }
 
     private func sectionSpacing(for layout: UsageDashboardLayout) -> CGFloat {
         layout.widthClass == .compact ? 14 : 18
+    }
+}
+
+/// Stable geometry contract for the dense installed Usage route.
+private enum UsageDenseRouteLayout {
+    static let outerPadding: CGFloat = 12
+    static let sectionSpacing: CGFloat = 16
+    static let compactChartHeight: CGFloat = 74
+    static let regularChartHeight: CGFloat = 92
+    static let providerHorizontalPadding: CGFloat = 18
+    static let providerVerticalPadding: CGFloat = 14
+    static let providerCornerRadius: CGFloat = 12
+    static let providerBorderOpacity: CGFloat = 0.23
+    static let providerBorderWidth: CGFloat = 0.75
+    static let providerFactsSpacing: CGFloat = 22
+    static let providerChartWidth: CGFloat = 300
+    static let totalCornerRadius: CGFloat = 9
+    static let totalBackgroundOpacity: CGFloat = 0.045
+    static let visibleLabelOrder = ["Total Tokens Costs", "Claude", "Codex", "Today", "Retained cost", "Tokens", "Daily cost"]
+
+    static let claudeTint = Color(red: 0.95, green: 0.47, blue: 0.24)
+    static let codexTint = Color(red: 0.66, green: 0.42, blue: 1.00)
+
+    static func tint(_ providerID: String) -> Color {
+        providerID.lowercased() == "claude" ? claudeTint : codexTint
+    }
+}
+
+/// Installed COORD provider-usage surface. This is intentionally separate from
+/// the general shared dashboard so embedded non-menu callers can continue their
+/// adaptive transition without altering the installed route.
+private struct UsageDenseRoute: View {
+    let state: UsageDashboardState
+    let cards: [UsageProviderCardState]
+    let totalEstimatedCostNanos: Int64?
+    let onClose: (() -> Void)?
+    let onOpenSettings: (() -> Void)?
+    let onRefresh: (() -> Void)?
+
+    private func providerRank(_ id: String) -> Int {
+        switch id.lowercased() {
+        case "claude": 0
+        case "codex": 1
+        default: 2
+        }
+    }
+
+    private var orderedCards: [UsageProviderCardState] {
+        cards.sorted {
+            let lhsRank = providerRank($0.id)
+            let rhsRank = providerRank($1.id)
+            return lhsRank == rhsRank ? $0.id < $1.id : lhsRank < rhsRank
+        }
+    }
+
+    var body: some View {
+        GeometryReader { geometry in
+            let chartHeight = geometry.size.height < 900
+                ? UsageDenseRouteLayout.compactChartHeight
+                : UsageDenseRouteLayout.regularChartHeight
+            VStack(alignment: .leading, spacing: UsageDenseRouteLayout.sectionSpacing) {
+                UsageDenseRouteHeader(
+                    state: state,
+                    onClose: onClose,
+                    onOpenSettings: onOpenSettings
+                )
+                UsageDenseTotalCostStrip(totalEstimatedCostNanos: totalEstimatedCostNanos)
+                    .frame(minHeight: 44)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .layoutPriority(100)
+
+                if cards.isEmpty {
+                    ContentUnavailableView(
+                        "Provider usage unavailable",
+                        systemImage: "gauge.with.dots.needle.33percent"
+                    )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: UsageDenseRouteLayout.sectionSpacing) {
+                            ForEach(orderedCards) { card in
+                                UsageDenseProviderSection(card: card, chartHeight: chartHeight)
+                            }
+                        }
+                    }
+                    .frame(maxHeight: .infinity)
+                }
+
+                UsageDashboardFooter(
+                    state: state,
+                    onRefresh: onRefresh,
+                    onOpenSettings: onOpenSettings
+                )
+                .fixedSize(horizontal: false, vertical: true)
+                .layoutPriority(100)
+            }
+            .padding(.horizontal, UsageDenseRouteLayout.outerPadding)
+            .padding(.vertical, UsageDenseRouteLayout.outerPadding)
+            .frame(width: geometry.size.width, height: geometry.size.height, alignment: .topLeading)
+        }
+        .clipped()
+        .background(Color.clear)
+    }
+}
+
+private struct UsageDenseRouteHeader: View {
+    let state: UsageDashboardState
+    let onClose: (() -> Void)?
+    let onOpenSettings: (() -> Void)?
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Text("Provider usage")
+                .font(.system(size: 12, weight: .bold, design: .rounded))
+            if state.refreshing { ProgressView().controlSize(.mini) }
+            if state.stale {
+                Label("Last good", systemImage: "clock.badge.exclamationmark")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(.orange)
+            }
+            Spacer(minLength: 4)
+            if let onOpenSettings {
+                Button(action: onOpenSettings) {
+                    Image(systemName: "person.crop.circle.badge.gearshape")
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .help("Provider settings")
+                .accessibilityLabel("Provider settings")
+            }
+            if let onClose {
+                Button(action: onClose) {
+                    Image(systemName: "xmark.circle.fill")
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .help("Close usage")
+                .accessibilityLabel("Close usage")
+            }
+        }
+        .frame(height: 20)
+    }
+}
+
+private struct UsageDenseTotalCostStrip: View {
+    let totalEstimatedCostNanos: Int64?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text("Total Tokens Costs")
+                .font(.system(size: 10.5, weight: .semibold))
+                .foregroundStyle(.secondary)
+            Text(UsageFormat.costNanos(totalEstimatedCostNanos, currency: "USD"))
+                .font(.system(size: 19, weight: .bold, design: .rounded))
+                .monospacedDigit()
+                .lineLimit(1)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, UsageDenseRouteLayout.outerPadding)
+        .padding(.vertical, 10)
+        .background(
+            Color.primary.opacity(UsageDenseRouteLayout.totalBackgroundOpacity),
+            in: RoundedRectangle(cornerRadius: UsageDenseRouteLayout.totalCornerRadius)
+        )
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Total estimated API-rate cost \(UsageFormat.costNanos(totalEstimatedCostNanos, currency: "USD"))")
+    }
+}
+
+private struct UsageDenseProviderSection: View {
+    let card: UsageProviderCardState
+    let chartHeight: CGFloat
+
+    private var summary: UsageCompactProviderSummary {
+        UsageCompactProviderSummary.summary(for: card)
+    }
+    private var tint: Color { UsageDenseRouteLayout.tint(card.id) }
+    private var dailyProjection: UsageDailyCostTrendProjection? {
+        UsageHistoryPresentation.sources(for: card.provider)
+            .map { UsageDailyCostTrendProjection.make(providerID: card.id, history: $0, costs: card.provider.costs) }
+            .first(where: { $0.points.count >= 2 })
+    }
+    private var quotas: [(String, UsageQuotaWindow?)] {
+        [("Session", summary.session), ("Weekly", summary.weekly), ("Fable", summary.fable)]
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 11) {
+            HStack(spacing: 6) {
+                Image(UsageProviderVisualStyle.assetName(card.id))
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 14, height: 14)
+                Text(summary.displayName)
+                    .font(.system(size: 16, weight: .bold, design: .rounded))
+                Circle()
+                    .fill(summary.connected == true ? tint : Color.secondary)
+                    .frame(width: 5, height: 5)
+                Text(summary.connectionLabel)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(summary.connected == true ? tint : .secondary)
+                Spacer(minLength: 4)
+                Text(planLabel)
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(.secondary)
+            }
+
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .top, spacing: UsageDenseRouteLayout.providerFactsSpacing) {
+                    facts
+                    chart.frame(width: UsageDenseRouteLayout.providerChartWidth, height: chartHeight)
+                }
+                VStack(alignment: .leading, spacing: 14) {
+                    facts
+                    chart.frame(height: chartHeight)
+                }
+            }
+        }
+        .padding(.horizontal, UsageDenseRouteLayout.providerHorizontalPadding)
+        .padding(.vertical, UsageDenseRouteLayout.providerVerticalPadding)
+        .background(tint.opacity(0.035), in: RoundedRectangle(cornerRadius: UsageDenseRouteLayout.providerCornerRadius, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: UsageDenseRouteLayout.providerCornerRadius, style: .continuous)
+                .stroke(tint.opacity(UsageDenseRouteLayout.providerBorderOpacity), lineWidth: UsageDenseRouteLayout.providerBorderWidth)
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+    }
+
+    private var facts: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            if quotas.allSatisfy({ $0.1 == nil }) {
+                Text("Quota unavailable")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .frame(height: 34)
+            } else {
+                VStack(alignment: .leading, spacing: 12) {
+                    ForEach(quotas.compactMap { pair in pair.1.map { (pair.0, $0) } }, id: \.1.id) { label, window in
+                        UsageDenseQuotaRow(label: label, window: window, tint: tint)
+                    }
+                }
+            }
+            HStack(spacing: 18) {
+                UsageDenseMetric(label: "Today", value: UsageFormat.tokens(summary.todayTokens))
+                UsageDenseMetric(label: "Retained cost", value: UsageFormat.costNanos(summary.retainedUSDEstimateNanos, currency: "USD"))
+                UsageDenseMetric(label: "Tokens", value: UsageFormat.tokens(summary.todayTokens))
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+    }
+
+    private var chart: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Daily cost")
+                    .font(.system(size: 10, weight: .bold))
+                Spacer(minLength: 6)
+                Text(latestDailyCost)
+                    .font(.system(size: 9.5, weight: .semibold).monospacedDigit())
+                    .foregroundStyle(tint)
+            }
+            if let dailyProjection {
+                UsageDenseDailyCostChart(projection: dailyProjection, tint: tint)
+            } else {
+                Text("History unavailable")
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, minHeight: 76, alignment: .leading)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var latestDailyCost: String {
+        let latest = dailyProjection?.points.last
+        return UsageFormat.costNanos(latest?.nanos, currency: latest?.currency ?? "USD")
+    }
+    private var planLabel: String {
+        let plan = card.provider.account?.plan
+        return plan?.contains("@") == false ? plan ?? "—" : "—"
+    }
+}
+
+private struct UsageDenseQuotaRow: View {
+    let label: String
+    let window: UsageQuotaWindow
+    let tint: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 5) {
+                Text(label).font(.system(size: 10, weight: .semibold)).lineLimit(1)
+                Spacer(minLength: 3)
+                Text(window.resolvedRemainingPercent.map { String(format: "%.0f%%", $0) } ?? "—")
+                    .font(.system(size: 10, weight: .bold).monospacedDigit())
+                    .foregroundStyle(window.resolvedRemainingPercent == nil ? Color.secondary : tint)
+                Text(window.countdownSeconds.map { "↻ \(UsageFormat.duration($0))" } ?? "↻ —")
+                    .font(.system(size: 9.5).monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+            ProgressView(value: window.resolvedRemainingPercent ?? 0, total: 100)
+                .tint(tint)
+                .frame(height: 5)
+            HStack(spacing: 5) {
+                Text(window.pace?.deltaLabel ?? "Pace unavailable")
+                    .foregroundStyle(window.pace?.state == "deficit" ? tint : Color.secondary)
+                Spacer(minLength: 3)
+                if let seconds = window.pace?.secondsToExhaustion,
+                   window.pace?.willLastToReset == false {
+                    Text("out \(UsageFormat.duration(seconds))").foregroundStyle(tint)
+                } else if window.pace?.willLastToReset == true {
+                    Text("lasts to reset")
+                }
+            }
+            .font(.system(size: 9).monospacedDigit())
+            .foregroundStyle(.secondary)
+        }
+        .padding(.vertical, 2)
+    }
+}
+
+private struct UsageDenseMetric: View {
+    let label: String
+    let value: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(label).font(.system(size: 9, weight: .medium)).foregroundStyle(.secondary)
+            Text(value)
+                .font(.system(size: 11.5, weight: .bold).monospacedDigit())
+                .lineLimit(1)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+private struct UsageDenseDailyCostChart: View {
+    let projection: UsageDailyCostTrendProjection
+    let tint: Color
+
+    var body: some View {
+        let points = projection.points
+        if points.count < 2 {
+            Text("History unavailable")
+                .font(.system(size: 9, weight: .medium))
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, minHeight: 76, alignment: .leading)
+        } else {
+            let peak = max(points.map(\.nanos).max() ?? 1, 1)
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(alignment: .bottom, spacing: points.count > 120 ? 0 : 1) {
+                    ForEach(Array(points.enumerated()), id: \.offset) { _, point in
+                        RoundedRectangle(cornerRadius: 1)
+                            .fill(tint.opacity(projection.sourceKind == .providerReported ? 0.50 : 0.82))
+                            .frame(maxWidth: .infinity)
+                            .frame(height: max(1, 76 * CGFloat(Double(point.nanos) / Double(peak))))
+                            .help("\(point.day) · \(UsageFormat.costNanos(point.nanos, currency: point.currency)) · \(point.costKind)")
+                    }
+                }
+                .overlay(alignment: .bottom) { Divider().opacity(0.35) }
+                .frame(height: 76, alignment: .bottom)
+                .accessibilityLabel("\(projection.providerID) daily estimated cost")
+                .accessibilityValue("\(points.count) observed days; peak \(UsageFormat.costNanos(peak, currency: points.first?.currency))")
+                HStack {
+                    Text(points.first?.day ?? "Unknown")
+                    Spacer()
+                    Text(points.last?.day ?? "Unknown")
+                }
+                .font(.system(size: 8))
+                .foregroundStyle(.secondary)
+            }
+        }
     }
 }
 
@@ -325,14 +773,18 @@ private struct UsageDailyTrendOverview: View {
 private struct UsageDashboardHeader: View {
     let state: UsageDashboardState
     let layout: UsageDashboardLayout
+    let totalEstimatedCostNanos: Int64?
     let onClose: (() -> Void)?
     let onOpenSettings: (() -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .center, spacing: 10) {
-                Text("Provider usage")
-                    .font(layout.widthClass == .compact ? .title2.bold() : .largeTitle.bold())
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Provider usage")
+                        .font(layout.widthClass == .compact ? .title2.bold() : .largeTitle.bold())
+                    UsageTotalCostStrip(totalEstimatedCostNanos: totalEstimatedCostNanos)
+                }
                 Spacer(minLength: 8)
                 if state.refreshing {
                     ProgressView().controlSize(.small)
@@ -377,6 +829,59 @@ private struct UsageDashboardHeader: View {
     }
 }
 
+/// Persistent route actions shared by the installed menu app and native cockpit.
+private struct UsageDashboardFooter: View {
+    let state: UsageDashboardState
+    let onRefresh: (() -> Void)?
+    let onOpenSettings: (() -> Void)?
+
+    var body: some View {
+        HStack(spacing: 10) {
+            if state.stale {
+                Label("Last good", systemImage: "clock.badge.exclamationmark")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.orange)
+            }
+            Spacer(minLength: 0)
+            if let onRefresh {
+                Button(action: onRefresh) {
+                    Image(systemName: "arrow.clockwise")
+                }
+                .buttonStyle(.plain)
+                .help("Refresh provider usage")
+                .accessibilityLabel("Refresh provider usage")
+            }
+            if let onOpenSettings {
+                Button(action: onOpenSettings) {
+                    Image(systemName: "gearshape")
+                }
+                .buttonStyle(.plain)
+                .help("Provider settings")
+                .accessibilityLabel("Provider settings")
+            }
+        }
+        .font(.caption)
+        .frame(height: 20)
+    }
+}
+
+private struct UsageTotalCostStrip: View {
+    let totalEstimatedCostNanos: Int64?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text("Total Tokens Costs")
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(.secondary)
+            Text(UsageFormat.costNanos(totalEstimatedCostNanos, currency: "USD"))
+                .font(.system(size: 13, weight: .bold).monospacedDigit())
+                .foregroundStyle(.primary)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Total estimated API-rate cost \(UsageFormat.costNanos(totalEstimatedCostNanos, currency: "USD"))")
+    }
+}
+
 private struct UsageProviderCard: View {
     let card: UsageProviderCardState
     let layout: UsageDashboardLayout
@@ -385,6 +890,15 @@ private struct UsageProviderCard: View {
     private var provider: UsageProvider { card.provider }
     private var compactSummary: UsageCompactProviderSummary {
         UsageCompactProviderSummary.summary(for: card)
+    }
+    private var providerTint: Color {
+        UsageProviderVisualStyle.tint(card.id)
+    }
+    private var connectionNotice: String? {
+        guard compactSummary.connected != true || compactSummary.connectionLabel != "Connected" else {
+            return nil
+        }
+        return compactSummary.connectionLabel
     }
     private var latestDailyCost: (nanos: Int64?, currency: String?) {
         let row = provider.history?.daily
@@ -474,12 +988,20 @@ private struct UsageProviderCard: View {
     }
 
     private var providerHeader: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 10) {
+        HStack(alignment: .center, spacing: 10) {
+            Image(UsageProviderVisualStyle.assetName(card.id))
+                .resizable()
+                .renderingMode(.template)
+                .foregroundStyle(providerTint)
+                .scaledToFit()
+                .frame(width: 18, height: 18)
             Text(compactSummary.displayName).font(.title2.bold())
             Spacer(minLength: 8)
-            Text(compactSummary.connectionLabel)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(compactSummary.connected == true ? .green : .secondary)
+            if let connectionNotice {
+                Text(connectionNotice)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(compactSummary.connected == false ? Color.orange : Color.secondary)
+            }
         }
     }
 
@@ -506,8 +1028,8 @@ private struct UsageProviderCard: View {
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
             }
-            UsageCompactQuotaRow(label: "Session", window: compactSummary.session)
-            UsageCompactQuotaRow(label: "Weekly", window: compactSummary.weekly)
+            UsageCompactQuotaRow(label: "Session", window: compactSummary.session, tint: providerTint)
+            UsageCompactQuotaRow(label: "Weekly", window: compactSummary.weekly, tint: providerTint)
         }
     }
 
@@ -741,6 +1263,7 @@ private struct UsageProviderCard: View {
 private struct UsageCompactQuotaRow: View {
     let label: String
     let window: UsageQuotaWindow?
+    let tint: Color
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
@@ -754,6 +1277,7 @@ private struct UsageCompactQuotaRow: View {
             if let remaining = window?.clampedRemainingFraction {
                 ProgressView(value: remaining)
                     .progressViewStyle(.linear)
+                    .tint(tint)
             }
             Text(resetLabel)
                 .font(.caption)
@@ -1306,9 +1830,7 @@ private struct UsageDailyGraph: View {
 
     private var points: [UsageDailyCostTrendPoint] { projection.points }
     private var providerTint: Color {
-        projection.providerID == "claude"
-            ? Color(red: 0.96, green: 0.50, blue: 0.32)
-            : Color(red: 0.58, green: 0.40, blue: 0.96)
+        UsageProviderVisualStyle.tint(projection.providerID)
     }
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {

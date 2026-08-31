@@ -369,8 +369,8 @@ final class UsageAccountActionsTests: XCTestCase {
         let accountView = try source("apps/Shared/Sources/UsageAccountSettingsView.swift")
         let usage = try source("apps/Shared/Sources/UsageIntelligence.swift")
 
-        for heading in ["Provider services", "Usage display", "Work display", "Data / Compatibility"] {
-            XCTAssertTrue(settings.contains("section(\"\(heading)\")"), heading)
+        for heading in ["Accounts & routing", "Usage display", "Work display", "Data & Compatibility"] {
+            XCTAssertTrue(settings.contains("section(\"\(heading)\", in: page"), heading)
         }
         XCTAssertTrue(settings.contains("Show inline Usage details"))
         XCTAssertTrue(settings.contains("cfg.usagePeekCollapsed = showInlineUsage.state != .on"))
@@ -382,8 +382,11 @@ final class UsageAccountActionsTests: XCTestCase {
         XCTAssertTrue(popover.contains("a < 0.01 ? NSColor.clear"))
         XCTAssertFalse(popover.contains("final class GlassBackground: NSVisualEffectView"))
         XCTAssertFalse(popover.contains("layer?.borderColor"))
-        XCTAssertTrue(popover.contains("scroll.drawsBackground = false"))
-        XCTAssertTrue(popover.contains("let viewportHeight = min(h, availablePopoverHeight())"))
+        XCTAssertFalse(popover.contains("let viewportHeight = h"))
+        XCTAssertTrue(popover.contains("route.addSubview(v)"))
+        XCTAssertTrue(popover.contains("glass.addSubview(route)"))
+        XCTAssertTrue(popover.contains("content = route"))
+        XCTAssertTrue(popover.contains("let height = max(420, min(660, availablePopoverHeight()))"))
         XCTAssertTrue(config.contains("var glassMaterial: String = \"under_window\""))
         XCTAssertTrue(config.contains("var glassAlpha: Double = 0.0"))
         XCTAssertTrue(config.contains("storedGlassMaterial == \"hud\", storedGlassAlpha == 0.72"))

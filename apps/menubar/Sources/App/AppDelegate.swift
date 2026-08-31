@@ -2,16 +2,29 @@ import AppKit
 
 
 
+
+@MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private var config = Config.load()
     private var source: SnapshotSource!
     private let usageStore = InstalledUsageStore()
     private lazy var telemetryStore: SystemTelemetryStore = MainActor.assumeIsolated { SystemTelemetryStore() }
+    private lazy var localPowerController: LocalPowerController = MainActor.assumeIsolated { LocalPowerController() }
     private lazy var statusItem = StatusItemController()
-    private lazy var popover = PopoverController(config: config, usageStore: usageStore)
+    private lazy var batteryStatusItem = CoordBatteryStatusItemController()
+    private lazy var statsStatusItem = StatsStatusItemController()
+    private lazy var statsPopover = TransientSystemTelemetryPopover()
+    private lazy var popover: PopoverController = MainActor.assumeIsolated {
+        PopoverController(
+            config: config,
+            usageStore: usageStore,
+            localPowerController: localPowerController
+        )
+    }
     private lazy var cockpitWindow = CockpitWindowController(
         usageStore: usageStore,
+        telemetryStore: telemetryStore,
         usageManagedExternally: true
     )
     private var previewWindow: NSWindow?
@@ -111,7 +124,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         NSApp.setActivationPolicy(.accessory)
 
-        statusItem.onClick = { [weak self] button in self?.togglePopover(button) }
+        statusItem.onClick = { [weak self] button in
+            self?.statsPopover.close()
+            self?.togglePopover(button)
+        }
         statusItem.onRefresh = { [weak self] in self?.refresh() }
         statusItem.onOpenSettings = { [weak self] in self?.openSettingsFromStatusMenu() }
         statusItem.onStatusModeChange = { [weak self] mode in
@@ -133,7 +149,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 case "cpu": $0.systemTelemetryShowCPU = visible
                 case "gpu": $0.systemTelemetryShowGPU = visible
                 case "ram": $0.systemTelemetryShowRAM = visible
-                default: $0.systemTelemetryShowDisk = visible
+                case "disk": $0.systemTelemetryShowDisk = visible
+                default: return
                 }
             }
         }
@@ -141,16 +158,54 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.enqueueMenuConfigChange { $0.systemTelemetryProfile = profile }
         }
         statusItem.applyPreferences(config)
+        statsStatusItem.onClick = { [weak self] button in
+            guard let self else { return }
+            self.popover.close()
+            self.statsPopover.toggle(
+                relativeTo: button,
+                snapshot: self.telemetryStore.snapshot,
+                config: self.config,
+                battery: self.localPowerController.battery
+            )
+        }
+        statsPopover.onToggleChargeLimit = { [weak self] expected, target in
+            self?.localPowerController.toggleChargeLimit(expected: expected, target: target)
+        }
+        statsPopover.onSetEnergyMode = { [weak self] source, mode, expected in
+            self?.localPowerController.setEnergyMode(source: source, mode: mode, expected: expected)
+        }
+        statsStatusItem.update(snapshot: telemetryStore.snapshot, config: config)
+        statsStatusItem.setEnabled(config.systemTelemetryEnabled && config.systemTelemetryInStatusItem)
+        batteryStatusItem.onRefresh = { [weak self] in self?.localPowerController.refreshBattery() }
+        batteryStatusItem.onToggleChargeLimit = { [weak self] expected, target in
+            self?.localPowerController.toggleChargeLimit(expected: expected, target: target)
+        }
+        batteryStatusItem.onSetEnergyMode = { [weak self] source, mode, expected in
+            self?.localPowerController.setEnergyMode(source: source, mode: mode, expected: expected)
+        }
+        batteryStatusItem.setEnabled(config.batteryStatusItemEnabled)
         usageStore.onStateChange = { [weak self] state in
             self?.statusItem.updateUsage(state)
             self?.popover.updateUsage(state)
         }
         telemetryStore.onStateChange = { [weak self] snapshot in
             self?.statusItem.updateSystemTelemetry(snapshot)
+            if let self { self.statsStatusItem.update(snapshot: snapshot, config: self.config) }
+            self?.statsPopover.update(snapshot: snapshot)
             self?.popover.updateSystemTelemetry(snapshot)
         }
         popover.onWantsRefresh = { [weak self] in self?.refresh() }
         popover.onConfig = { [weak self] cfg in self?.applyConfig(cfg) }
+        localPowerController.onChange = { [weak self] battery, caffeineActive in
+            guard let self else { return }
+            self.batteryStatusItem.update(battery)
+            self.popover.updateLocalPower(battery: battery, caffeineActive: caffeineActive)
+            self.statsPopover.updatePower(battery: battery)
+        }
+        localPowerController.onOutcome = { [weak self] ok, message in
+            self?.popover.showControlOutcome(ok: ok, message: message)
+        }
+        localPowerController.refreshBattery()
 
         hotkey.register(config.hotkey) { [weak self] in self?.toggleFromHotkey() }
 
@@ -223,7 +278,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let openInterval = min(config.refreshSecs, 1.0)
         openTimer = Timer.scheduledTimer(withTimeInterval: openInterval, repeats: true) {
-            [weak self] _ in self?.refresh()
+            [weak self] _ in
+            Task { @MainActor [weak self] in self?.refresh() }
         }
     }
 
@@ -277,8 +333,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         previewWindow = window
     }
 
+    @MainActor
     @objc private func onWake() {
         refresh()
+        localPowerController.refreshBattery()
         Task { @MainActor in await usageStore.refresh() }
         if config.systemTelemetryEnabled {
             Task { @MainActor in await telemetryStore.refresh(baseURL: HarnessEndpoint.url("/")!) }
@@ -316,6 +374,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             LoginItemManager.apply(cfg.launchAtLogin)
         }
         statusItem.applyPreferences(cfg)
+        batteryStatusItem.setEnabled(cfg.batteryStatusItemEnabled)
+        batteryStatusItem.update(localPowerController.battery)
+        statsStatusItem.update(snapshot: MainActor.assumeIsolated { telemetryStore.snapshot }, config: cfg)
+        statsStatusItem.setEnabled(cfg.systemTelemetryEnabled && cfg.systemTelemetryInStatusItem)
+        if !cfg.systemTelemetryEnabled || !cfg.systemTelemetryInStatusItem {
+            statsPopover.close()
+        }
         if telemetryScheduleChanged {
             startSystemTelemetryRefresh()
         }
@@ -335,7 +400,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         slowTimer?.invalidate(); slowTimer = nil
         usageTimer?.invalidate(); usageTimer = nil
         telemetryTimer?.invalidate(); telemetryTimer = nil
+        localPowerController.stopForTermination()
+        batteryStatusItem.shutdown()
         source?.stop()
+        statsPopover.close()
+        statsStatusItem.shutdown()
         hotkey.teardown()
     }
 
@@ -391,7 +460,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             interval = max(3, config.slowRingInterval)
         }
         slowTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) {
-            [weak self] _ in self?.refresh()
+            [weak self] _ in
+            Task { @MainActor [weak self] in self?.refresh() }
         }
     }
 
@@ -431,6 +501,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 lastRefreshLogKey = logKey
             }
             statusItem.update(with: state)
+            statsPopover.updatePower(battery: localPowerController.battery)
             notifier.check(state)
             if popover.isShown { popover.render(state) }
         }

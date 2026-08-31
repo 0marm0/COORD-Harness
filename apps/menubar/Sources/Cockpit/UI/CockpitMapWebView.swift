@@ -10,6 +10,7 @@ final class CockpitMapWebView: NSView, WKNavigationDelegate {
         didSet {
             guard surfacePath != oldValue else { return }
             hasLoaded = false
+            lastLoadFailed = false
             if isActive { loadIfNeeded(force: true) }
         }
     }
@@ -25,6 +26,7 @@ final class CockpitMapWebView: NSView, WKNavigationDelegate {
     private var lastOpenScriptAt = Date.distantPast
     private var isActive = false
     private var unloadTimer: Timer?
+    private var lastLoadFailed = false
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -51,8 +53,12 @@ final class CockpitMapWebView: NSView, WKNavigationDelegate {
         activate(forceReload: true)
     }
 
+    func retrySurface() {
+        activate(forceReload: true)
+    }
+
     func activate() {
-        activate(forceReload: false)
+        activate(forceReload: lastLoadFailed)
     }
 
     private func activate(forceReload: Bool) {
@@ -76,6 +82,7 @@ final class CockpitMapWebView: NSView, WKNavigationDelegate {
         webView?.removeFromSuperview()
         webView = nil
         hasLoaded = false
+        lastLoadFailed = false
         fallback.isHidden = true
     }
 
@@ -87,8 +94,14 @@ final class CockpitMapWebView: NSView, WKNavigationDelegate {
             return
         }
         hasLoaded = true
+        lastLoadFailed = false
         fallback.isHidden = false
-        guard let url = URL(string: "\(HarnessEndpoint.base)\(surfacePath)") else { return }
+        guard let url = URL(string: "\(HarnessEndpoint.base)\(surfacePath)") else {
+            hasLoaded = false
+            lastLoadFailed = true
+            fallback.stringValue = "\(surfaceLabel) could not load.\nThe embedded route is not a valid URL."
+            return
+        }
         lastTarget = url
         fallback.stringValue = "Loading \(surfaceLabel)..."
         webView.load(URLRequest(url: url, cachePolicy: .reloadIgnoringLocalAndRemoteCacheData, timeoutInterval: 45))
@@ -109,6 +122,7 @@ final class CockpitMapWebView: NSView, WKNavigationDelegate {
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        lastLoadFailed = false
         fallback.isHidden = true
         prepareLoadedSurface()
     }
@@ -122,6 +136,13 @@ final class CockpitMapWebView: NSView, WKNavigationDelegate {
     }
 
     private func showLoadFailure(_ error: Error) {
+        let networkError = error as NSError
+        if networkError.domain == NSURLErrorDomain,
+           networkError.code == NSURLErrorCancelled {
+            return
+        }
+        hasLoaded = false
+        lastLoadFailed = true
         fallback.isHidden = false
         fallback.stringValue = failureText(error.localizedDescription)
     }
@@ -158,6 +179,8 @@ final class CockpitMapWebView: NSView, WKNavigationDelegate {
             return
         }
         decisionHandler(.cancel)
+        hasLoaded = false
+        lastLoadFailed = true
         fallback.isHidden = false
         fallback.stringValue = failureText(
             "The server answered HTTP \(http.statusCode) -- this address is not a surface it serves."

@@ -169,8 +169,10 @@ struct InstalledUsageDashboardView: View {
         UsageDashboardContent(
             state: store.state,
             forceCompact: compact,
+            usesDenseRoute: true,
             onClose: onClose,
-            onOpenSettings: { showingAccounts = true }
+            onOpenSettings: { showingAccounts = true },
+            onRefresh: { Task { await store.refresh(force: true) } }
         )
         .sheet(isPresented: $showingAccounts) {
             UsageAccountSettingsView(

@@ -237,6 +237,9 @@ struct SystemTelemetryHistorySample: Equatable {
     let sequence: Int?
     let generatedAt: String?
     let cpuPercent: Double?
+    let gpuPercent: Double?
+    let memoryPercent: Double?
+    let diskPercent: Double?
     let diskReadBps: Double?
     let diskWriteBps: Double?
 }
@@ -247,10 +250,15 @@ final class SystemTelemetryHistoryBuffer {
 
     func append(_ snapshot: SystemTelemetrySnapshot?) {
         guard let snapshot else { return }
+        let diskPercent = SystemTelemetryDiskCapacity.presentation(for: snapshot.disk)?.usedPercent
+            ?? snapshot.disk.availablePercent
         let sample = SystemTelemetryHistorySample(
             sequence: snapshot.sequence,
             generatedAt: snapshot.generatedAt,
             cpuPercent: snapshot.cpu.availablePercent,
+            gpuPercent: snapshot.gpu.availablePercent,
+            memoryPercent: snapshot.memory.availablePercent,
+            diskPercent: diskPercent,
             diskReadBps: snapshot.disk.readBps,
             diskWriteBps: snapshot.disk.writeBps
         )
@@ -613,7 +621,11 @@ private final class TelemetryIOHistoryView: NSView {
 
 final class TransientSystemTelemetryPopover {
     private let popover = NSPopover()
-    private weak var detailView: SystemTelemetryDetailView?
+    private let history = SystemTelemetryHistoryBuffer()
+    private weak var detailView: PremiumSystemTelemetryDetailView?
+    private var battery = LocalBatterySnapshot.unavailable
+    var onToggleChargeLimit: ((Int, Int) -> Void)?
+    var onSetEnergyMode: ((LocalPowerSource, LocalEnergyMode, Int) -> Void)?
 
     init() {
         popover.behavior = .transient
@@ -623,21 +635,50 @@ final class TransientSystemTelemetryPopover {
 
     var isShown: Bool { popover.isShown }
 
+    static func boundedContentSize(visibleFrame: NSRect, anchorScreenFrame: NSRect) -> NSSize {
+        let availableHeight = max(0, anchorScreenFrame.minY - visibleFrame.minY - 12)
+        return NSSize(
+            width: max(
+                SystemTelemetryStatsLayoutContract.minimumWidth,
+                min(SystemTelemetryStatsLayoutContract.preferredWidth, visibleFrame.width - 24)
+            ),
+            height: max(404, min(SystemTelemetryStatsLayoutContract.preferredHeight, availableHeight))
+        )
+    }
+
     func toggle(
         relativeTo button: NSStatusBarButton,
         snapshot: SystemTelemetrySnapshot?,
-        config: Config
+        config: Config,
+        battery: LocalBatterySnapshot
     ) {
         if popover.isShown {
             popover.close()
             return
         }
-        let preferred = SystemTelemetryDetailView.preferredSize
-        let detail = SystemTelemetryDetailView(
+        history.append(snapshot)
+        self.battery = battery
+        let anchorInWindow = button.convert(button.bounds, to: nil)
+        let anchorOnScreen = button.window?.convertToScreen(anchorInWindow)
+            ?? NSRect(origin: NSEvent.mouseLocation, size: button.bounds.size)
+        var preferred = PremiumSystemTelemetryDetailView.preferredSize
+        if let screen = NSScreen.screens.first(where: { $0.frame.intersects(anchorOnScreen) }) ?? NSScreen.main {
+            preferred = Self.boundedContentSize(
+                visibleFrame: screen.visibleFrame, anchorScreenFrame: anchorOnScreen
+            )
+        }
+        let detail = PremiumSystemTelemetryDetailView(
             snapshot: snapshot,
             config: config,
-            showsCloseControl: false,
-            onClose: { [weak self] in self?.popover.close() }
+            history: history.samples,
+            battery: battery,
+            size: preferred,
+            onToggleChargeLimit: { [weak self] expected, target in
+                self?.onToggleChargeLimit?(expected, target)
+            },
+            onSetEnergyMode: { [weak self] source, mode, expected in
+                self?.onSetEnergyMode?(source, mode, expected)
+            }
         )
         let controller = NSViewController()
         controller.view = detail
@@ -648,11 +689,17 @@ final class TransientSystemTelemetryPopover {
     }
 
     func update(snapshot: SystemTelemetrySnapshot?) {
-        detailView?.update(snapshot: snapshot)
+        history.append(snapshot)
+        detailView?.update(snapshot: snapshot, history: history.samples)
+    }
+
+    func updatePower(battery: LocalBatterySnapshot) {
+        self.battery = battery
+        detailView?.updatePower(battery: battery)
     }
 
     func close() {
-        popover.close()
+        if popover.isShown { popover.close() }
     }
 }
 private final class FlippedTelemetryCard: NSView {
