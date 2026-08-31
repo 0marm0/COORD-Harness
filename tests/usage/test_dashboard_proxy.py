@@ -241,6 +241,49 @@ def test_malformed_or_wrong_contract_is_fail_soft(raw: bytes, code: str) -> None
     }
 
 
+def test_daily_model_breakdowns_cross_proxy_as_bounded_safe_fields() -> None:
+    payload = _payload()
+    payload["providers"]["claude"]["history"]["daily"][0].update({
+        "cache_create_5m_tokens": 3,
+        "cache_create_1h_tokens": 4,
+        "model_breakdowns": [{
+            "key": "model-a1",
+            "label": "claude-test-model",
+            "total_tokens": 123,
+            "input_tokens": 5,
+            "output_tokens": 6,
+            "cache_read_tokens": 7,
+            "cache_create_5m_tokens": 8,
+            "cache_create_1h_tokens": 9,
+            "cache_create_other_tokens": 10,
+            "provider_native_cost_nanos": None,
+            "api_rate_estimate_nanos": 1_250_000_000,
+            "private_debug": "must-not-cross",
+        }],
+    })
+    proxy = UsageDashboardProxy(
+        url=LOOPBACK_URL,
+        opener=lambda _request, _timeout: _Response(json.dumps(payload).encode("utf-8")),
+    )
+
+    day = proxy.get()["providers"]["claude"]["history"]["daily"][0]
+    assert day["cache_create_5m_tokens"] == 3
+    assert day["cache_create_1h_tokens"] == 4
+    assert day["model_breakdowns"] == [{
+        "key": "model-a1",
+        "label": "claude-test-model",
+        "total_tokens": 123,
+        "input_tokens": 5,
+        "output_tokens": 6,
+        "cache_read_tokens": 7,
+        "cache_create_5m_tokens": 8,
+        "cache_create_1h_tokens": 9,
+        "cache_create_other_tokens": 10,
+        "provider_native_cost_nanos": None,
+        "api_rate_estimate_nanos": 1_250_000_000,
+    }]
+
+
 @pytest.mark.parametrize(
     "field", ["sessions", "provider_history", "models", "projects", "quota_groups"]
 )

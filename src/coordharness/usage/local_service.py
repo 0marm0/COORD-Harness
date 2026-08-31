@@ -5,9 +5,11 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import select
 import shutil
 import subprocess
@@ -19,6 +21,10 @@ from .local_history import LocalHistoryImport, discover_local_cli_history
 
 JsonlRunner = Callable[[Sequence[str], Sequence[Mapping[str, Any]], float], list[Mapping[str, Any]]]
 AccountProbe = Callable[[], "ProviderProbe"]
+_SENSITIVE_MODEL_LABEL = re.compile(
+    r"(?:bearer|password|credential|cookie|keychain|api[ _-]?key|token=|secret|private)",
+    re.IGNORECASE,
+)
 
 
 @dataclass(frozen=True)
@@ -33,6 +39,18 @@ class ProviderProbe:
 
 def _utc_iso(value: datetime) -> str:
     return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def _public_model_label(value: str) -> str:
+    allowed = " ._:+()'%,;!?&$#=-"
+    cleaned = "".join(
+        character if character.isascii() and (character.isalnum() or character in allowed) else " "
+        for character in value
+    )
+    cleaned = " ".join(cleaned.split())[:80]
+    if not cleaned or _SENSITIVE_MODEL_LABEL.search(cleaned):
+        return "Unknown model"
+    return cleaned
 
 
 def _safe_plan(value: object) -> str:
@@ -391,6 +409,7 @@ def probe_codex_account(
 
 def _history(imported: LocalHistoryImport, now: datetime) -> dict[str, Any]:
     by_day: dict[str, dict[str, int]] = {}
+    models_by_day: dict[str, dict[str, dict[str, int]]] = {}
     for row in imported.rows:
         bucket = by_day.setdefault(
             row.usage_date,
@@ -418,7 +437,57 @@ def _history(imported: LocalHistoryImport, now: datetime) -> dict[str, Any]:
                 row.cache_create_1h_tokens,
             )
         )
-    daily = [{"date": day, **values} for day, values in sorted(by_day.items())]
+        model_bucket = models_by_day.setdefault(row.usage_date, {}).setdefault(
+            row.model,
+            {
+                "total_tokens": 0,
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "cache_read_tokens": 0,
+                "cache_create_5m_tokens": 0,
+                "cache_create_1h_tokens": 0,
+                "cache_create_other_tokens": 0,
+                "provider_native_cost_nanos": 0,
+                "api_rate_estimate_nanos": 0,
+            },
+        )
+        model_bucket["input_tokens"] += row.input_tokens
+        model_bucket["output_tokens"] += row.output_tokens
+        model_bucket["cache_read_tokens"] += row.cache_read_tokens
+        model_bucket["cache_create_5m_tokens"] += row.cache_create_5m_tokens
+        model_bucket["cache_create_1h_tokens"] += row.cache_create_1h_tokens
+        model_bucket["cache_create_other_tokens"] += row.cache_create_other_tokens
+        model_bucket["provider_native_cost_nanos"] += row.provider_native_cost_nanos or 0
+        model_bucket["api_rate_estimate_nanos"] += row.api_rate_estimate_nanos or 0
+        model_bucket["total_tokens"] += sum(
+            (
+                row.input_tokens,
+                row.output_tokens,
+                row.cache_read_tokens,
+                row.cache_create_other_tokens,
+                row.cache_create_5m_tokens,
+                row.cache_create_1h_tokens,
+            )
+        )
+
+    daily = []
+    for day, values in sorted(by_day.items()):
+        model_rows = []
+        for model, metrics in sorted(
+            models_by_day.get(day, {}).items(),
+            key=lambda item: (-item[1]["total_tokens"], item[0].casefold()),
+        )[:50]:
+            item: dict[str, Any] = {
+                "key": f"model-{hashlib.sha256(model.encode('utf-8')).hexdigest()[:16]}",
+                "label": _public_model_label(model),
+                **metrics,
+            }
+            if item["provider_native_cost_nanos"] == 0:
+                item["provider_native_cost_nanos"] = None
+            if item["api_rate_estimate_nanos"] == 0:
+                item["api_rate_estimate_nanos"] = None
+            model_rows.append(item)
+        daily.append({"date": day, **values, "model_breakdowns": model_rows})
     today = now.date()
     week = today - timedelta(days=today.weekday())
     seven = today - timedelta(days=6)
