@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import PurePosixPath
 import re
+
+from .config import lane_set as _lane_set
 from typing import Any, Iterable
 
 
@@ -209,7 +211,7 @@ def validate_done_signal_grammar(value: Any) -> str:
 
 def acceptance_requires_self_pass(acceptance: Any, assignee: Any) -> bool:
     lane = _text(assignee).casefold()
-    if lane not in {"claude", "codex"}:
+    if lane not in _lane_set():
         return False
     text = " ".join(_flatten_text(acceptance)).casefold()
     if not text or "pass" not in text or lane not in text:

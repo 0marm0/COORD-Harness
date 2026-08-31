@@ -6,17 +6,24 @@ import hashlib
 import logging
 import math
 import os
+import socket
 import sqlite3
 import time
 import uuid
 import re
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Iterable, Optional
+from typing import Any, Iterable, Iterator, Optional
 
 from coordharness.config import HARNESS_ROOT
 from coordharness.jobs.status import done_signal_custodied, done_signal_exists
 
+from .config import (
+    configured_lanes as _configured_lanes,
+    counterpart_lane as _counterpart_lane,
+    lane_set as _lane_set,
+    lanes_display as _lanes_display,
+)
 from .continuation_contract import (
     normalize_resume_trigger_contract,
     require_park_resume_contract,
@@ -92,6 +99,25 @@ def new_id(prefix: str) -> str:
     return f"{prefix}-{uuid.uuid4().hex[:12]}"
 
 
+def local_host_id() -> str:
+    """The host identity stamped on rows this process writes."""
+    return socket.gethostname()
+
+
+def pid_liveness_is_meaningful(host_id: object) -> bool:
+    """Whether a local pid probe can answer for a row recorded on ``host_id``.
+
+    A pid only means something on the machine that recorded it. NULL/empty is
+    the pre-migration and single-machine case and is read as local: every
+    database written before host_id existed keeps its current behaviour. A
+    host_id naming another machine makes the probe unanswerable here -- the
+    caller must report UNKNOWN and fall back to the lease/heartbeat, never
+    "dead", or a healthy remote run reads as a crash.
+    """
+    recorded = str(host_id or "").strip()
+    return not recorded or recorded == local_host_id()
+
+
 def new_work_quarantine_declaration(
     work_id: str, *, source_kind: str = "legacy_grouping_quarantine"
 ) -> str:
@@ -153,7 +179,7 @@ def _validate_session_actor(session_id: str, actor: str) -> None:
 def _session_family_suffix(session_id: str, actor: str | None) -> str:
     sid = str(session_id or "").strip()
     actor = str(actor or "").strip().lower()
-    if not sid or actor not in {"claude", "codex"}:
+    if not sid or actor not in _lane_set():
         return ""
     prefix = f"{actor}:"
     if sid.startswith(prefix):
@@ -297,9 +323,9 @@ def register_session(
             conn.execute(
                 "INSERT INTO agent_sessions(session_id, actor, actor_id, parent_session_id,"
                 " runner_type, human_label, external_thread_id, conversation_title, worktree_id,"
-                " label_source, label_updated_at, cwd, pid, pid_started_at, started_at,"
+                " label_source, label_updated_at, cwd, pid, pid_started_at, host_id, started_at,"
                 " last_heartbeat, lease_until, state, version)"
-                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, 'active', 0)",
+                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, 'active', 0)",
                 (
                     session_id,
                     actor,
@@ -315,6 +341,7 @@ def register_session(
                     cwd,
                     pid,
                     pid_started_at,
+                    local_host_id(),
                     t,
                     t,
                     t + lease_s,
@@ -1115,9 +1142,9 @@ def _tier_correction_event_authorizes_unlocked(
         str(event["kind"] or "").strip().lower() == "tier_corrected"
         and str(event["trust"] or "").strip().lower() == "agent"
         and str(event["work_id"] or "").strip() == work_id
-        and correction_actor in {"claude", "codex"}
+        and correction_actor in _lane_set()
         and expected_actor_for_session_id(event_session) == correction_actor
-        and corrected_assignee in {"claude", "codex"}
+        and corrected_assignee in _lane_set()
         and current_assignee == corrected_assignee
         and correction_actor != corrected_assignee
         and str(event["to_selector"] or "").strip().lower()
@@ -1184,8 +1211,8 @@ def _tier_down_authorized_unlocked(
         ):
             return True
         opposite_lane = (
-            assignee in {"claude", "codex"}
-            and actor in {"claude", "codex"}
+            assignee in _lane_set()
+            and actor in _lane_set()
             and actor != assignee
         )
         if opposite_lane and (
@@ -1214,14 +1241,14 @@ def _valid_cross_lane_audit_request_ref_unlocked(
     row: dict[str, Any],
 ) -> bool:
     assignee = str(row.get("assignee") or "").strip().lower()
-    if assignee not in {"claude", "codex"}:
+    if assignee not in _lane_set():
         return False
     for event in _referenced_event_rows_unlocked(conn, row):
         if str(event["kind"] or "").strip().lower() != "audit_request":
             continue
         actor = str(event["actor"] or "").strip().lower()
         target = str(event["to_selector"] or "").strip().lower()
-        if actor in {"claude", "codex"} and actor != assignee and target == f"actor:{assignee}":
+        if actor in _lane_set() and actor != assignee and target == f"actor:{assignee}":
             return True
     return False
 
@@ -1504,11 +1531,11 @@ def backfill_work_context(
     clean_operation = str(operation_id or "").strip()
     if not clean_work_id:
         raise ValueError("context backfill requires work_id")
-    if clean_actor not in {"claude", "codex"}:
-        raise ValueError("context backfill actor must be claude|codex")
+    if clean_actor not in _lane_set():
+        raise ValueError(f"context backfill actor must be {_lanes_display()}")
     _validate_session_actor(clean_session, clean_actor)
-    if clean_assignee not in {"claude", "codex"}:
-        raise ValueError("context backfill expected_assignee must be claude|codex")
+    if clean_assignee not in _lane_set():
+        raise ValueError(f"context backfill expected_assignee must be {_lanes_display()}")
     if (
         isinstance(expected_version, bool)
         or not isinstance(expected_version, int)
@@ -1658,11 +1685,11 @@ def _repair_work_acceptance_contract_in_transaction(
 
     if not clean_work_id:
         raise ValueError("acceptance repair requires work_id")
-    if clean_actor not in {"claude", "codex"}:
-        raise ValueError("acceptance repair actor must be claude|codex")
+    if clean_actor not in _lane_set():
+        raise ValueError(f"acceptance repair actor must be {_lanes_display()}")
     _validate_session_actor(clean_session, clean_actor)
-    if clean_assignee not in {"claude", "codex"}:
-        raise ValueError("acceptance repair expected_assignee must be claude|codex")
+    if clean_assignee not in _lane_set():
+        raise ValueError(f"acceptance repair expected_assignee must be {_lanes_display()}")
     if (
         isinstance(expected_version, bool)
         or not isinstance(expected_version, int)
@@ -1980,12 +2007,12 @@ def correct_work_context_pointer(
     clean_operation = str(operation_id or "").strip()
     if not clean_work_id:
         raise ValueError("context pointer correction requires work_id")
-    if clean_actor not in {"claude", "codex"}:
-        raise ValueError("context pointer correction actor must be claude|codex")
+    if clean_actor not in _lane_set():
+        raise ValueError(f"context pointer correction actor must be {_lanes_display()}")
     _validate_session_actor(clean_session, clean_actor)
-    if clean_assignee not in {"claude", "codex"}:
+    if clean_assignee not in _lane_set():
         raise ValueError(
-            "context pointer correction expected_assignee must be claude|codex"
+            f"context pointer correction expected_assignee must be {_lanes_display()}"
         )
     if (
         isinstance(expected_version, bool)
@@ -2164,8 +2191,8 @@ def reconcile_invalid_projection_work(
     clean_operation = str(operation_id or "").strip()
     if not clean_work_id:
         raise ValueError("invalid projection reconciliation requires work_id")
-    if clean_actor not in {"claude", "codex"}:
-        raise ValueError("invalid projection reconciliation actor must be claude|codex")
+    if clean_actor not in _lane_set():
+        raise ValueError(f"invalid projection reconciliation actor must be {_lanes_display()}")
     _validate_session_actor(clean_session, clean_actor)
     if (
         isinstance(expected_version, bool)
@@ -2418,8 +2445,8 @@ def adjudicate_live_authority(
     compensates_sha = str(compensates_plane_head_sha256 or "").strip().lower() or None
     if not work_id:
         raise ValueError("authority adjudication requires work_id")
-    if actor not in {"claude", "codex"}:
-        raise ValueError("authority adjudication actor must be claude|codex")
+    if actor not in _lane_set():
+        raise ValueError(f"authority adjudication actor must be {_lanes_display()}")
     _validate_session_actor(session_id, actor)
     if expected_actor_for_session_id(session_id) != actor:
         raise ValueError(
@@ -2929,7 +2956,7 @@ def _insert_continuation_ready_event(
         " VALUES (?,'continuation_ready','system',?,?,'system',?,?, '[]',?,?)",
         (
             now,
-            f"actor:{lane}" if lane in {"claude", "codex"} else None,
+            f"actor:{lane}" if lane in _lane_set() else None,
             work_id,
             f"Continuation ready: {work_id}",
             body,
@@ -3075,8 +3102,8 @@ def close_review_as_policy_moot(
         raise ValueError("policy-moot close requires a non-negative expected_version")
     if not re.fullmatch(r"[a-f0-9]{64}", clean_packet_sha256):
         raise ValueError("policy-moot close requires a packet sha256")
-    if clean_actor not in {"claude", "codex"}:
-        raise ValueError("policy-moot close actor must be claude or codex")
+    if clean_actor not in _lane_set():
+        raise ValueError(f"policy-moot close actor must be {_lanes_display()}")
     try:
         watermark = float(skip_if_events_after)
     except (TypeError, ValueError) as exc:
@@ -3274,6 +3301,83 @@ def close_review_as_policy_moot(
         }
 
 
+#: The one env knob that decides what a *not-ready* row does at claim time.
+#: Unset keeps each surface's historical default (MCP refuses, CLI warns);
+#: "1" makes both refuse, "0" makes both warn. Read only by
+#: :func:`claim_readiness_enforcement` so the two surfaces cannot drift.
+CLAIM_STRICT_ENV = "COORD_CLAIM_STRICT"
+
+CLAIM_READINESS_REFUSE = "refuse"
+CLAIM_READINESS_WARN = "warn"
+
+_CLAIM_STRICT_TRUE = frozenset({"1", "true", "yes", "on"})
+_CLAIM_STRICT_FALSE = frozenset({"0", "false", "no", "off"})
+
+
+class ClaimReadinessError(ValueError):
+    """A claim refused because its work row is not fit to claim.
+
+    Carries the field list so a surface can answer structurally instead of
+    re-parsing its own message.
+    """
+
+    def __init__(self, work_id: str, missing: Iterable[str], message: str) -> None:
+        super().__init__(message)
+        self.work_id = work_id
+        self.missing = [str(field) for field in missing]
+
+
+def claim_readiness(
+    work_id: str,
+    row: dict[str, Any] | None,
+    *,
+    actor: str | None = None,
+) -> list[str]:
+    """Fields a work row is missing before it is fit to claim.
+
+    Empty list means ready. This is the single definition both the MCP surface
+    and the CLI consult; they differ only in what they *do* with the answer
+    (see :func:`claim_readiness_enforcement`).
+    """
+
+    try:
+        from coordharness.coord.creation_lint import claim_rubric_missing_fields
+    except Exception:  # pragma: no cover - lint module optional by construction
+        return []
+    fields = {key: value for key, value in (row or {}).items() if value not in (None, "")}
+    fields.setdefault("id", work_id)
+    fields.setdefault("work_id", work_id)
+    fields["status"] = "running"
+    fields["intent_state"] = "running"
+    if actor:
+        fields.setdefault("assignee", actor)
+    return claim_rubric_missing_fields(fields)
+
+
+def claim_readiness_enforcement(*, default: str) -> str:
+    """``"refuse"`` or ``"warn"`` for this process, from ``COORD_CLAIM_STRICT``."""
+
+    if default not in (CLAIM_READINESS_REFUSE, CLAIM_READINESS_WARN):
+        raise ValueError(f"unknown claim readiness default {default!r}")
+    raw = str(os.environ.get(CLAIM_STRICT_ENV) or "").strip().lower()
+    if raw in _CLAIM_STRICT_TRUE:
+        return CLAIM_READINESS_REFUSE
+    if raw in _CLAIM_STRICT_FALSE:
+        return CLAIM_READINESS_WARN
+    return default
+
+
+def claim_readiness_message(work_id: str, missing: Iterable[str]) -> str:
+    """The one sentence both surfaces print, refusing or warning."""
+
+    names = ", ".join(str(field) for field in missing)
+    return (
+        f"incomplete claim {work_id}: missing {names}; "
+        "create/repair the work item with a descriptive title, valid done_signal, "
+        "and T0/T1 acceptance before claiming; see docs/review-tiers.md"
+    )
+
+
 def claim_work(
     conn,
     session_id: str,
@@ -3468,8 +3572,8 @@ def correct_work_tier(
     clean_refs = [str(ref).strip() for ref in refs if str(ref).strip()]
     if not clean_work_id:
         raise ValueError("tier correction requires work_id")
-    if clean_actor not in {"claude", "codex"}:
-        raise ValueError("tier correction actor must be claude|codex")
+    if clean_actor not in _lane_set():
+        raise ValueError(f"tier correction actor must be {_lanes_display()}")
     _validate_session_actor(clean_session, clean_actor)
     if expected_actor_for_session_id(clean_session) != clean_actor:
         raise ValueError("tier correction requires an actor-namespaced session_id")
@@ -3614,7 +3718,7 @@ def correct_work_tier(
                 "tier_corrected",
                 clean_actor,
                 clean_session,
-                f"actor:{assignee}" if assignee in {"claude", "codex"} else None,
+                f"actor:{assignee}" if assignee in _lane_set() else None,
                 clean_work_id,
                 "agent",
                 f"Review tier corrected {clean_expected} -> {clean_new}",
@@ -3667,8 +3771,8 @@ def resume_parked_work(
     clean_refs = [str(ref).strip() for ref in refs if str(ref).strip()]
     if not clean_work_id:
         raise ValueError("resume parked work requires work_id")
-    if clean_actor not in {"claude", "codex"}:
-        raise ValueError("resume parked work actor must be claude|codex")
+    if clean_actor not in _lane_set():
+        raise ValueError(f"resume parked work actor must be {_lanes_display()}")
     _validate_session_actor(clean_session, clean_actor)
     if expected_actor_for_session_id(clean_session) != clean_actor:
         raise ValueError("resume parked work requires an actor-namespaced session_id")
@@ -4061,8 +4165,26 @@ def release_claim(
             )
         t = db_now(conn)
         row = conn.execute(
-            "SELECT work_id FROM claims WHERE claim_id=?", (claim_id,)
+            "SELECT work_id, status, expires_at FROM claims WHERE claim_id=?",
+            (claim_id,),
         ).fetchone()
+        # The epoch check heartbeat_claim and complete_claim make, widened to the
+        # statuses a claim is still *held* in: unlike those two verbs, release is
+        # how a holder moves between running, paused and blocked. What it must
+        # refuse is a claim whose epoch already ended -- otherwise a replayed
+        # release rewrites the work item's intent_state from a lease nobody
+        # holds any more.
+        if row is None:
+            raise ValueError(f"cannot release missing claim {claim_id!r}")
+        if str(row["status"] or "").strip().lower() not in _HELD_CLAIM_STATUSES:
+            raise ValueError(
+                f"cannot release claim {claim_id!r} with status {row['status']!r}; "
+                "claim the work explicitly to start a new ownership epoch"
+            )
+        if row["expires_at"] is not None and float(row["expires_at"]) <= t:
+            raise ValueError(
+                f"cannot release expired claim {claim_id!r}; claim the work explicitly"
+            )
         conn.execute(
             "UPDATE claims SET status=?, release_reason=?, version=version+1 WHERE claim_id=?",
             (status, reason, claim_id),
@@ -4075,6 +4197,9 @@ def release_claim(
                 (t, row["work_id"], *TERMINAL_WORK_STATES),
             )
         elif row and status in {"paused", "blocked"}:
+            # Terminal work never goes back to paused/blocked: a late park or
+            # block against a done row would otherwise resurrect it as open work.
+            terminal_placeholders = ",".join("?" for _ in TERMINAL_WORK_STATES)
             conn.execute(
                 "UPDATE work_items SET intent_state=?,"
                 " blocked_reason_class=CASE WHEN ?='blocked'"
@@ -4085,7 +4210,8 @@ def release_claim(
                 " resume_predicate_json=COALESCE(NULLIF(?,''),resume_predicate_json),"
                 " continuation_ready_at=CASE WHEN NULLIF(?, '') IS NOT NULL"
                 " THEN NULL ELSE continuation_ready_at END,"
-                " updated_at=?,version=version+1 WHERE work_id=?",
+                " updated_at=?,version=version+1 WHERE work_id=?"
+                f" AND intent_state NOT IN ({terminal_placeholders})",
                 (
                     status,
                     status,
@@ -4095,6 +4221,7 @@ def release_claim(
                     canonical_resume_predicate or "",
                     t,
                     row["work_id"],
+                    *TERMINAL_WORK_STATES,
                 ),
             )
 
@@ -4156,8 +4283,8 @@ def classify_blocked_work(
     )
     if not clean_work_id:
         raise ValueError("blocked classification requires work_id")
-    if clean_actor not in {"claude", "codex"}:
-        raise ValueError("blocked classification actor must be claude|codex")
+    if clean_actor not in _lane_set():
+        raise ValueError(f"blocked classification actor must be {_lanes_display()}")
     if not clean_session:
         raise ValueError("blocked classification requires session_id")
     _validate_session_actor(clean_session, clean_actor)
@@ -4312,8 +4439,8 @@ def migrate_blocked_resume_predicate(
 
     if not clean_work_id:
         raise ValueError("resume predicate migration requires work_id")
-    if clean_actor not in {"claude", "codex"}:
-        raise ValueError("resume predicate migration actor must be claude|codex")
+    if clean_actor not in _lane_set():
+        raise ValueError(f"resume predicate migration actor must be {_lanes_display()}")
     if not clean_session:
         raise ValueError("resume predicate migration requires session_id")
     _validate_session_actor(clean_session, clean_actor)
@@ -4547,8 +4674,8 @@ def release_classified_block(
             "classified block release is limited to "
             f"{sorted(releasable_classes)}"
         )
-    if clean_actor not in {"claude", "codex"}:
-        raise ValueError("classified block release actor must be claude|codex")
+    if clean_actor not in _lane_set():
+        raise ValueError(f"classified block release actor must be {_lanes_display()}")
     if not clean_session:
         raise ValueError("classified block release requires session_id")
     _validate_session_actor(clean_session, clean_actor)
@@ -4684,8 +4811,8 @@ def recover_orphaned_block(
     clean_note = str(note or "").strip()
     if not clean_work_id:
         raise ValueError("orphaned block recovery requires work_id")
-    if clean_actor not in {"claude", "codex"}:
-        raise ValueError("orphaned block recovery actor must be claude|codex")
+    if clean_actor not in _lane_set():
+        raise ValueError(f"orphaned block recovery actor must be {_lanes_display()}")
     if not clean_session:
         raise ValueError("orphaned block recovery requires session_id")
     if not clean_note:
@@ -4868,9 +4995,9 @@ def _insert_completion_receipt_unlocked(
         (session_id,),
     ).fetchone()
     actor = str(session["actor"] if session else "").strip().lower()
-    if actor not in {"claude", "codex"}:
+    if actor not in _lane_set():
         actor = expected_actor_for_session_id(session_id) or "coord"
-    kind = f"{actor}_done" if actor in {"claude", "codex"} else "coord_done"
+    kind = f"{actor}_done" if actor in _lane_set() else "coord_done"
     payload_json = json.dumps(
         {
             "action": "done",
@@ -5026,8 +5153,8 @@ def reopen_done_signal_status_mismatches(
     clean_actor = str(actor or "").strip().lower()
     clean_session = str(session_id or "").strip()
     clean_authority = str(authority_work_id or "").strip()
-    if clean_actor not in {"codex", "claude"}:
-        raise ValueError("done-signal status sweep actor must be codex|claude")
+    if clean_actor not in _lane_set():
+        raise ValueError(f"done-signal status sweep actor must be {_lanes_display()}")
     authority = conn.execute(
         "SELECT c.status,w.assignee,w.intent_state FROM claims c "
         "JOIN work_items w ON w.work_id=c.work_id "
@@ -5179,14 +5306,25 @@ def _has_valid_operator_ok_unlocked(
     work_id: str,
     *,
     event_id: int | None = None,
+    work_row: dict[str, Any] | sqlite3.Row | None = None,
 ) -> bool:
-    row = conn.execute(
-        "SELECT * FROM work_items WHERE work_id=?",
-        (work_id,),
-    ).fetchone()
+    # ``work_row`` lets a caller that already holds the row skip the by-primary-key
+    # re-SELECT. Every field this reads -- the binding and the contract fields --
+    # is a plain ``work_items`` column, and ``v_work_owner`` is ``w.*`` plus joins,
+    # so a row from either source hashes to the same contract digest.
+    row: dict[str, Any] | sqlite3.Row | None = work_row
+    if row is None:
+        row = conn.execute(
+            "SELECT * FROM work_items WHERE work_id=?",
+            (work_id,),
+        ).fetchone()
     if row is None:
         return False
-    row_bound_id = int(row["operator_ok_event_id"] or 0)
+    try:
+        raw_bound_id = row["operator_ok_event_id"]
+    except (KeyError, IndexError):
+        raw_bound_id = None
+    row_bound_id = int(raw_bound_id or 0)
     if event_id is not None and int(event_id) != row_bound_id:
         return False
     bound_id = int(event_id or row_bound_id or 0)
@@ -5398,7 +5536,7 @@ def record_operator_sign_off(
                 "operator_ok",
                 "operator",
                 None,
-                f"actor:{assignee}" if assignee in {"claude", "codex"} else None,
+                f"actor:{assignee}" if assignee in _lane_set() else None,
                 clean_work_id,
                 "system",
                 f"Operator sign-off for {clean_work_id}",
@@ -5439,9 +5577,11 @@ def _flag_repair_request_event_is_valid_unlocked(
     if (
         str(event["kind"] or "").strip().lower() != "audit_request"
         or event_work_id != work_id
-        or actor not in {"claude", "codex"}
+        or actor not in _lane_set()
         or expected_actor_for_session_id(session_id) != actor
-        or target != f"actor:{'codex' if actor == 'claude' else 'claude'}"
+        or target not in {
+            f"actor:{lane}" for lane in _lane_set() if lane != actor
+        }
         or str(event["trust"] or "").strip().lower() != "agent"
     ):
         return False
@@ -5491,8 +5631,7 @@ def _flag_repair_request_event_is_valid_unlocked(
         or remediation_ids != sorted(set(remediation_ids))
         or any(int(value) <= negative_event_id for value in remediation_ids)
         or payload.get("author_lane") != actor
-        or payload.get("review_lane")
-        != ("codex" if actor == "claude" else "claude")
+        or payload.get("review_lane") != target.split(":", 1)[1]
         or payload.get("effective_tier") != "T1"
         or not refs
         or len(refs) > 32
@@ -5986,8 +6125,8 @@ def appear_run(
         conn.execute(
             f"{verb} runs(run_id, work_id, session_id, parent_session_id, runner_kind,"
             " model, progress_mode, sidecar_path, pid, pid_started_at, pgid, resource_class,"
-            " started_at, heartbeat_at, state, version)"
-            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?, ?, 0)",
+            " host_id, started_at, heartbeat_at, state, version)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, ?, 0)",
             (
                 run_id,
                 work_id,
@@ -6001,6 +6140,7 @@ def appear_run(
                 pid_started_at,
                 pgid,
                 resource_class,
+                local_host_id(),
                 t,
                 observed_at,
                 observed_state,
@@ -6234,8 +6374,8 @@ def post_flag_repair_audit_request(
     clean_refs = [str(ref).strip() for ref in refs if str(ref).strip()]
     if not clean_work_id:
         raise ValueError("flag_repair requires work_id")
-    if clean_actor not in {"claude", "codex"}:
-        raise ValueError("flag_repair requires actor claude|codex")
+    if clean_actor not in _lane_set():
+        raise ValueError(f"flag_repair requires actor {_lanes_display()}")
     if expected_actor_for_session_id(clean_session_id) != clean_actor:
         raise ValueError("flag_repair requires an actor-namespaced author session")
     if not clean_task or not clean_why:
@@ -6294,12 +6434,15 @@ def post_flag_repair_audit_request(
             raise ValueError(
                 "flag_repair requires an active actor-matched author session"
             )
-        opposite_lane = "codex" if clean_actor == "claude" else "claude"
-        if clean_target != f"actor:{opposite_lane}":
+        cross_lane_targets = {
+            f"actor:{lane}" for lane in _lane_set() if lane != clean_actor
+        }
+        if clean_target not in cross_lane_targets:
             raise ValueError(
-                "flag_repair target must be the opposite lane "
-                f"actor:{opposite_lane}"
+                "flag_repair target must be another lane, one of "
+                f"{sorted(cross_lane_targets)}"
             )
+        opposite_lane = clean_target.split(":", 1)[1]
 
         latest_verdict = conn.execute(
             "SELECT event_id,actor,session_id,to_selector,verdict FROM events"
@@ -6655,7 +6798,7 @@ def post_event(
             event_id = int(cur.lastrowid)
             clean_actor = str(actor or "").strip().lower()
             clean_work_id = str(work_id or "").strip()
-            if clean_actor in {"claude", "codex"} and clean_work_id:
+            if clean_actor in _lane_set() and clean_work_id:
                 conn.execute(
                     "UPDATE request_consumption SET consumed_event_id=?,consumed_at=?"
                     " WHERE recipient_lane=? AND work_id=? AND consumed_at IS NULL"
@@ -6666,7 +6809,7 @@ def post_event(
             clean_kind = str(kind or "").strip().lower()
             if (
                 clean_kind in {"handoff", "audit_request"}
-                and clean_selector in {"actor:claude", "actor:codex"}
+                and clean_selector in {f"actor:{lane}" for lane in _lane_set()}
                 and clean_work_id
             ):
                 recipient_lane = clean_selector.split(":", 1)[1]
@@ -6975,17 +7118,19 @@ def _latest_claim_author_lane_unlocked(
     if claim is not None:
         session_lane = expected_actor_for_session_id(str(claim["session_id"] or ""))
         registered_lane = str(claim["actor"] or "").strip().lower()
-        if registered_lane not in {"claude", "codex"}:
+        if registered_lane not in _lane_set():
             registered_lane = ""
         if session_lane and registered_lane and session_lane != registered_lane:
             return None
         return session_lane or registered_lane or None
 
+    claim_kinds = tuple(f"{lane}_claim" for lane in _configured_lanes())
     event = conn.execute(
         "SELECT kind,actor,session_id,payload_json FROM events"
-        " WHERE work_id=? AND kind IN ('claude_claim','codex_claim')"
+        " WHERE work_id=? AND kind IN "
+        f"({','.join('?' for _ in claim_kinds)})"
         " ORDER BY event_id DESC LIMIT 1",
-        (work_id,),
+        (work_id, *claim_kinds),
     ).fetchone()
     if event is not None:
         try:
@@ -7001,7 +7146,7 @@ def _latest_claim_author_lane_unlocked(
         if len(lanes) != 1:
             return None
         registered_lane = lanes.pop()
-        if registered_lane not in {"claude", "codex"}:
+        if registered_lane not in _lane_set():
             return None
         return registered_lane
 
@@ -7031,7 +7176,7 @@ def _latest_claim_author_lane_unlocked(
     if len(lanes) != 1:
         return None
     registered_lane = lanes.pop()
-    return registered_lane if registered_lane in {"claude", "codex"} else None
+    return registered_lane if registered_lane in _lane_set() else None
 
 
 def request_completion_review_if_needed(
@@ -7076,14 +7221,19 @@ def request_completion_review_if_needed(
             )
         author_lane = expected_actor_for_session_id(str(row["session_id"] or ""))
         registered_lane = str(row["actor"] or "").strip().lower()
-        if registered_lane not in {"claude", "codex"}:
+        if registered_lane not in _lane_set():
             registered_lane = ""
         if author_lane and registered_lane and author_lane != registered_lane:
             raise ValueError("completion review request has contradictory author identity")
         author_lane = author_lane or registered_lane or None
-        if author_lane not in {"claude", "codex"}:
+        if author_lane not in _lane_set():
             raise ValueError("completion review request requires an unambiguous author lane")
-        review_lane = "claude" if author_lane == "codex" else "codex"
+        review_lane = _counterpart_lane(author_lane)
+        if review_lane is None:
+            raise ValueError(
+                "completion review request requires a second configured lane; "
+                f"COORD_LANES names only {_lanes_display()}"
+            )
         key = f"completion-review:{claim_id}"
         prior = conn.execute(
             "SELECT event_id,payload_json FROM events WHERE idempotency_key=?",
@@ -7269,13 +7419,13 @@ def post_audit_verdict(
         author_lane = _latest_claim_author_lane_unlocked(conn, work_id)
         effective_to_selector = (
             f"actor:{author_lane}"
-            if author_lane in {"claude", "codex"}
+            if author_lane in _lane_set()
             else to_selector
         )
         if normalized == "PASS":
             declared_actor = str(actor or "").strip().lower()
             session_lane = expected_actor_for_session_id(str(session_id or ""))
-            if declared_actor not in {"claude", "codex"} or (
+            if declared_actor not in _lane_set() or (
                 session_lane is not None and declared_actor != session_lane
             ):
                 raise ValueError(
@@ -7844,11 +7994,8 @@ def _typed_handoff_request(
         raise ValueError("typed handoff requires work_id")
     if len(request["work_id"].encode("utf-8")) > 256:
         raise ValueError("typed handoff work_id exceeds 256 UTF-8 bytes")
-    if request["actor"] not in {"claude", "codex"} or request["owner_lane"] not in {
-        "claude",
-        "codex",
-    }:
-        raise ValueError("typed handoff actor/owner_lane must be claude|codex")
+    if request["actor"] not in _lane_set() or request["owner_lane"] not in _lane_set():
+        raise ValueError(f"typed handoff actor/owner_lane must be {_lanes_display()}")
     if request["actor"] == request["owner_lane"]:
         raise ValueError("typed handoff owner_lane must differ from actor")
     if not request["session_id"]:
@@ -8577,7 +8724,7 @@ def _open_audit_request_rows_unlocked(
 
 def _audit_request_open_snapshot_unlocked(conn: sqlite3.Connection) -> dict[str, Any]:
     lanes: dict[str, Any] = {}
-    for lane in ("claude", "codex"):
+    for lane in _configured_lanes():
         rows = _open_audit_request_rows_unlocked(conn, recipient_lane=lane)
         lanes[lane] = {
             "open_audit_request_count": len(rows),
@@ -8771,8 +8918,8 @@ def retire_zombie_audit_requests(
     clean_actor = str(actor or "").strip().lower()
     clean_session = str(session_id or "").strip()
     clean_operation = str(operation_id or "").strip()
-    if clean_actor not in {"claude", "codex"}:
-        raise ValueError("audit-request retirement actor must be claude or codex")
+    if clean_actor not in _lane_set():
+        raise ValueError(f"audit-request retirement actor must be {_lanes_display()}")
     _validate_session_actor(clean_session, clean_actor)
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.:-]{7,199}", clean_operation):
         raise ValueError("audit-request retirement requires a safe operation_id")
@@ -8951,7 +9098,7 @@ def retire_zombie_audit_requests(
                     f"audit-request retirement trust readback failed for {request_id}"
                 )
         after = _audit_request_open_snapshot_unlocked(conn)
-        for lane in ("claude", "codex"):
+        for lane in _configured_lanes():
             expected = supplied_manifest["protected_open_audit_requests"][lane]
             if after[lane]["open_audit_requests"] != expected:
                 raise ValueError(
@@ -10436,7 +10583,9 @@ def _is_observer_work_id(work_id: str) -> bool:
     if not wid:
         return False
     lowered = wid.lower()
-    if lowered.startswith(("job:obs_", "claude:", "codex:", "raw:")):
+    if lowered.startswith(
+        ("job:obs_", "raw:", *(f"{lane}:" for lane in _configured_lanes()))
+    ):
         return True
     if re.fullmatch(r"job:[0-9a-f]{10,16}", lowered):
         return True
@@ -10599,6 +10748,46 @@ def board_recent_rank(row: dict[str, Any]) -> tuple[float, float, str]:
     return (-updated, priority, str(row.get("work_id") or ""))
 
 
+_BOARD_SCAN_CHUNK = 500
+
+
+def _board_scan_chunks(
+    conn,
+    chunk_size: int,
+) -> Iterator[list[dict]]:
+    """Yield ``v_work_owner`` rows in board order, in bounded chunks.
+
+    Keyset paging rather than OFFSET: ``(updated_at DESC, work_id ASC)`` is a
+    total order because ``work_id`` is the primary key, so resuming after the
+    last row of a chunk reproduces exactly the sequence one unbounded scan
+    would have produced -- and unlike OFFSET it does not re-sort the whole
+    table once per chunk.
+    """
+    cursor_updated: float | None = None
+    cursor_work_id: str | None = None
+    while True:
+        if cursor_updated is None:
+            batch = conn.execute(
+                "SELECT * FROM v_work_owner"
+                " ORDER BY updated_at DESC, work_id ASC LIMIT ?",
+                (chunk_size,),
+            ).fetchall()
+        else:
+            batch = conn.execute(
+                "SELECT * FROM v_work_owner"
+                " WHERE updated_at < ? OR (updated_at = ? AND work_id > ?)"
+                " ORDER BY updated_at DESC, work_id ASC LIMIT ?",
+                (cursor_updated, cursor_updated, cursor_work_id, chunk_size),
+            ).fetchall()
+        if not batch:
+            return
+        yield [dict(r) for r in batch]
+        if len(batch) < chunk_size:
+            return
+        cursor_updated = batch[-1]["updated_at"]
+        cursor_work_id = batch[-1]["work_id"]
+
+
 def board_rows(
     conn,
     at: float | None = None,
@@ -10619,76 +10808,96 @@ def board_rows(
         wanted_statuses = {
             str(value).strip().lower() for value in status_filter if str(value).strip()
         }
-    sql_limit = None if wanted_statuses else limit
-    if sql_limit is None:
-        rows = [
-            dict(r)
-            for r in conn.execute(
-                "SELECT * FROM v_work_owner ORDER BY updated_at DESC, work_id ASC"
-            ).fetchall()
-        ]
+    want_limit = None if limit is None else max(0, int(limit))
+    # Status is DERIVED, so a status filter cannot be pushed into SQL. Scanning
+    # the whole table to find the first N matches is what made the filtered
+    # board O(all work items); instead walk it in bounded chunks and stop at the
+    # Nth match. The scan order is the same, so the rows returned are the same.
+    if wanted_statuses or want_limit is None:
+        scan_chunk = _BOARD_SCAN_CHUNK
     else:
-        rows = [
-            dict(r)
-            for r in conn.execute(
-                "SELECT * FROM v_work_owner ORDER BY updated_at DESC, work_id ASC LIMIT ?",
-                (max(0, int(sql_limit)),),
-            ).fetchall()
-        ]
+        scan_chunk = want_limit
     pid_rows = conn.execute(
-        "SELECT work_id, pid, pid_started_at FROM runs"
+        "SELECT work_id, pid, pid_started_at, host_id FROM runs"
         " WHERE state='live' AND work_id IS NOT NULL AND pid IS NOT NULL"
     ).fetchall()
     live_pid_by_work: dict[str, int] = {}
     seen_pid_work: set[str] = set()
+    foreign_host_work: set[str] = set()
     for pr in pid_rows:
         wid = str(pr["work_id"] or "")
         if not wid:
             continue
+        # A run recorded on another host gets no pid verdict: its pid names a
+        # process on a machine this probe cannot see, so answering would mean
+        # answering "dead" for something healthy.
+        if not pid_liveness_is_meaningful(pr["host_id"]):
+            foreign_host_work.add(wid)
+            continue
         seen_pid_work.add(wid)
         if pid_matches(pr["pid"], pr["pid_started_at"]):
             live_pid_by_work[wid] = live_pid_by_work.get(wid, 0) + 1
-    for r in rows:
-        wid = str(r.get("work_id") or "")
-        if wid in seen_pid_work:
-            r["live_pid_count"] = live_pid_by_work.get(wid, 0)
-        r["legacy_pre_review_tier_done"] = bool(
-            not normalize_declared_tier(r.get("tier"))
-            and str(r.get("intent_state") or "").strip().lower() == "done"
-            and float(r.get("created_at") or 0.0) < _REVIEW_TIER_POLICY_ENFORCED_AT
-        )
-        r["has_artifact"] = bool(
-            r.get("has_artifact")
-            or (
-                r["legacy_pre_review_tier_done"]
-                and done_signal_satisfied(conn, r.get("done_signal"), HARNESS_ROOT)
+    # One unanswerable run makes the whole work item's pid count unanswerable:
+    # a local dead run beside a live remote one would otherwise report 0 and
+    # read as "not running". Dropping the work id from seen_pid_work is the
+    # UNKNOWN answer -- derive_work_status then falls back to live_run_count,
+    # i.e. the lease/heartbeat state, rather than a pid that means nothing here.
+    seen_pid_work -= foreign_host_work
+    for wid in foreign_host_work:
+        live_pid_by_work.pop(wid, None)
+    rows: list[dict] = []
+    group_by_checked = False
+    for chunk in _board_scan_chunks(conn, scan_chunk):
+        for r in chunk:
+            wid = str(r.get("work_id") or "")
+            if wid in seen_pid_work:
+                r["live_pid_count"] = live_pid_by_work.get(wid, 0)
+            r["legacy_pre_review_tier_done"] = bool(
+                not normalize_declared_tier(r.get("tier"))
+                and str(r.get("intent_state") or "").strip().lower() == "done"
+                and float(r.get("created_at") or 0.0) < _REVIEW_TIER_POLICY_ENFORCED_AT
             )
-        )
-        r["effective_tier"] = effective_review_tier_for_work(conn, wid, row=r)
-        r["operator_ok_validated"] = _has_valid_operator_ok_unlocked(conn, wid)
-        r["status"] = derive_work_status(r, at)
-        r["proof_state"] = derive_proof_state(r, at)
-        r["group"] = r.get(group_by) or "(ungrouped)"
-    # A group_by naming a field no row carries used to sort every row into
-    # "(ungrouped)" and return success, so a typo and a real grouping were
-    # indistinguishable in the output. Refuse instead, and say what can be
-    # grouped -- the caller cannot discover that from a silent all-ungrouped
-    # board.
-    if rows and group_by not in rows[0]:
-        groupable = sorted(
-            k for k, v in rows[0].items()
-            if isinstance(v, (str, type(None))) and not k.startswith("_")
-        )
-        raise ValueError(
-            f"cannot group the board by {group_by!r}: no such field on a work row; "
-            f"try one of: {', '.join(groupable)}"
-        )
-    if wanted_statuses:
-        rows = [
-            r for r in rows if str(r.get("status") or "").lower() in wanted_statuses
-        ]
-        if limit is not None:
-            rows = rows[: max(0, int(limit))]
+            r["has_artifact"] = bool(
+                r.get("has_artifact")
+                or (
+                    r["legacy_pre_review_tier_done"]
+                    and done_signal_satisfied(conn, r.get("done_signal"), HARNESS_ROOT)
+                )
+            )
+            r["effective_tier"] = effective_review_tier_for_work(conn, wid, row=r)
+            r["operator_ok_validated"] = _has_valid_operator_ok_unlocked(
+                conn, wid, work_row=r
+            )
+            r["status"] = derive_work_status(r, at)
+            r["proof_state"] = derive_proof_state(r, at)
+            r["group"] = r.get(group_by) or "(ungrouped)"
+        # A group_by naming a field no row carries used to sort every row into
+        # "(ungrouped)" and return success, so a typo and a real grouping were
+        # indistinguishable in the output. Refuse instead, and say what can be
+        # grouped -- the caller cannot discover that from a silent all-ungrouped
+        # board. Checked on the first row scanned, which is the same row the
+        # unbounded scan checked.
+        if not group_by_checked:
+            group_by_checked = True
+            if group_by not in chunk[0]:
+                groupable = sorted(
+                    k for k, v in chunk[0].items()
+                    if isinstance(v, (str, type(None))) and not k.startswith("_")
+                )
+                raise ValueError(
+                    f"cannot group the board by {group_by!r}: no such field on a "
+                    f"work row; try one of: {', '.join(groupable)}"
+                )
+        if wanted_statuses:
+            chunk = [
+                r
+                for r in chunk
+                if str(r.get("status") or "").lower() in wanted_statuses
+            ]
+        rows.extend(chunk)
+        if want_limit is not None and len(rows) >= want_limit:
+            del rows[want_limit:]
+            break
     return rows
 
 
@@ -11645,7 +11854,7 @@ def closeout_inventory(conn, *, session_id: str, actor: str | None) -> dict[str,
     touched = [str(r["work_id"]) for r in touched_rows]
 
     unanswered: list[dict[str, Any]] = []
-    if touched and resolved_actor in {"claude", "codex"}:
+    if touched and resolved_actor in _lane_set():
         tph = ",".join("?" for _ in touched)
         kph = ",".join("?" for _ in _DIRECTED_CLOSEOUT_KINDS)
         rows = conn.execute(
@@ -11717,8 +11926,8 @@ def session_closeout(
     if not clean_summary:
         raise ValueError("session_closeout requires a non-empty summary")
     resolved_actor = str(actor or "").strip().lower()
-    if resolved_actor not in {"claude", "codex"}:
-        raise ValueError("session_closeout requires actor claude|codex")
+    if resolved_actor not in _lane_set():
+        raise ValueError(f"session_closeout requires actor {_lanes_display()}")
     hints = [str(h).strip() for h in (successor_hints or []) if str(h).strip()]
     dead = [str(d).strip() for d in (dead_ends or []) if str(d).strip()]
     dirty = [str(f).strip() for f in (dirty_files or []) if str(f).strip()]

@@ -10,6 +10,10 @@ from typing import Any
 
 
 from coordharness import config as _harness_config
+from .config import (
+    configured_lanes as _configured_lanes,
+    lanes_display as _lanes_display,
+)
 
 _REPO_ROOT = _harness_config.project_root()
 DEFAULT_AUDIT_VERDICT_CONTRACT_PATH = _REPO_ROOT / "coordharness" / "data_local" / "contracts" / "audit_verdict.json"
@@ -89,10 +93,11 @@ def validate_audit_verdict_payload(
     allowed_statuses = _allowed_statuses_from_contract(contract)
     if status and status not in allowed_statuses:
         issues.append(f"status must be one of {sorted(allowed_statuses)}")
-    if payload.get("actor") not in ("claude", "codex"):
-        issues.append("actor must be claude|codex")
-    if payload.get("receiver_lane") not in ("claude", "codex"):
-        issues.append("receiver_lane must be claude|codex")
+    lanes = _configured_lanes()
+    if payload.get("actor") not in lanes:
+        issues.append(f"actor must be {_lanes_display()}")
+    if payload.get("receiver_lane") not in lanes:
+        issues.append(f"receiver_lane must be {_lanes_display()}")
     if payload.get("supersedes") is not None and not isinstance(payload.get("supersedes"), str):
         issues.append("supersedes must be string|null")
     if not isinstance(payload.get("acceptance"), dict):

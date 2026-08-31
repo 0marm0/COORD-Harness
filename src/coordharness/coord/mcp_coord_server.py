@@ -17,7 +17,15 @@ from mcp.server.fastmcp import Context, FastMCP
 from coordharness.config import HARNESS_ROOT
 from coordharness import config as harness_config
 from coordharness.coord import coord_db, deferred_tools
-from coordharness.coord.config import DEFAULT_DB_PATH, connect, connect_ro
+from coordharness.coord.config import (
+    DEFAULT_DB_PATH,
+    connect,
+    connect_ro,
+    configured_lanes as _configured_lanes,
+    counterpart_lane as _counterpart_lane,
+    lane_set as _lane_set,
+    lanes_display as _lanes_display,
+)
 from coordharness.coord.continuation_contract import (
     normalize_resume_trigger_contract,
     require_park_resume_contract,
@@ -718,7 +726,7 @@ def _resolve_process_bound_identity(
         str(identity.get("session_id") or "").strip(),
     )
     if (
-        process_actor not in {"claude", "codex"}
+        process_actor not in _lane_set()
         or not process_sid
         or process_sid.startswith("pid:")
         or ":pid:" in process_sid
@@ -1183,17 +1191,30 @@ def _coord_board_row(conn, work_id: str, *, group_by: str = "module") -> dict[st
     if row is None:
         return None
     out = dict(row)
+    # Mirror ``coord_db.board_rows`` exactly: a local pid probe can only answer
+    # for a run recorded on THIS host. Probing a foreign run's pid asks the
+    # wrong kernel -- the number names a process on another machine -- and a
+    # miss would report 0, which ``derive_work_status`` reads as "not running"
+    # because it prefers ``live_pid_count`` over ``live_run_count`` whenever the
+    # key is present. That suppresses the lease/heartbeat fallback and makes a
+    # healthy foreign run read as dead. So one unanswerable run makes the whole
+    # work item's pid count unanswerable: leave the key UNSET rather than
+    # setting it to a number built from a partial view.
     live_pid_count = 0
     pid_seen = False
+    foreign_host_seen = False
     for pr in conn.execute(
-        "SELECT pid, pid_started_at FROM runs"
+        "SELECT pid, pid_started_at, host_id FROM runs"
         " WHERE state='live' AND work_id=? AND pid IS NOT NULL",
         (work_id,),
     ).fetchall():
+        if not coord_db.pid_liveness_is_meaningful(pr["host_id"]):
+            foreign_host_seen = True
+            continue
         pid_seen = True
         if coord_db.pid_matches(pr["pid"], pr["pid_started_at"]):
             live_pid_count += 1
-    if pid_seen:
+    if pid_seen and not foreign_host_seen:
         out["live_pid_count"] = live_pid_count
     at = coord_db.db_now(conn)
     out["effective_tier"] = coord_db.effective_review_tier_for_work(
@@ -1531,17 +1552,10 @@ def _work_fields_from_backlog(row: dict[str, Any], session_id: str | None = None
 
 
 def _claim_quality_missing(work_id: str, row: dict[str, Any] | None, actor: str) -> list[str]:
-    try:
-        from coordharness.coord.creation_lint import claim_rubric_missing_fields
-    except Exception:
-        return []
-    fields = {key: value for key, value in (row or {}).items() if value not in (None, "")}
-    fields.setdefault("id", work_id)
-    fields.setdefault("work_id", work_id)
-    fields["status"] = "running"
-    fields["intent_state"] = "running"
-    fields.setdefault("assignee", actor)
-    return claim_rubric_missing_fields(fields)
+    # One definition, two surfaces: see coord_db.claim_readiness. This surface
+    # refuses by default and the CLI warns by default; COORD_CLAIM_STRICT is the
+    # only knob that moves either.
+    return coord_db.claim_readiness(work_id, row, actor=actor)
 
 
 _DEP_TERMINAL_INTENT = {
@@ -1821,13 +1835,23 @@ def _tool_claim(
         }
         proposed_work_row.update(pending_work_fields)
         missing = _claim_quality_missing(work_id, proposed_work_row, resolved_actor)
+        readiness_warning: dict[str, Any] | None = None
         if missing:
-            raise ValueError(
-                f"refusing incomplete claim {work_id}: missing {', '.join(missing)}; "
-                "create/repair the work item with a descriptive title, valid done_signal, "
-                "and T0/T1 acceptance before claiming; see "
-                "docs/review-tiers.md"
+            message = coord_db.claim_readiness_message(work_id, missing)
+            enforcement = coord_db.claim_readiness_enforcement(
+                default=coord_db.CLAIM_READINESS_REFUSE
             )
+            if enforcement == coord_db.CLAIM_READINESS_REFUSE:
+                raise coord_db.ClaimReadinessError(
+                    work_id, missing, f"refusing {message}"
+                )
+            readiness_warning = {
+                "code": "claim_not_ready",
+                "message": message,
+                "missing": list(missing),
+                "enforcement": enforcement,
+                "env": coord_db.CLAIM_STRICT_ENV,
+            }
         policy = _mcp_policy(
             conn,
             action="claim",
@@ -1894,6 +1918,8 @@ def _tool_claim(
             "run_event_id": run_event_id,
             "context_capsule": context_capsule,
         }
+        if readiness_warning is not None:
+            result["claim_readiness"] = readiness_warning
         if normalized_scopes:
             from coordharness.coord.work_contracts import declare_write_set
 
@@ -3082,8 +3108,8 @@ def _tool_handoff_existing(
     for name, (value, cap) in byte_limits.items():
         if len(value.encode("utf-8")) > cap:
             raise ValueError(f"typed handoff {name} exceeds {cap} UTF-8 bytes")
-    if clean_owner not in {"claude", "codex"}:
-        raise ValueError("typed handoff owner_lane must be claude|codex")
+    if clean_owner not in _lane_set():
+        raise ValueError(f"typed handoff owner_lane must be {_lanes_display()}")
     if clean_intent not in {"queued", "blocked"}:
         raise ValueError("typed handoff target_intent must be queued|blocked")
     if len(clean_refs) > 32 or any(len(ref.encode("utf-8")) > 2_048 for ref in clean_refs):
@@ -3213,7 +3239,12 @@ def _tool_request_audit(
             session_id=session_id,
             env=env,
         )
-    opposite_lane = "codex" if resolved_actor == "claude" else "claude"
+    opposite_lane = _counterpart_lane(resolved_actor)
+    if opposite_lane is None:
+        raise ValueError(
+            "request_audit requires a second configured lane; COORD_LANES names "
+            f"only {_lanes_display()}"
+        )
     conn = _get_conn(db_path)
     try:
         if clean_request_kind == "standard":
@@ -3233,7 +3264,7 @@ def _tool_request_audit(
                 "events on an existing author row"
             )
         assignee = str(row["assignee"] or "").strip().lower()
-        if assignee in {"claude", "codex"} and assignee == opposite_lane:
+        if assignee in _lane_set() and assignee == opposite_lane:
             raise ValueError(
                 f"request_audit self-target refused: work {work_id} is assigned to "
                 f"{assignee}, the same lane this request targets ({opposite_lane}); a "
@@ -3338,9 +3369,14 @@ def _tool_note(
         session_id=session_id,
         env=env,
     )
-    if resolved_actor not in {"claude", "codex"}:
-        raise ValueError("note actor must be claude or codex")
-    opposite_lane = "codex" if resolved_actor == "claude" else "claude"
+    if resolved_actor not in _lane_set():
+        raise ValueError(f"note actor must be {_lanes_display()}")
+    opposite_lane = _counterpart_lane(resolved_actor)
+    if opposite_lane is None:
+        raise ValueError(
+            "note requires a second configured lane; COORD_LANES names only "
+            f"{_lanes_display()}"
+        )
     clean_target_session = str(to_session_id or "").strip()
     # Provisional: the session target is only validated against the database
     # below, and an unknown or dead session refuses rather than posting. The
@@ -3575,7 +3611,12 @@ def _tool_audit(
     kind = str(kind or "").strip().casefold()
     lifecycle_reserved = bool(
         kind in _GENERIC_AUDIT_RESERVED_KINDS
-        or re.fullmatch(r"(?:claude|codex)_(?:claim|heartbeat|block|park|done)", kind)
+        or re.fullmatch(
+            r"(?:"
+            + "|".join(re.escape(lane) for lane in _configured_lanes())
+            + r")_(?:claim|heartbeat|block|park|done)",
+            kind,
+        )
     )
     if lifecycle_reserved:
         raise ValueError(
@@ -3597,8 +3638,12 @@ def _tool_audit(
             raise ValueError("audit_verdict requires a stable operation_id for replay safety")
         if not str(work_id or "").strip():
             raise ValueError("audit_verdict requires work_id")
-        if str(to_selector or "") not in {"actor:claude", "actor:codex"}:
-            raise ValueError("audit_verdict requires to_selector actor:claude|actor:codex")
+        lane_selectors = {f"actor:{lane}" for lane in _configured_lanes()}
+        if str(to_selector or "") not in lane_selectors:
+            raise ValueError(
+                "audit_verdict requires to_selector "
+                + "|".join(sorted(lane_selectors))
+            )
     elif verdict is not None or operation_id is not None:
         raise ValueError("verdict/operation_id are valid only when kind='audit_verdict'")
     resolved_actor, resolved_sid = _resolve_process_bound_identity(
@@ -3759,7 +3804,12 @@ def _tool_verdict(
         env=env,
         action="verdict",
     )
-    author_lane = "claude" if resolved_actor == "codex" else "codex"
+    author_lane = _counterpart_lane(resolved_actor)
+    if author_lane is None:
+        raise ValueError(
+            "verdict requires a second configured lane; COORD_LANES names only "
+            f"{_lanes_display()}"
+        )
     return _tool_audit(
         kind="audit_verdict",
         title=title,
@@ -5872,13 +5922,54 @@ def build_server(
     return mcp
 
 
-def main() -> None:
+_ENTRY_USAGE = """usage: coord-mcp [--help] [--version]
+
+Serve the coordination control plane over MCP on stdio.
+
+The server speaks MCP on stdin/stdout and takes no other arguments; it is
+configured entirely by environment. The database it resolved is printed to
+stderr at startup so a misrouted COORD_DB is visible before the first tool
+call rather than after it.
+
+environment:
+  COORD_DB, COORD_COORD_DB   override the coord.db location
+  COORD_CLAIM_STRICT         1 = refuse claims on rows missing
+                             done_signal/acceptance on every surface,
+                             0 = warn and proceed on every surface
+"""
+
+
+def main(argv: list[str] | None = None) -> int:
+    import sys
+
+    from coordharness import __version__
     from coordharness.bootstrap import bootstrap_database
 
-    bootstrap_database(os.environ.get("COORD_COORD_DB") or None)
+    args = list(sys.argv[1:] if argv is None else argv)
+    if "--help" in args or "-h" in args:
+        print(_ENTRY_USAGE, end="")
+        return 0
+    if "--version" in args or "-V" in args:
+        print(f"coord-mcp {__version__}")
+        return 0
+    if args:
+        # stdio is the protocol channel, so a usage error goes to stderr and
+        # the exit code, never to stdout.
+        print(f"coord-mcp: unknown argument {args[0]!r}", file=sys.stderr)
+        print(_ENTRY_USAGE, end="", file=sys.stderr)
+        return 2
+
+    db_override = os.environ.get("COORD_COORD_DB") or None
+    bootstrap_database(db_override)
+    print(
+        f"coord-mcp {__version__}: COORD_DB={harness_config.coord_db_path()}",
+        file=sys.stderr,
+        flush=True,
+    )
     mcp = build_server(**_provider_first_args_from_env())
     mcp.run()
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

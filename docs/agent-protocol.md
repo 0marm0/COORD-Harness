@@ -40,7 +40,10 @@ four-step shape:
    with an expiry. The schema enforces at most one *held* claim per work item at a
    time — a unique index over `running`/`paused`/`blocked` claims, so a second
    session cannot take a row out from under a first one even mid-pause. Claim the
-   row before you start reading code or writing files for it, not after.
+   row before you start reading code or writing files for it, not after. A row missing a
+   `done_signal` or acceptance is refused by MCP `claim_work` and merely warned about by
+   `coord claim`; `COORD_CLAIM_STRICT=1`/`=0` moves both surfaces to one behaviour (see
+   [review-tiers.md](review-tiers.md#claim-readiness-and-why-the-two-surfaces-disagree-on-purpose)).
 3. **Heartbeat only to renew the lease.** A heartbeat extends the claim's expiry.
    That's all it does. Call it when a claim is going to outlive its lease window
    and nothing else is due — not on every tool call, not as a running commentary.

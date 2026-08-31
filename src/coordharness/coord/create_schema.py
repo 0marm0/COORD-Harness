@@ -6,7 +6,12 @@ import sqlite3
 import time
 from pathlib import Path
 
-from .config import DEFAULT_DB_PATH, _validate_existing_db_file, connect
+from .config import (
+    DEFAULT_DB_PATH,
+    _validate_existing_db_file,
+    configured_lanes as _configured_lanes,
+    connect,
+)
 
 _SCHEMA_FILE = Path(__file__).resolve().parent / "schema.sql"
 _MIGRATION_VERSION = 1
@@ -33,9 +38,15 @@ _ADD_COLUMNS = {
         "worktree_id": "TEXT",
         "label_source": "TEXT",
         "label_updated_at": "REAL",
+        # See migrations/004_host_identity.sql for why the ALTER lives here and
+        # not in that file: apply_schema runs before the migration runner, and
+        # is also called without it, so this is the only path that reaches
+        # every database that records a pid.
+        "host_id": "TEXT",
     },
     "runs": {
         "pid_started_at": "REAL",
+        "host_id": "TEXT",
     },
     "work_items": {
         "note": "TEXT",
@@ -51,6 +62,13 @@ _ADD_COLUMNS = {
         "operator_ok_event_id": "INTEGER",
         "tier_correction_event_id": "INTEGER",
     },
+}
+# Columns verified after the additive pass, not merely requested. host_id is
+# read by the liveness path, which holds a read-only connection and cannot add
+# what is missing, so "the schema applied" has to mean the column is there.
+_EXPECTED_COLUMNS = {
+    "agent_sessions": {"host_id"},
+    "runs": {"host_id"},
 }
 _BUSY_RETRY_LIMIT = 5
 _BUSY_RETRY_BASE_S = 0.05
@@ -69,15 +87,22 @@ def _apply_additive_columns(conn: sqlite3.Connection) -> None:
 
 
 def _backfill_request_consumption(conn: sqlite3.Connection) -> None:
+    lanes = _configured_lanes()
+    lane_placeholders = ",".join("?" for _ in lanes)
+    lane_case = " ".join("WHEN ? THEN ?" for _ in lanes)
     conn.execute(
         "INSERT OR IGNORE INTO request_consumption("
         "recipient_lane,work_id,request_event_id)"
         " SELECT CASE e.to_selector"
-        " WHEN 'actor:claude' THEN 'claude' WHEN 'actor:codex' THEN 'codex' END,"
+        f" {lane_case} END,"
         " e.work_id,e.event_id FROM events e"
         " WHERE e.kind IN ('handoff','audit_request')"
-        " AND e.to_selector IN ('actor:claude','actor:codex')"
-        " AND COALESCE(e.work_id,'')<>''"
+        f" AND e.to_selector IN ({lane_placeholders})"
+        " AND COALESCE(e.work_id,'')<>''",
+        (
+            *(value for lane in lanes for value in (f"actor:{lane}", lane)),
+            *(f"actor:{lane}" for lane in lanes),
+        ),
     )
     pending = conn.execute(
         "SELECT recipient_lane,work_id,request_event_id"
@@ -168,8 +193,19 @@ def apply_schema(db_path: Path | str | None = None) -> dict:
         }
         missing_t = _EXPECTED_TABLES - tables
         missing_v = _EXPECTED_VIEWS - views
-        if missing_t or missing_v:
-            raise RuntimeError(f"schema incomplete: tables {missing_t}, views {missing_v}")
+        missing_c = {}
+        for table, wanted in _EXPECTED_COLUMNS.items():
+            have = {
+                r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()
+            }
+            absent = wanted - have
+            if absent:
+                missing_c[table] = sorted(absent)
+        if missing_t or missing_v or missing_c:
+            raise RuntimeError(
+                f"schema incomplete: tables {missing_t}, views {missing_v}, "
+                f"columns {missing_c}"
+            )
         return {
             "db": str(Path(db_path or DEFAULT_DB_PATH).resolve()),
             "migration_applied": not already,
