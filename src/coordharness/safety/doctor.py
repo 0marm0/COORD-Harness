@@ -1,20 +1,34 @@
-"""Unified, machine-readable and read-only health checks for the harness."""
+"""Unified, machine-readable and read-only health checks for the harness.
+
+Every non-PASS finding carries a stable machine-readable ``code``, its
+``summary`` as the one-line human explanation, and a concrete ``remediation``
+the reader can execute -- a command or a precise action, not just a status. A
+finding that can fail for more than one independent reason at once also
+carries a ``remediations`` list with one entry per triggered reason; the
+top-level ``code``/``remediation`` mirror the first (highest-priority) entry
+so a simple consumer can read two fields and a thorough one can read all of
+them. These are additive fields on the existing v1 shape: ``id``, ``status``,
+``summary`` and ``details`` are unchanged, so a consumer reading only those
+still works.
+"""
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass, field
 import hashlib
 from importlib.resources import files
 import json
 import os
 from pathlib import Path
 import re
+import shutil
 import sqlite3
 import stat
 import time
 from typing import Any, Iterable
 from urllib.parse import quote
 
+from ..coord.process_liveness import pid_matches
 from .mcp import McpConfigError, McpServer, read_config, redacted_inventory, security_issues
 from .paths import (
     PathSafetyError,
@@ -59,25 +73,66 @@ _ALLOWED_WRITER_MODULES = {
 
 
 @dataclass(frozen=True)
+class Remediation:
+    """One independently-triggered reason a finding is not PASS."""
+
+    code: str
+    summary: str
+    action: str
+
+    def as_dict(self) -> dict[str, str]:
+        return {"code": self.code, "summary": self.summary, "action": self.action}
+
+
+@dataclass(frozen=True)
 class DoctorFinding:
     id: str
     status: str
     summary: str
     details: dict[str, Any]
+    code: str
+    remediation: str | None = None
+    remediations: tuple[Remediation, ...] = field(default_factory=tuple)
 
     def as_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        return {
+            "id": self.id,
+            "status": self.status,
+            "summary": self.summary,
+            "details": self.details,
+            "code": self.code,
+            "remediation": self.remediation,
+            "remediations": [item.as_dict() for item in self.remediations],
+        }
 
 
 def _finding(
-    finding_id: str, blocked: bool, summary: str, **details: Any
+    finding_id: str,
+    blocked: bool,
+    summary: str,
+    *,
+    code: str,
+    remediation: str | None = None,
+    remediations: tuple[Remediation, ...] = (),
+    **details: Any,
 ) -> DoctorFinding:
     return DoctorFinding(
         id=finding_id,
         status=BLOCKED if blocked else PASS,
         summary=summary,
         details=details,
+        code=code,
+        remediation=remediation,
+        remediations=remediations,
     )
+
+
+def _prioritized(remediations: tuple[Remediation, ...]) -> tuple[str, str | None]:
+    """The top-level (code, remediation) mirrored from the first entry, if any."""
+
+    if not remediations:
+        return "", None
+    return remediations[0].code, remediations[0].action
 
 
 def _expected_migrations() -> dict[str, str]:
@@ -123,11 +178,24 @@ def _is_readable_file(path: Path) -> bool:
 
 def _check_schema(db_path: Path) -> tuple[DoctorFinding, sqlite3.Connection | None]:
     if not db_path.is_file() or db_path.is_symlink():
+        remediations = (
+            Remediation(
+                "doctor.schema.database_not_regular_file",
+                "the database path exists but is not a plain regular file",
+                "point --db at a real SQLite file (not a symlink or directory), "
+                "or delete the entry at that path and let any writing `coord` "
+                "subcommand (for example `coord demo --quiet`) recreate it",
+            ),
+        )
+        code, remediation = _prioritized(remediations)
         return (
             _finding(
                 "doctor.schema",
                 True,
                 "coordination database is missing or is not a regular direct file",
+                code=code,
+                remediation=remediation,
+                remediations=remediations,
                 database_present=False,
             ),
             None,
@@ -140,10 +208,19 @@ def _check_schema(db_path: Path) -> tuple[DoctorFinding, sqlite3.Connection | No
         ).fetchall()
         tables = {str(row["name"]) for row in objects if row["type"] == "table"}
         views = {str(row["name"]) for row in objects if row["type"] == "view"}
-        migration_rows = {
-            str(row["name"]): str(row["checksum"])
-            for row in conn.execute("SELECT name,checksum FROM schema_migrations")
-        }
+        # A never-bootstrapped file (the common "no database yet" state, once
+        # one exists at all) has zero tables, `schema_migrations` included --
+        # querying it unconditionally would raise "no such table" and fall
+        # into the generic unreadable branch below, masking that state behind
+        # the same code as an actually-corrupt file.
+        migration_rows = (
+            {
+                str(row["name"]): str(row["checksum"])
+                for row in conn.execute("SELECT name,checksum FROM schema_migrations")
+            }
+            if "schema_migrations" in tables
+            else {}
+        )
         expected = _expected_migrations()
         missing_migrations = sorted(set(expected) - set(migration_rows))
         checksum_mismatches = sorted(
@@ -160,6 +237,47 @@ def _check_schema(db_path: Path) -> tuple[DoctorFinding, sqlite3.Connection | No
             or missing_migrations
             or checksum_mismatches
         )
+        remediations: tuple[Remediation, ...] = ()
+        if blocked:
+            # Priority order: a corrupt file first (nothing else can be trusted
+            # until it is replaced), then a database that was never bootstrapped
+            # at all (the common "no database yet" first-run state -- present
+            # but with zero of the expected tables/views/migrations), then a
+            # partially-migrated database (some but not all of the expected
+            # schema is present, i.e. an older or interrupted bootstrap).
+            if quick_check.lower() != "ok":
+                remediations = (
+                    Remediation(
+                        "doctor.schema.integrity_check_failed",
+                        "PRAGMA quick_check reported a SQLite integrity problem",
+                        "the database file is corrupt; restore it from a backup, "
+                        "or delete it and let a writing `coord` subcommand "
+                        "re-bootstrap a fresh one (existing board state is lost)",
+                    ),
+                )
+            elif not tables and not views and not migration_rows:
+                remediations = (
+                    Remediation(
+                        "doctor.schema.database_empty",
+                        "the database file exists but the schema was never applied",
+                        "run any writing `coord` subcommand (for example "
+                        "`coord demo --quiet`, or `coord session start`) to apply "
+                        "the schema and migrations, then re-run `coord doctor`",
+                    ),
+                )
+            else:
+                remediations = (
+                    Remediation(
+                        "doctor.schema.migration_drift",
+                        "the database is missing tables, views or migrations that "
+                        "this installed version expects",
+                        "run any writing `coord` subcommand to apply pending "
+                        "migrations; if the checksum of an already-applied "
+                        "migration differs, the database was created by a "
+                        "different coordharness version than is installed now",
+                    ),
+                )
+        code, remediation = _prioritized(remediations)
         return (
             _finding(
                 "doctor.schema",
@@ -167,6 +285,9 @@ def _check_schema(db_path: Path) -> tuple[DoctorFinding, sqlite3.Connection | No
                 "schema and migration inventory is current"
                 if not blocked
                 else "schema or migration integrity could not be proven",
+                code=code or "doctor.schema.ok",
+                remediation=remediation,
+                remediations=remediations,
                 quick_check=quick_check,
                 migration_count=len(migration_rows),
                 missing_migrations=missing_migrations,
@@ -181,11 +302,23 @@ def _check_schema(db_path: Path) -> tuple[DoctorFinding, sqlite3.Connection | No
             conn.close()  # type: ignore[possibly-undefined]
         except Exception:
             pass
+        remediations = (
+            Remediation(
+                "doctor.schema.unreadable",
+                "the database could not be opened for a read-only integrity check",
+                "confirm no other process holds an exclusive lock on the file and "
+                "that it is a valid SQLite database",
+            ),
+        )
+        code, remediation = _prioritized(remediations)
         return (
             _finding(
                 "doctor.schema",
                 True,
                 "schema or migration integrity could not be read",
+                code=code,
+                remediation=remediation,
+                remediations=remediations,
                 database_present=True,
             ),
             None,
@@ -197,12 +330,37 @@ def _check_writers(package_root: Path) -> DoctorFinding:
     unexpected = unexpected_writer_modules(sites, allowed_modules=_ALLOWED_WRITER_MODULES)
     modules = sorted({site.module for site in sites})
     blocked = bool(parse_errors or unexpected)
+    remediations: tuple[Remediation, ...] = ()
+    if parse_errors:
+        remediations += (
+            Remediation(
+                "doctor.lifecycle_writers.parse_error",
+                "a source file could not be parsed while inventorying lifecycle writers",
+                "fix the syntax error(s) named in `parse_errors` so the writer "
+                "inventory can be scanned again",
+            ),
+        )
+    if unexpected:
+        remediations += (
+            Remediation(
+                "doctor.lifecycle_writers.unexpected_module",
+                "a module outside the declared writer allowlist mutates "
+                "coordination state directly",
+                "route the write through an already-allowed module, or add the "
+                "module to `_ALLOWED_WRITER_MODULES` in "
+                "src/coordharness/safety/doctor.py after review",
+            ),
+        )
+    code, remediation = _prioritized(remediations)
     return _finding(
         "doctor.lifecycle_writers",
         blocked,
         "lifecycle writer inventory is confined to declared modules"
         if not blocked
         else "lifecycle writer inventory contains unclassified modules",
+        code=code or "doctor.lifecycle_writers.ok",
+        remediation=remediation,
+        remediations=remediations,
         direct_writer_modules=modules,
         direct_writer_site_count=len(sites),
         unexpected_modules=unexpected,
@@ -220,12 +378,29 @@ def _check_leases_reviews(conn: sqlite3.Connection | None, *, now: float) -> Doc
             "doctor.leases_reviews",
             True,
             "lease and review checks require a readable current schema",
+            code="doctor.leases_reviews.unavailable",
+            remediation="fix the `doctor.schema` finding first; lease and review "
+            "checks need a readable current schema",
             check_available=False,
         )
     try:
         claim_marks = ",".join("?" for _ in _HELD_CLAIMS)
+        # A one-shot CLI process (every `coord claim`/`coord done` invocation)
+        # exits the moment the command finishes while the lease it acquired
+        # stays valid until `expires_at` -- that is the normal, expected state
+        # between two commands from the same session, not staleness. `pid` is
+        # therefore only evidence once the lease has ALSO expired, matching
+        # the one existing place this harness already reasons about process
+        # liveness: `reap_zombie_sessions` gates its own dead-pid signal on
+        # `lease_until` having passed, and never reaps on a dead pid alone.
+        # The join also carries pid/pid_started_at so the confirmed-dead
+        # subset below can be told apart from an expired lease with no
+        # process evidence either way.
         expired_claims = conn.execute(
-            f"SELECT work_id FROM claims WHERE status IN ({claim_marks}) AND expires_at<=?",
+            f"SELECT c.claim_id AS claim_id, c.work_id AS work_id,"
+            f" s.pid AS pid, s.pid_started_at AS pid_started_at"
+            f" FROM claims c JOIN agent_sessions s ON s.session_id=c.session_id"
+            f" WHERE c.status IN ({claim_marks}) AND c.expires_at<=?",
             (*_HELD_CLAIMS, now),
         ).fetchall()
         expired_sessions = conn.execute(
@@ -247,21 +422,101 @@ def _check_leases_reviews(conn: sqlite3.Connection | None, *, now: float) -> Doc
             " AND verdict.kind='audit_verdict' AND verdict.event_id>req.event_id)",
             _TERMINAL_WORK,
         ).fetchall()
+        # The confirmed-dead subset of the already-expired claims above:
+        # `pid_matches` also verifies the recorded start time when one was
+        # captured, so a reused pid is not mistaken for the original holder.
+        # The remainder of `expired_claims` (pid unknown, or a pid that still
+        # answers) is reported too, just without the stronger "the process is
+        # gone" claim.
+        dead_process_claims = [
+            row
+            for row in expired_claims
+            if row["pid"] is not None and not pid_matches(row["pid"], row["pid_started_at"])
+        ]
     except sqlite3.Error:
         return _finding(
             "doctor.leases_reviews",
             True,
             "lease or review query failed closed",
+            code="doctor.leases_reviews.query_failed",
+            remediation="re-run `coord doctor`; if this persists, the database "
+            "file may be corrupt (see `doctor.schema`)",
             check_available=False,
         )
 
-    blocked = bool(expired_claims or expired_sessions or orphan_running or unresolved_reviews)
+    blocked = bool(
+        expired_claims
+        or expired_sessions
+        or orphan_running
+        or unresolved_reviews
+        or dead_process_claims
+    )
+    dead_claim_ids = {row["claim_id"] for row in dead_process_claims}
+    uncertain_expired_claims = [
+        row for row in expired_claims if row["claim_id"] not in dead_claim_ids
+    ]
+    remediations: tuple[Remediation, ...] = ()
+    if dead_process_claims:
+        remediations += (
+            Remediation(
+                "doctor.leases_reviews.dead_process_claim",
+                "a held claim's lease has expired and its owning session's "
+                "process is confirmed no longer running",
+                "run `coord release <claim_id> --status released --reason "
+                '"owning process is gone"` to free the row now',
+            ),
+        )
+    if uncertain_expired_claims:
+        remediations += (
+            Remediation(
+                "doctor.leases_reviews.expired_claim",
+                "a held claim's lease has already expired without being "
+                "renewed or released",
+                "run `coord heartbeat-claim <claim_id>` if the work is still "
+                "active, or `coord release <claim_id> --status released` to "
+                "free it",
+            ),
+        )
+    if orphan_running:
+        remediations += (
+            Remediation(
+                "doctor.leases_reviews.orphan_running",
+                "a work item's intent_state is running but no claim currently "
+                "holds it",
+                "run `coord claim <work_id>` to resume it under a real claim, "
+                "or correct its intent_state if nothing is working it",
+            ),
+        )
+    if unresolved_reviews:
+        remediations += (
+            Remediation(
+                "doctor.leases_reviews.unresolved_review",
+                "a work item reached a terminal state with an outstanding "
+                "audit request and no verdict recorded after it",
+                "have the counterpart lane record a verdict, or record an "
+                "explicit `coord sign-off` if a human is overriding the gate",
+            ),
+        )
+    if expired_sessions:
+        remediations += (
+            Remediation(
+                "doctor.leases_reviews.expired_session",
+                "an agent session is marked active but its lease has expired "
+                "without a heartbeat",
+                "end the session with `coord session end` if it is still "
+                "reachable, or let the reaper reclaim it on its next pass",
+            ),
+        )
+    code, remediation = _prioritized(remediations)
     return _finding(
         "doctor.leases_reviews",
         blocked,
         "leases and terminal review requests are coherent"
         if not blocked
         else "lease or terminal review debt is present",
+        code=code or "doctor.leases_reviews.ok",
+        remediation=remediation,
+        remediations=remediations,
         expired_claim_count=len(expired_claims),
         expired_claim_work_ids=_sample_ids(expired_claims),
         expired_session_count=len(expired_sessions),
@@ -270,6 +525,8 @@ def _check_leases_reviews(conn: sqlite3.Connection | None, *, now: float) -> Doc
         orphan_running_work_ids=_sample_ids(orphan_running),
         unresolved_terminal_review_count=len(unresolved_reviews),
         unresolved_terminal_review_work_ids=_sample_ids(unresolved_reviews),
+        dead_process_claim_count=len(dead_process_claims),
+        dead_process_claim_work_ids=_sample_ids(dead_process_claims),
     )
 
 
@@ -293,6 +550,69 @@ def _table_ids(conn: sqlite3.Connection | None, table: str, column: str) -> set[
         return set()
 
 
+_JOB_PROJECTION_GUIDANCE: dict[str, tuple[str, str]] = {
+    "unsafe_job_progress_root": (
+        "the job telemetry directory is a symlink or not a plain directory",
+        "remove the entry at `job_progress/` under the state root and let a "
+        "job launcher recreate it as a plain directory",
+    ),
+    "job_progress_unreadable": (
+        "the job telemetry directory could not be listed",
+        "check filesystem permissions on `job_progress/` under the state root",
+    ),
+    "sidecar_symlink": (
+        "a job telemetry sidecar file is a symlink instead of a plain file",
+        "delete the symlinked sidecar under `job_progress/` and let the job "
+        "launcher rewrite it",
+    ),
+    "sidecar_invalid_json": (
+        "a job telemetry sidecar file is not valid JSON",
+        "delete the corrupt sidecar under `job_progress/`; a live job "
+        "rewrites it, or remove it if the job is gone",
+    ),
+    "sidecar_identity_mismatch": (
+        "a job telemetry sidecar's job_id does not match its filename",
+        "delete the mismatched sidecar under `job_progress/` so a rerun can "
+        "regenerate it correctly",
+    ),
+    "sidecar_work_binding_missing": (
+        "a job telemetry sidecar does not name the work row it belongs to",
+        "delete the unbound sidecar under `job_progress/`, or re-launch the "
+        "job so it writes `roadmap_id`",
+    ),
+    "sidecar_work_binding_unknown": (
+        "a job telemetry sidecar names a work row that does not exist in "
+        "this database",
+        "delete the stale sidecar under `job_progress/`, or confirm `--db` "
+        "points at the database this job was launched against",
+    ),
+    "projection_database_unavailable": (
+        "the projection views could not be checked because the database is "
+        "unreadable",
+        "fix the `doctor.schema` finding first",
+    ),
+    "projection_view_unreadable": (
+        "a projection view query failed",
+        "fix the `doctor.schema` finding first; the view may be missing a "
+        "migration",
+    ),
+    "live_run_sidecar_missing": (
+        "a run recorded as live in the database names no sidecar file",
+        "stop the run and re-launch it so a sidecar is written, or mark the "
+        "run terminal",
+    ),
+    "live_run_sidecar_unsafe": (
+        "a run recorded as live points at a sidecar outside `job_progress/`, "
+        "or at a file that is not a plain readable JSON object",
+        "correct or clear the run's `sidecar_path`, or mark the run terminal",
+    ),
+    "live_run_projection_unreadable": (
+        "the `runs` table could not be queried for live rows",
+        "fix the `doctor.schema` finding first",
+    ),
+}
+
+
 def _check_jobs_projection(
     conn: sqlite3.Connection | None, *, state_root: Path
 ) -> DoctorFinding:
@@ -304,10 +624,20 @@ def _check_jobs_projection(
             "job_progress", state_root, must_exist=False, allow_root=False
         )
     except PathSafetyError:
+        remediations = (
+            Remediation(
+                "doctor.jobs_projection.unsafe_root",
+                *_JOB_PROJECTION_GUIDANCE["unsafe_job_progress_root"],
+            ),
+        )
+        code, remediation = _prioritized(remediations)
         return _finding(
             "doctor.jobs_projection",
             True,
             "job telemetry root is not safely contained",
+            code=code,
+            remediation=remediation,
+            remediations=remediations,
             sidecar_count=0,
             problem_codes=["unsafe_job_progress_root"],
         )
@@ -379,12 +709,21 @@ def _check_jobs_projection(
             live_run_count = 0
 
     unique = sorted(set(problems))
+    remediations = tuple(
+        Remediation(f"doctor.jobs_projection.{code}", *_JOB_PROJECTION_GUIDANCE[code])
+        for code in unique
+        if code in _JOB_PROJECTION_GUIDANCE
+    )
+    finding_code, finding_remediation = _prioritized(remediations)
     return _finding(
         "doctor.jobs_projection",
         bool(unique),
         "job sidecars and projection views are coherent"
         if not unique
         else "job sidecar or projection integrity could not be proven",
+        code=finding_code or "doctor.jobs_projection.ok",
+        remediation=finding_remediation,
+        remediations=remediations,
         sidecar_count=sidecar_count,
         live_run_count=live_run_count,
         problem_codes=unique,
@@ -445,6 +784,9 @@ def _check_public_paths(
             "doctor.public_paths",
             True,
             "pointer checks require a readable current schema",
+            code="doctor.public_paths.unavailable",
+            remediation="fix the `doctor.schema` finding first; pointer checks "
+            "need a readable current schema",
             check_available=False,
         )
     invalid: list[str] = []
@@ -518,17 +860,36 @@ def _check_public_paths(
             "doctor.public_paths",
             True,
             "pointer queries failed closed",
+            code="doctor.public_paths.query_failed",
+            remediation="re-run `coord doctor`; if this persists, the database "
+            "file may be corrupt (see `doctor.schema`)",
             check_available=False,
         )
     invalid = sorted(set(invalid))
     pending = sorted(set(pending))
     absolute = sorted(set(absolute))
+    remediations: tuple[Remediation, ...] = ()
+    if invalid:
+        remediations = (
+            Remediation(
+                "doctor.public_paths.invalid_pointer",
+                "a stored path either escapes the project root, or (for a "
+                "terminal row) does not exist",
+                "fix the field named in `invalid_pointer_fields` to a real, "
+                "project-relative path, or move the row out of a terminal "
+                "state until the proof it names actually exists",
+            ),
+        )
+    code, remediation = _prioritized(remediations)
     return _finding(
         "doctor.public_paths",
         bool(invalid),
         "all local pointers are contained, and every produced pointer exists"
         if not invalid
         else "one or more local pointers lack existence or containment proof",
+        code=code or "doctor.public_paths.ok",
+        remediation=remediation,
+        remediations=remediations,
         checked_pointer_count=checked,
         invalid_pointer_count=len(invalid),
         invalid_pointer_fields=invalid[:12],
@@ -548,6 +909,76 @@ def _resolve_config_path(raw: str, *, roots: tuple[Path, Path]) -> Path:
         except PathSafetyError:
             continue
     raise PathSafetyError("MCP configuration is outside trusted roots")
+
+
+def _classify_mcp_command(command: str, *, project_root: Path) -> str | None:
+    """Whether ``command`` can plausibly be launched, without launching it.
+
+    A bare name (no path separator) is resolved on ``PATH``, matching how the
+    parent process (Claude Code, Codex, ...) will look it up. Anything else is
+    treated as a path -- relative paths resolve against the project root,
+    exactly like ``.mcp.json``'s checked-in ``./scripts/coord-mcp-launch.sh``
+    -- and containment is proven the same way every other stored path in this
+    module proves it, so a config cannot use this check to probe outside the
+    project root.
+    """
+
+    text = command.strip()
+    if not text:
+        return None
+    if "/" not in text and "\\" not in text:
+        return None if shutil.which(text) else "mcp.command_not_found"
+    try:
+        resolved = resolve_under_root(
+            text, project_root, must_exist=False, allow_absolute=True, allow_root=False
+        )
+    except PathSafetyError:
+        return "mcp.command_not_found"
+    if not resolved.exists() or resolved.is_dir():
+        return "mcp.command_not_found"
+    if not os.access(resolved, os.X_OK):
+        return "mcp.command_not_executable"
+    return None
+
+
+_MCP_GUIDANCE: dict[str, tuple[str, str]] = {
+    "mcp.shell_command": (
+        "an MCP server launches a shell with -c, letting argument text become code",
+        "invoke the target script or interpreter directly instead of wrapping "
+        "it in `sh -c \"...\"` / `bash -c \"...\"`",
+    ),
+    "mcp.unpinned_package": (
+        "an MCP server launches an npx package pinned to @latest, so the "
+        "version launched is not reproducible",
+        "pin the package to an exact version (for example `package@1.2.3`) "
+        "instead of `@latest`",
+    ),
+    "mcp.literal_secret": (
+        "an MCP server configuration stores a secret-looking value directly "
+        "instead of an environment reference",
+        "move the value into an environment variable and reference it as "
+        "`$VAR` (or `${VAR}`) instead of a literal in the config file",
+    ),
+    "mcp.untrusted_config_path": (
+        "an MCP configuration path is outside the trusted project or state root",
+        "point `--mcp-config` at a file inside the project root or the state root",
+    ),
+    "mcp.invalid_config": (
+        "an MCP configuration file could not be parsed",
+        "fix the JSON/TOML syntax in the MCP configuration file",
+    ),
+    "mcp.command_not_found": (
+        "an MCP server's command could not be located",
+        "if it names a local script (like ./scripts/coord-mcp-launch.sh), "
+        "confirm the path is correct and run ./scripts/setup.sh; if it names "
+        "a program expected on PATH, install it or correct the command",
+    ),
+    "mcp.command_not_executable": (
+        "an MCP server's command exists but lacks the executable bit",
+        "run `chmod +x` on the script the MCP configuration points at, then "
+        "re-run `coord doctor`",
+    ),
+}
 
 
 def _check_mcp(
@@ -570,13 +1001,24 @@ def _check_mcp(
             problem_codes.append("mcp.invalid_config")
     issues = security_issues(records)
     problem_codes.extend(issue.code for issue in issues)
+    for record in records:
+        command_problem = _classify_mcp_command(record.command, project_root=project_root)
+        if command_problem is not None:
+            problem_codes.append(command_problem)
     unique = sorted(set(problem_codes))
+    remediations = tuple(
+        Remediation(code, *_MCP_GUIDANCE[code]) for code in unique if code in _MCP_GUIDANCE
+    )
+    finding_code, finding_remediation = _prioritized(remediations)
     return _finding(
         "doctor.mcp_security",
         bool(unique),
         "MCP configuration inventory contains no unsafe literals or launch patterns"
         if not unique
         else "MCP configuration security could not be proven",
+        code=finding_code or "doctor.mcp_security.ok",
+        remediation=finding_remediation,
+        remediations=remediations,
         config_count=len(paths),
         server_count=len(records),
         problem_codes=unique,
@@ -605,10 +1047,23 @@ def run_doctor(
         if not project.is_dir() or not state.is_dir():
             raise OSError("root is not a directory")
     except (OSError, RuntimeError):
+        remediations = (
+            Remediation(
+                "doctor.roots.missing_directory",
+                "the project root or the state root does not exist as a directory",
+                "create the project directory and its state root (the state "
+                "root defaults to `.coordharness/` under the project root), "
+                "then re-run `coord doctor`",
+            ),
+        )
+        code, remediation = _prioritized(remediations)
         finding = _finding(
             "doctor.roots",
             True,
             "project and state roots must already exist as directories",
+            code=code,
+            remediation=remediation,
+            remediations=remediations,
             check_available=False,
         )
         return {
@@ -651,12 +1106,37 @@ def run_doctor(
         outside = is_within_root(supplied_db, state) is False and _is_readable_file(
             supplied_db
         )
+        if outside:
+            remediations = (
+                Remediation(
+                    "doctor.schema.outside_state_root",
+                    "the database exists but sits outside the state root doctor "
+                    "was given",
+                    "pass a matching `--state-root`, or keep the database at "
+                    "the default `.coordharness/coord.db` under the project root",
+                ),
+            )
+        else:
+            remediations = (
+                Remediation(
+                    "doctor.schema.database_missing",
+                    "no database file was found at the resolved --db path",
+                    "create it with any writing `coord` subcommand (for example "
+                    "`coord demo --quiet`, or `coord session start`), which "
+                    "bootstraps `.coordharness/coord.db` automatically, then "
+                    "re-run `coord doctor`",
+                ),
+            )
+        code, remediation = _prioritized(remediations)
         schema_finding = _finding(
             "doctor.schema",
             True,
             "coordination database is outside the trusted state root"
             if outside
             else "coordination database is missing or is not a regular direct file",
+            code=code,
+            remediation=remediation,
+            remediations=remediations,
             database_present=_is_readable_file(supplied_db),
             database_outside_state_root=outside,
             state_root_ref=public_ref(state, project_root=project, state_root=state),
