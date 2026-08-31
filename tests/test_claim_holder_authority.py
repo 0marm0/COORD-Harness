@@ -63,11 +63,16 @@ def board(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setenv("COORD_HOME", str(tmp_path / ".coordharness"))
     # complete_claim resolves declared proof against HARNESS_ROOT, which is
     # frozen at import. Point it at the throwaway tree so a real completion is
-    # reachable without a git repository.
+    # reachable. The tree is a git repository and the proof is staged because
+    # the custody gate now asks that of every artifact type, not only Markdown;
+    # this module is about who may complete, so it satisfies the gate rather
+    # than exempting itself from it.
     monkeypatch.setattr(coord_db, "HARNESS_ROOT", tmp_path)
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
     proof = tmp_path / "artifacts" / "hijack.json"
     proof.parent.mkdir(parents=True, exist_ok=True)
     proof.write_text('{"done": true}\n', encoding="utf-8")
+    subprocess.run(["git", "add", "artifacts/hijack.json"], cwd=tmp_path, check=True)
 
     database = tmp_path / "coord.db"
     bootstrap_database(database)

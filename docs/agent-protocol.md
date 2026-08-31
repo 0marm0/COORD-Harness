@@ -49,7 +49,8 @@ four-step shape:
    and nothing else is due — not on every tool call, not as a running commentary.
 4. **Close with `done`, `block`, or `park`.** `done` requires the claim you hold
    and an artifact that satisfies the work item's declared `done_signal` — a path
-   that exists and, for Markdown proof, is tracked by Git's current index. `git add`
+   that exists and is tracked by Git's current index (every artifact type, bar the
+   kinds that cannot be tracked at all). `git add`
    is sufficient; a commit is not required. `block` and `park` both require a durable
    resume contract — a concrete `next_step` and a `resume_when` condition — not a
    vague "will get back to this."
