@@ -25,8 +25,6 @@ final class PremiumSystemTelemetryDetailView: NSView {
     private var battery: LocalBatterySnapshot
     private let onToggleChargeLimit: (Int, Int) -> Void
     private let onSetEnergyMode: (LocalPowerSource, LocalEnergyMode, Int) -> Void
-    private let backgroundGlass = NSVisualEffectView()
-    private let backgroundTint = NSView()
 
     override var isFlipped: Bool { true }
 
@@ -47,20 +45,10 @@ final class PremiumSystemTelemetryDetailView: NSView {
         self.onSetEnergyMode = onSetEnergyMode
         super.init(frame: NSRect(origin: .zero, size: size))
         wantsLayer = true
-        layer?.backgroundColor = NSColor.clear.cgColor
-        backgroundGlass.frame = bounds
-        backgroundGlass.autoresizingMask = [.width, .height]
-        backgroundGlass.material = .hudWindow
-        backgroundGlass.blendingMode = .behindWindow
-        backgroundGlass.state = .active
-        addSubview(backgroundGlass)
-        backgroundTint.frame = bounds
-        backgroundTint.autoresizingMask = [.width, .height]
-        backgroundTint.wantsLayer = true
-        backgroundTint.layer?.backgroundColor = NSColor(
-            calibratedRed: 0.018, green: 0.021, blue: 0.026, alpha: 0.92
+        let glassAlpha = CGFloat(max(0, min(1, config.glassAlpha)))
+        layer?.backgroundColor = (
+            glassAlpha < 0.01 ? NSColor.clear : NSColor(calibratedWhite: 0, alpha: glassAlpha)
         ).cgColor
-        addSubview(backgroundTint)
         rebuild()
     }
 
@@ -76,9 +64,7 @@ final class PremiumSystemTelemetryDetailView: NSView {
     }
 
     private func rebuild() {
-        subviews
-            .filter { $0 !== backgroundGlass && $0 !== backgroundTint }
-            .forEach { $0.removeFromSuperview() }
+        subviews.forEach { $0.removeFromSuperview() }
         toolbar()
         metricModules()
         utilizationHistory()
