@@ -732,7 +732,7 @@ final class UsageDashboardTests: XCTestCase {
         )
     }
 
-    func testAutoQuotaModeUsesWeeklyBaselineThenLowSessionAndNeverInventsCodexSession() throws {
+    func testAutoQuotaModeUsesLowestRealWindowAndNeverInventsCodexSession() throws {
         let snapshot = try decoder().decode(UsageIntelligenceSnapshot.self, from: Data(#"""
         {"schema":"coordharness.usage-intelligence.v1","providers":{
           "claude":{"quota_groups":[{"key":"account","windows":[
@@ -743,10 +743,24 @@ final class UsageDashboardTests: XCTestCase {
         """#.utf8))
         let state = UsageDashboardState.success(snapshot, at: Date())
         let auto = UsageStatusPresentation.make(from: state, metricMode: "auto", sessionThreshold: 50)
-        XCTAssertEqual(auto.selections.map { $0.window?.resolvedRemainingPercent }, [42, 34])
-        XCTAssertEqual(auto.selections.map(\.label), ["Session", "Weekly"])
+        XCTAssertEqual(auto.selections.map { $0.window?.resolvedRemainingPercent }, [27, 34])
+        XCTAssertEqual(auto.selections.map(\.label), ["Weekly", "Weekly"])
         let weekly = UsageStatusPresentation.make(from: state, metricMode: "weekly", sessionThreshold: 50)
         XCTAssertEqual(weekly.selections.map { $0.window?.resolvedRemainingPercent }, [27, 34])
+
+        let lowSessionSnapshot = try decoder().decode(UsageIntelligenceSnapshot.self, from: Data(#"""
+        {"schema":"coordharness.usage-intelligence.v1","providers":{
+          "claude":{"quota_groups":[{"key":"account","windows":[
+            {"kind":"session","remaining_percent":8},{"kind":"weekly","remaining_percent":27}]}]}
+        }}
+        """#.utf8))
+        let lowSession = UsageStatusPresentation.make(
+            from: .success(lowSessionSnapshot, at: Date()),
+            metricMode: "auto",
+            sessionThreshold: 0
+        )
+        XCTAssertEqual(lowSession.selections.first?.window?.resolvedRemainingPercent, 8)
+        XCTAssertEqual(lowSession.selections.first?.label, "Session")
     }
 
     func testStatusTaskSelectionCollapsesWidthWhenRowsStopRunning() throws {
@@ -827,6 +841,12 @@ final class UsageDashboardTests: XCTestCase {
               {"key":"fable","label":"Fable quota","windows":[
                 {"kind":"weekly","name":"Fable","remaining_percent":55,"countdown_seconds":86400,
                  "pace":{"seconds_to_exhaustion":3600}}
+              ]},
+              {"key":"bounded","label":"Bounded quota","windows":[
+                {"kind":"daily","remaining_percent":50,"countdown_seconds":3600,
+                 "pace":{"will_last_to_reset":true,"seconds_to_exhaustion":1200}},
+                {"kind":"monthly","remaining_percent":40,"countdown_seconds":3600,
+                 "pace":{"will_last_to_reset":false,"seconds_to_exhaustion":7200}}
               ]}
             ]
           }}
@@ -844,6 +864,10 @@ final class UsageDashboardTests: XCTestCase {
         XCTAssertEqual(claude.fableTiming.resetLabel, "1d")
         XCTAssertEqual(claude.fableTiming.runoutLabel, "1h")
         XCTAssertTrue(peek.accessibilityLabel.contains("run-out unavailable"))
+
+        let bounded = try XCTUnwrap(snapshot.providers["claude"]?.quotaGroups.first { $0.key == "bounded" })
+        XCTAssertEqual(UsageCompactQuotaTiming.make(from: bounded.windows[0]).runoutLabel, "—")
+        XCTAssertEqual(UsageCompactQuotaTiming.make(from: bounded.windows[1]).runoutLabel, "—")
     }
 
     func testDailyTrendProjectionKeepsRetainedAndProviderReportedSourcesSeparate() throws {
