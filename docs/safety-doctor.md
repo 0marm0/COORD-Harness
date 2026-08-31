@@ -50,7 +50,9 @@ then normalised before any containment test, so a path reaching the database thr
 
 The containment test still fails closed. A database that is genuinely absent is
 reported as absent. A database that exists but sits outside the trusted state root is
-reported as exactly that, and is not opened:
+reported as exactly that, and is not opened. This is a real finding, captured from a
+`coord doctor` run against a database deliberately pointed outside its state root —
+not hand-written:
 
 ```json
 {
@@ -61,7 +63,16 @@ reported as exactly that, and is not opened:
     "database_present": true,
     "database_outside_state_root": true,
     "state_root_ref": "project://.coordharness"
-  }
+  },
+  "code": "doctor.schema.outside_state_root",
+  "remediation": "pass a matching `--state-root`, or keep the database at the default `.coordharness/coord.db` under the project root",
+  "remediations": [
+    {
+      "code": "doctor.schema.outside_state_root",
+      "summary": "the database exists but sits outside the state root doctor was given",
+      "action": "pass a matching `--state-root`, or keep the database at the default `.coordharness/coord.db` under the project root"
+    }
+  ]
 }
 ```
 
@@ -69,6 +80,14 @@ reported as exactly that, and is not opened:
 matters because "outside the state root" and "does not exist" call for different
 repairs, and a report that conflates them sends the reader looking for a missing file
 that is sitting right there.
+
+Every finding carries a stable `code` under the same `coordharness.doctor.v1` schema
+identifier — `<finding-id>.ok` (for example `doctor.schema.ok`) when the finding is
+`PASS`, and a specific `<finding-id>.<reason>` code such as
+`doctor.schema.outside_state_root` above when it is `BLOCKED`. `remediation` (a single
+string) and `remediations` (the full, possibly multi-entry list each finding can carry)
+are present only on a non-`PASS` finding; a `PASS` finding always reports
+`"remediation": null` and `"remediations": []`.
 
 ## Findings
 
