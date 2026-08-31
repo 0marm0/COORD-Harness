@@ -365,7 +365,7 @@ private enum UsageDenseRouteLayout {
     static let chartChromeHeight: CGFloat = 36
     static let claudeChartPlotHeight: CGFloat = 82
     /// The final Codex panel uses the otherwise-unused vertical room in the usage route.
-    static let codexChartPlotHeight: CGFloat = 136
+    static let codexChartPlotHeight: CGFloat = 120
     static let providerHorizontalPadding: CGFloat = 18
     static let providerVerticalPadding: CGFloat = 14
     static let providerCornerRadius: CGFloat = 12
@@ -509,16 +509,13 @@ private enum UsageDashboardCostFormat {
             : formatted
     }
 
-    static func peakDay(_ day: String, nanos: Int64, currency: String?) -> String {
-        "Peak \(display(nanos, currency: currency)) · \(day)"
-    }
 }
 
 private struct UsageDenseTotalCostStrip: View {
     let totalEstimatedCostNanos: Int64?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
+        VStack(alignment: .center, spacing: 3) {
             Text("Total Tokens Costs")
                 .font(.system(size: 10.5, weight: .semibold))
                 .foregroundStyle(.secondary)
@@ -527,7 +524,8 @@ private struct UsageDenseTotalCostStrip: View {
                 .monospacedDigit()
                 .lineLimit(1)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .multilineTextAlignment(.center)
+        .frame(maxWidth: .infinity, alignment: .center)
         .padding(.horizontal, UsageDenseRouteLayout.outerPadding)
         .padding(.vertical, 10)
         .background(
@@ -547,6 +545,20 @@ private struct UsageDenseProviderSection: View {
         UsageCompactProviderSummary.summary(for: card)
     }
     private var tint: Color { UsageDenseRouteLayout.tint(card.id) }
+    private var isClaude: Bool { card.id.lowercased() == "claude" }
+    private var providerContentSpacing: CGFloat { isClaude ? 8 : 11 }
+    private var factsSpacing: CGFloat { isClaude ? 10 : 16 }
+    private var quotaSpacing: CGFloat { isClaude ? 8 : 12 }
+    private var metricSpacing: CGFloat { isClaude ? 12 : 18 }
+    private var projectedHistory: UsageHistoryPresentation? {
+        guard let dailyProjection else { return nil }
+        return UsageHistoryPresentation.sources(for: card.provider)
+            .first(where: { $0.kind == dailyProjection.sourceKind })
+    }
+    private var dailyRowsByDay: [String: UsageDaily] {
+        let rows = projectedHistory?.daily ?? []
+        return Dictionary(uniqueKeysWithValues: rows.map { row in (row.date, row) })
+    }
     private var effectiveChartPlotHeight: CGFloat {
         switch card.id.lowercased() {
         case "claude": return UsageDenseRouteLayout.claudeChartPlotHeight
@@ -567,7 +579,7 @@ private struct UsageDenseProviderSection: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 11) {
+        VStack(alignment: .leading, spacing: providerContentSpacing) {
             HStack(spacing: 6) {
                 Image(UsageProviderVisualStyle.assetName(card.id))
                     .resizable()
@@ -609,20 +621,20 @@ private struct UsageDenseProviderSection: View {
     }
 
     private var facts: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: factsSpacing) {
             if quotas.allSatisfy({ $0.1 == nil }) {
                 Text("Quota unavailable")
                     .font(.system(size: 10, weight: .medium))
                     .foregroundStyle(.secondary)
                     .frame(height: 34)
             } else {
-                VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: quotaSpacing) {
                     ForEach(quotas.compactMap { pair in pair.1.map { (pair.0, $0) } }, id: \.1.id) { label, window in
                         UsageDenseQuotaRow(label: label, window: window, tint: tint)
                     }
                 }
             }
-            HStack(spacing: 18) {
+            HStack(spacing: metricSpacing) {
                 UsageDenseMetric(label: "Today", value: UsageFormat.tokens(summary.todayTokens))
                 UsageDenseMetric(label: "Retained cost", value: UsageDashboardCostFormat.display(summary.retainedUSDEstimateNanos))
                 UsageDenseMetric(label: "Tokens", value: UsageFormat.tokens(summary.todayTokens))
@@ -648,7 +660,8 @@ private struct UsageDenseProviderSection: View {
                 UsageDenseDailyCostChart(
                     projection: dailyProjection,
                     tint: tint,
-                    plotHeight: effectiveChartPlotHeight
+                    plotHeight: effectiveChartPlotHeight,
+                    dailyRowsByDay: dailyRowsByDay
                 )
             } else {
                 Text("History unavailable")
@@ -664,7 +677,7 @@ private struct UsageDenseProviderSection: View {
         guard let peak = dailyProjection?.points.max(by: { lhs, rhs in
             lhs.nanos == rhs.nanos ? lhs.day > rhs.day : lhs.nanos < rhs.nanos
         }) else { return "Peak unavailable" }
-        return UsageDashboardCostFormat.peakDay(peak.day, nanos: peak.nanos, currency: peak.currency)
+        return UsageDashboardCostFormat.display(peak.nanos, currency: peak.currency)
     }
     private var planLabel: String {
         let plan = card.provider.account?.plan
@@ -729,6 +742,29 @@ private struct UsageDenseDailyCostChart: View {
     let projection: UsageDailyCostTrendProjection
     let tint: Color
     let plotHeight: CGFloat
+    let dailyRowsByDay: [String: UsageDaily]
+
+    @State private var hoveredPoint: UsageDailyCostTrendPoint?
+    @State private var hoverLocation = CGPoint.zero
+
+    private func modelDetail(for row: UsageDaily?) -> String {
+        let models = row?.modelBreakdowns ?? []
+        guard !models.isEmpty else { return "No per-day model detail" }
+        return models.map { model in
+            "\(model.displayLabel): \(UsageFormat.tokens(model.totalTokens))"
+        }.joined(separator: ", ")
+    }
+
+    private func hoverDetail(for point: UsageDailyCostTrendPoint) -> String {
+        let row = dailyRowsByDay[point.day]
+        let tokens = row?.totalTokens.map(UsageFormat.tokens) ?? "Unavailable"
+        return [
+            "Date: \(point.day)",
+            "Cost: \(UsageDashboardCostFormat.display(point.nanos, currency: point.currency))",
+            "Tokens: \(tokens)",
+            "Models: \(modelDetail(for: row))",
+        ].joined(separator: "\n")
+    }
 
     var body: some View {
         let points = projection.points
@@ -742,38 +778,56 @@ private struct UsageDenseDailyCostChart: View {
             let peakPoint = points.max(by: { lhs, rhs in
                 lhs.nanos == rhs.nanos ? lhs.day > rhs.day : lhs.nanos < rhs.nanos
             }) ?? points[0]
-            let peakIndex = points.firstIndex(where: { $0.day == peakPoint.day && $0.nanos == peakPoint.nanos }) ?? 0
             let barGap: CGFloat = points.count > 120 ? 0 : 1
             VStack(alignment: .leading, spacing: 3) {
-                HStack(alignment: .bottom, spacing: barGap) {
-                    ForEach(Array(points.enumerated()), id: \.offset) { _, point in
-                        RoundedRectangle(cornerRadius: 1)
-                            .fill(tint.opacity(projection.sourceKind == .providerReported ? 0.50 : 0.82))
-                            .frame(maxWidth: .infinity)
-                            .frame(height: max(1, plotHeight * CGFloat(Double(point.nanos) / Double(peak))))
-                            .help("\(point.day) · \(UsageDashboardCostFormat.display(point.nanos, currency: point.currency)) · \(point.costKind)")
+                GeometryReader { proxy in
+                    HStack(alignment: .bottom, spacing: barGap) {
+                        ForEach(Array(points.enumerated()), id: \.offset) { _, point in
+                            RoundedRectangle(cornerRadius: 1)
+                                .fill(tint.opacity(projection.sourceKind == .providerReported ? 0.50 : 0.82))
+                                .frame(maxWidth: .infinity)
+                                .frame(height: max(1, plotHeight * CGFloat(Double(point.nanos) / Double(peak))))
+                                .help(hoverDetail(for: point))
+                        }
                     }
-                }
-                .frame(height: plotHeight, alignment: .bottom)
-                .overlay(alignment: .topLeading) {
-                    GeometryReader { proxy in
-                        let chartWidth = proxy.size.width
-                        let badgeWidth = min(CGFloat(96), chartWidth)
-                        let halfBadge = badgeWidth / 2
-                        let barWidth = max(0, (chartWidth - barGap * CGFloat(max(0, points.count - 1))) / CGFloat(max(1, points.count)))
-                        let peakCenter = barWidth * (CGFloat(peakIndex) + 0.5) + barGap * CGFloat(peakIndex)
-                        UsageDensePeakBadge(point: peakPoint, tint: tint)
-                            .frame(width: badgeWidth)
-                            .position(
-                                x: min(max(halfBadge, peakCenter), max(halfBadge, chartWidth - halfBadge)),
-                                y: 14
+                    .frame(width: proxy.size.width, height: proxy.size.height, alignment: .bottom)
+                    .contentShape(Rectangle())
+                    .onContinuousHover { phase in
+                        switch phase {
+                        case .active(let location):
+                            let relativeX = min(max(location.x / max(proxy.size.width, 1), 0), 0.999_999)
+                            let index = min(points.count - 1, Int(relativeX * CGFloat(points.count)))
+                            hoveredPoint = points[index]
+                            hoverLocation = location
+                        case .ended:
+                            hoveredPoint = nil
+                        }
+                    }
+                    .overlay(alignment: .topLeading) {
+                        if let hoveredPoint {
+                            let cardWidth = min(CGFloat(210), max(CGFloat(150), proxy.size.width - 8))
+                            let minimumX = cardWidth / 2 + 4
+                            let maximumX = max(minimumX, proxy.size.width - cardWidth / 2 - 4)
+                            let minimumY: CGFloat = 50
+                            let maximumY = max(minimumY, proxy.size.height - 50)
+                            UsageDenseDailyHoverCard(
+                                point: hoveredPoint,
+                                row: dailyRowsByDay[hoveredPoint.day],
+                                tint: tint
                             )
+                            .frame(width: cardWidth)
+                            .position(
+                                x: min(max(minimumX, hoverLocation.x), maximumX),
+                                y: min(max(minimumY, hoverLocation.y + 42), maximumY)
+                            )
+                            .allowsHitTesting(false)
+                        }
                     }
-                    .allowsHitTesting(false)
                 }
+                .frame(height: plotHeight)
                 .overlay(alignment: .bottom) { Divider().opacity(0.35) }
                 .accessibilityLabel("\(projection.providerID) daily estimated cost")
-                .accessibilityValue("\(points.count) observed days; \(UsageDashboardCostFormat.peakDay(peakPoint.day, nanos: peakPoint.nanos, currency: peakPoint.currency))")
+                .accessibilityValue("\(points.count) observed days; peak \(UsageDashboardCostFormat.display(peakPoint.nanos, currency: peakPoint.currency))")
                 HStack {
                     Text(points.first?.day ?? "Unknown")
                     Spacer()
@@ -786,32 +840,57 @@ private struct UsageDenseDailyCostChart: View {
     }
 }
 
-private struct UsageDensePeakBadge: View {
+private struct UsageDenseDailyHoverCard: View {
     let point: UsageDailyCostTrendPoint
+    let row: UsageDaily?
     let tint: Color
 
+    private var topModels: [UsageDailyModelBreakdown] {
+        Array((row?.modelBreakdowns ?? []).sorted { lhs, rhs in
+            let leftTokens = lhs.totalTokens ?? -1
+            let rightTokens = rhs.totalTokens ?? -1
+            if leftTokens != rightTokens { return leftTokens > rightTokens }
+            return lhs.displayLabel.localizedCaseInsensitiveCompare(rhs.displayLabel) == .orderedAscending
+        }.prefix(3))
+    }
+
     var body: some View {
-        VStack(spacing: 1) {
-            Text(UsageDashboardCostFormat.display(point.nanos, currency: point.currency))
-                .font(.system(size: 8, weight: .bold).monospacedDigit())
+        VStack(alignment: .leading, spacing: 4) {
             Text(point.day)
-                .font(.system(size: 7, weight: .medium).monospacedDigit())
+                .font(.system(size: 9, weight: .bold).monospacedDigit())
+            HStack(spacing: 8) {
+                Text(UsageDashboardCostFormat.display(point.nanos, currency: point.currency))
+                Spacer(minLength: 4)
+                Text(UsageFormat.tokens(row?.totalTokens))
+            }
+            .font(.system(size: 9, weight: .semibold).monospacedDigit())
+            if topModels.isEmpty {
+                Text("No per-day model detail")
+                    .font(.system(size: 8.5, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.82))
+            } else {
+                Divider().overlay(Color.white.opacity(0.25))
+                ForEach(Array(topModels.enumerated()), id: \.offset) { _, model in
+                    HStack(spacing: 6) {
+                        Text(model.displayLabel).lineLimit(1)
+                        Spacer(minLength: 4)
+                        Text(UsageFormat.tokens(model.totalTokens)).monospacedDigit()
+                    }
+                    .font(.system(size: 8.5, weight: .medium))
+                }
+            }
         }
         .foregroundStyle(.white)
-        .lineLimit(1)
-        .minimumScaleFactor(0.75)
-        .padding(.horizontal, 5)
-        .padding(.vertical, 3)
-        .background(tint.opacity(0.92), in: RoundedRectangle(cornerRadius: 4, style: .continuous))
+        .padding(7)
+        .background(tint.opacity(0.96), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: 4, style: .continuous)
-                .stroke(Color.white.opacity(0.22), lineWidth: 0.5)
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .stroke(Color.white.opacity(0.28), lineWidth: 0.5)
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Peak daily cost \(UsageDashboardCostFormat.peakDay(point.day, nanos: point.nanos, currency: point.currency))")
+        .accessibilityLabel("Daily usage \(point.day), \(UsageDashboardCostFormat.display(point.nanos, currency: point.currency)), \(UsageFormat.tokens(row?.totalTokens)) tokens")
     }
 }
-
 private struct UsageDailyTrendOverview: View {
     let projections: [UsageDailyCostTrendProjection]
     let layout: UsageDashboardLayout
