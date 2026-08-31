@@ -26,6 +26,7 @@ def test_shared_bootstrap_is_idempotent_and_applies_numbered_migrations(tmp_path
     assert first["migrations_applied"] == [
         "002_exact_authority.sql",
         "003_provenance_causal_trace.sql",
+        "004_host_identity.sql",
     ]
     assert second["migrations_applied"] == []
 
