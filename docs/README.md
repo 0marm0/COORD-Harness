@@ -63,7 +63,7 @@ This is the product and operator documentation for `coordharness`. Capability cl
 - [Changelog](../CHANGELOG.md) — public preview release notes and explicit boundaries.
 - [Extraction](extraction.md) — how the clean-room repository is separated safely.
 - [Codex prompts](codex-prompts.md) — self-contained briefs for the visual and graph work still outstanding.
-- [Next steps](next-steps.md) — the working queue: what is blocked, what is ranked, what publication still needs.
+- [Release readiness checklist](next-steps.md) — the release gates, plus small tactical gaps tracked against the operator's handbook.
 - [Roadmap](roadmap.md) — ordered outcomes and explicit non-goals.
 - [Ideas](ideas.md) — exploratory work that is not a commitment.
 
