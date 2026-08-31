@@ -62,6 +62,20 @@ with the Codex/Claude MCP clients on your machine (that would write configuratio
                                          # `brew install xcodegen`)
 ```
 
+`scripts/setup.sh` refuses early, naming the interpreter it found, if the `python3`
+it would use (`$COORD_PYTHON`, default `python3`) is below the floor in
+[Prerequisites](#prerequisites) — stock macOS ships `/usr/bin/python3` at 3.9, which
+is too old. If yours is, install a newer Python and point the script at it instead of
+your default `python3`:
+
+```bash
+COORD_PYTHON=python3.11 ./scripts/setup.sh
+```
+
+An existing `.venv` built with a too-old interpreter is rebuilt automatically on the
+next run rather than reused, so switching `COORD_PYTHON` and re-running is always
+enough — no `rm -rf .venv` needed first.
+
 Use `--dry-run` to see exactly what a given flag combination would do without touching
 anything, and `--check` to verify an existing install (`.venv`, `coord.db`, `coord
 doctor`) without creating or writing anything:
