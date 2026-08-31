@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import sqlite3
+import stat
 from pathlib import Path
 from typing import Any
 
@@ -24,6 +25,12 @@ _LANES_ENV_VAR = "COORD_LANES"
 _JOURNAL_SIZE_LIMIT = 33_554_432
 WAL_AUTOCHECKPOINT_PAGES = int(os.environ.get("COORD_COORD_WAL_AUTOCHECKPOINT_PAGES", "1000"))
 SQLITE_HEADER = b"SQLite format 3\x00"
+COORD_DB_FILE_MODE = 0o600
+# SQLite's own files, not ours. `-wal` and `-shm` hold committed and in-flight
+# page images, so they disclose exactly what the database discloses; `-journal`
+# is the rollback-mode equivalent and is listed because a database opened before
+# the WAL pragma runs, or one whose journal mode was changed, still produces it.
+DB_SIDECAR_SUFFIXES: tuple[str, ...] = ("-wal", "-shm", "-journal")
 _COORD_SENTINEL_TABLES = {"agent_sessions", "work_items", "claims", "runs"}
 _AUTONOMY_TIER_KEYS = (
     "supervisor_readonly_digest",
@@ -167,11 +174,69 @@ def _validate_existing_db_file(path: Path) -> None:
         )
 
 
+def enforce_db_file_modes(path: Path | str | None = None) -> dict[str, str]:
+    """Hold the database and its SQLite sidecars at ``0600``, best effort.
+
+    The trust boundary for this control plane is the filesystem, so the mode on
+    these files is the boundary. Nothing set it before: a database created under
+    the common ``022`` umask lands at ``0644``, and so do ``-wal`` and ``-shm``,
+    which carry the same content.
+
+    Two measured facts shape the design, and both are why a single chmod at
+    creation would not have been enough:
+
+    * SQLite deletes ``-wal``/``-shm`` on the last clean close and recreates them
+      on the next write. A chmod applied to the sidecars alone is undone by the
+      next open/close cycle.
+    * SQLite derives the creation mode of a sidecar from the *main database
+      file's* mode. Tightening the database before the connection is what makes
+      the recreated sidecars ``0600`` without any further action.
+
+    So the database mode is enforced before the connection opens (governing what
+    SQLite creates) and again after, which catches a database this call itself
+    created. Returns a per-file report rather than raising: a database owned by
+    another account cannot be chmod'ed by this process, and refusing to open it
+    would be a worse outcome than opening it and being able to say so. Callers
+    that need the guarantee must read the report.
+    """
+    base = Path(path) if path is not None else DEFAULT_DB_PATH
+    report: dict[str, str] = {}
+    for suffix in ("", *DB_SIDECAR_SUFFIXES):
+        target = Path(str(base) + suffix)
+        name = suffix or "db"
+        try:
+            info = target.lstat()
+        except OSError:
+            continue
+        if stat.S_ISLNK(info.st_mode):
+            # chmod follows symlinks; a link standing where the database should
+            # be is a different problem and this is not the function that owns
+            # it. Report rather than widen the mode of whatever it points at.
+            report[name] = "skipped:symlink"
+            continue
+        if not stat.S_ISREG(info.st_mode):
+            report[name] = "skipped:not-regular"
+            continue
+        if stat.S_IMODE(info.st_mode) == COORD_DB_FILE_MODE:
+            report[name] = "ok"
+            continue
+        try:
+            os.chmod(target, COORD_DB_FILE_MODE)
+        except OSError as exc:
+            report[name] = f"refused:{exc.errno}"
+        else:
+            report[name] = "tightened"
+    return report
+
+
 def connect(path: Path | str | None = None) -> sqlite3.Connection:
     db_path = Path(path) if path is not None else DEFAULT_DB_PATH
     assert_outside_warehouse(db_path)
     db_path.parent.mkdir(parents=True, exist_ok=True)
     _validate_existing_db_file(db_path)
+    # Before the connection, so SQLite inherits the tight mode onto any sidecar
+    # it is about to create; see enforce_db_file_modes for what was measured.
+    enforce_db_file_modes(db_path)
     conn = sqlite3.connect(str(db_path), isolation_level=None, timeout=5.0)
     conn.row_factory = sqlite3.Row
     try:
@@ -185,6 +250,10 @@ def connect(path: Path | str | None = None) -> sqlite3.Connection:
     except Exception:
         conn.close()
         raise
+    # Again, because the pass above cannot tighten a database that did not exist
+    # yet: this connection created it, and the WAL pragma created its sidecars,
+    # both at the umask default.
+    enforce_db_file_modes(db_path)
     return conn
 
 
