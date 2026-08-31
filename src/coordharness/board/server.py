@@ -53,8 +53,8 @@ DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 7870
 _CONTINUOUS_EMBED_FRAME_ANCESTORS = (
     "'self'",
-    "http://127.0.0.1:8780",
-    "http://localhost:8780",
+    "http://127.0.0.1:*",
+    "http://localhost:*",
 )
 _PROVIDER_ACTION_SHAPES = {
     "provider_add": {"action", "provider"}, "provider_remove": {"action", "provider_id"},
