@@ -49,7 +49,14 @@ COMMIT_RE = re.compile(r"[0-9a-f]{40,64}\Z")
 _STRUCTURAL_FORBIDDEN_SPECS: tuple[tuple[str, str, int], ...] = (
     (r"/Users/[A-Za-z0-9_]+", "absolute home path", 0),
     (r"/Volumes/[A-Za-z0-9_ ]+", "named external volume", 0),
-    (r"\b(?!127\.)\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b", "bare IPv4 address", 0),
+    # 0.0.0.0 is carved out the same way 127.0.0.1 already is: it is the
+    # unspecified/bind-all address, a well-known constant that names no
+    # machine on any network, not a real host. A container CMD or the docs
+    # explaining it binds a server to 0.0.0.0 -- the only way a published
+    # port reaches a process inside a container -- and would otherwise trip
+    # this rule on every such line. A routable address, private-LAN or
+    # public, still matches and still fails.
+    (r"\b(?!127\.)(?!0\.0\.0\.0\b)\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b", "bare IPv4 address", 0),
     # The trailing exclusion is not cosmetic: Apple's retina asset convention
     # produces `icon_16x16@2x.png`, which is a textbook match for an address --
     # local part, at-sign, dot, two-letter-plus "TLD". Every project with an
