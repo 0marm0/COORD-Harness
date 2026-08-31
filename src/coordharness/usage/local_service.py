@@ -271,6 +271,100 @@ def _timestamp(value: object) -> datetime | None:
     return None
 
 
+def _quota_pace(
+    used_percent: float,
+    window_minutes: int | None,
+    resets_at: datetime | None,
+    now: datetime,
+) -> dict[str, Any] | None:
+    """Return a bounded, advisory pace projection from a live quota window."""
+
+    if window_minutes is None or window_minutes <= 0 or resets_at is None or resets_at <= now:
+        return None
+    window_seconds = float(window_minutes) * 60
+    elapsed = window_seconds - (resets_at - now).total_seconds()
+    if elapsed < 0 or elapsed > window_seconds:
+        return None
+    expected = max(0.0, min(100.0, elapsed * 100 / window_seconds))
+    signed_delta = used_percent - expected
+    state = "deficit" if signed_delta > 2 else "reserve" if signed_delta < -2 else "on_pace"
+    seconds_to_exhaustion = None
+    will_last_to_reset = True
+    if used_percent > 0 and elapsed > 0:
+        projected = int(max(0.0, (100.0 - used_percent) / (used_percent / elapsed)))
+        if projected <= int((resets_at - now).total_seconds()):
+            seconds_to_exhaustion = projected
+            will_last_to_reset = False
+    return {
+        "state": state,
+        "delta_percent": round(abs(signed_delta), 4),
+        "expected_used_percent": round(expected, 4),
+        "will_last_to_reset": will_last_to_reset,
+        "seconds_to_exhaustion": seconds_to_exhaustion,
+        "advisory": True,
+        "basis": "elapsed_window_linear_projection",
+        "source": "local_projection",
+        "marker_remaining_percent": round(100 - expected, 4),
+        "marker_kind": state if state != "on_pace" else None,
+    }
+
+
+def _with_local_pace(
+    windows: Sequence[Mapping[str, Any]], now: datetime
+) -> list[dict[str, Any]]:
+    """Attach advisory pace only where a live window provides complete timing."""
+
+    result: list[dict[str, Any]] = []
+    for window in windows:
+        item = dict(window)
+        used = item.get("used_percent")
+        minutes = item.get("window_minutes")
+        reset = _timestamp(item.get("resets_at"))
+        if (
+            isinstance(used, (int, float))
+            and not isinstance(used, bool)
+            and isinstance(minutes, (int, float))
+            and not isinstance(minutes, bool)
+        ):
+            pace = _quota_pace(
+                max(0.0, min(100.0, float(used))), int(minutes), reset, now
+            )
+            if pace is not None:
+                item["pace"] = pace
+        result.append(item)
+    return result
+
+
+def _runout(windows: Sequence[Mapping[str, Any]], now: datetime) -> dict[str, Any]:
+    """Expose only a reset-bounded advisory for the current quota window."""
+
+    current = next((window for window in windows if window.get("kind") == "session"), None)
+    current = current or (windows[0] if windows else None)
+    result: dict[str, Any] = {
+        "kind": "current_window_linear",
+        "advisory": True,
+        "estimated_exhausts_at": None,
+        "seconds_to_exhaustion": None,
+        "basis": "insufficient_countdown_inputs",
+    }
+    if current is None:
+        return result
+    pace = current.get("pace")
+    if not isinstance(pace, Mapping):
+        return result
+    if pace.get("will_last_to_reset") is True:
+        return {**result, "basis": "would_cross_reset_boundary"}
+    seconds = pace.get("seconds_to_exhaustion")
+    if not isinstance(seconds, int) or isinstance(seconds, bool) or seconds < 0:
+        return result
+    return {
+        **result,
+        "estimated_exhausts_at": _utc_iso(now + timedelta(seconds=seconds)),
+        "seconds_to_exhaustion": seconds,
+        "basis": "linear_used_percent_since_window_start",
+    }
+
+
 def _windows(raw: object, now: datetime) -> tuple[Mapping[str, Any], ...]:
     candidates: list[tuple[str, Mapping[str, Any]]] = []
 
@@ -311,17 +405,19 @@ def _windows(raw: object, now: datetime) -> tuple[Mapping[str, Any], ...]:
             else "bucket"
         )
         reset = _timestamp(_first(value, "resets_at", "resetsAt", "reset_at", "resetAt"))
-        result.append(
-            {
-                "kind": kind,
-                "name": kind if kind in {"session", "weekly"} else "bucket",
-                "window_minutes": minutes,
-                "used_percent": used,
-                "remaining_percent": round(100 - used, 4),
-                "resets_at": _utc_iso(reset) if reset else None,
-                "countdown_seconds": max(0, int((reset - now).total_seconds())) if reset else None,
-            }
-        )
+        item: dict[str, Any] = {
+            "kind": kind,
+            "name": kind if kind in {"session", "weekly"} else "bucket",
+            "window_minutes": minutes,
+            "used_percent": used,
+            "remaining_percent": round(100 - used, 4),
+            "resets_at": _utc_iso(reset) if reset else None,
+            "countdown_seconds": max(0, int((reset - now).total_seconds())) if reset else None,
+        }
+        pace = _quota_pace(used, minutes, reset, now)
+        if pace is not None:
+            item["pace"] = pace
+        result.append(item)
     unique = {}
     for item in result:
         unique.setdefault(
@@ -545,7 +641,8 @@ class _UncachedLocalUsageService:
             errors = list(probe.errors)
             if imported.parse_error_count:
                 errors.append(f"{provider}_history_partial")
-            windows = list(probe.windows)
+            windows = _with_local_pace(probe.windows, observed)
+            runout = _runout(windows, observed)
             source_warning = "Local CLI history can be incomplete or compacted"
             provider_doc: dict[str, Any] = {
                 "source": {
@@ -562,13 +659,7 @@ class _UncachedLocalUsageService:
                 "account": dict(probe.account),
                 "windows": windows,
                 "reset_credits": [],
-                "runout": {
-                    "kind": "current_window",
-                    "advisory": True,
-                    "estimated_exhausts_at": None,
-                    "seconds_to_exhaustion": None,
-                    "basis": "Current provider quota" if windows else "Current quota unavailable",
-                },
+                "runout": runout,
                 "history": _history(imported, local),
                 "costs": {
                     "provider_billed": {
@@ -596,7 +687,7 @@ class _UncachedLocalUsageService:
                         "label": "Account quota",
                         "semantics": "provider_quota_meter",
                         "windows": windows,
-                        "runout": provider_doc["runout"],
+                        "runout": runout,
                     }
                 ]
             else:

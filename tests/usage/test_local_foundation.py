@@ -10,7 +10,7 @@ from coordharness.usage.local_account_actions import LocalAccountActionService
 from coordharness.usage.local_history import discover_local_cli_history
 from coordharness.usage.local_profiles import LocalProfileRegistry, LocalRoutingPolicyStore
 from coordharness.usage.local_provider_management import LocalProviderManagementService
-from coordharness.usage.local_service import LocalUsageService, ProviderProbe, probe_codex_account
+from coordharness.usage.local_service import LocalUsageService, ProviderProbe, _quota_pace, probe_codex_account
 from coordharness.usage.provider_management import ProviderManagementForwarder
 
 
@@ -143,6 +143,20 @@ def test_no_upstream_dashboard_uses_only_local_state_and_honest_quota(tmp_path: 
     )
     assert document["providers"]["codex"]["windows"][0]["remaining_percent"] == 80
     assert document["providers"]["codex"]["history"]["rolling_7d_total_tokens"] == 42
+    pace = document["providers"]["codex"]["windows"][0]["pace"]
+    assert pace == {
+        "state": "reserve",
+        "delta_percent": 20.0,
+        "expected_used_percent": 40.0,
+        "will_last_to_reset": True,
+        "seconds_to_exhaustion": None,
+        "advisory": True,
+        "basis": "elapsed_window_linear_projection",
+        "source": "local_projection",
+        "marker_remaining_percent": 60.0,
+        "marker_kind": "reserve",
+    }
+    assert document["providers"]["codex"]["runout"]["basis"] == "would_cross_reset_boundary"
     claude_day = document["providers"]["claude"]["history"]["daily"][0]
     codex_day = document["providers"]["codex"]["history"]["daily"][0]
     assert claude_day["model_breakdowns"][0]["label"] == "claude-test"
@@ -152,6 +166,22 @@ def test_no_upstream_dashboard_uses_only_local_state_and_honest_quota(tmp_path: 
     serialized = json.dumps(document)
     for private in (str(home), "/private/project", "private prompt", "private answer", "secret"):
         assert private not in serialized
+
+
+def test_local_pace_has_a_two_point_deadband_and_reset_bounded_runout() -> None:
+    reset = NOW.replace(hour=12, minute=50)
+    on_pace = _quota_pace(48.0, 100, reset, NOW)
+    reserve = _quota_pace(47.99, 100, reset, NOW)
+    deficit = _quota_pace(52.01, 100, reset, NOW)
+
+    assert on_pace is not None and on_pace["state"] == "on_pace"
+    assert on_pace["marker_kind"] is None
+    assert reserve is not None and reserve["state"] == "reserve"
+    assert reserve["marker_kind"] == "reserve"
+    assert deficit is not None and deficit["state"] == "deficit"
+    assert deficit["marker_kind"] == "deficit"
+    assert deficit["will_last_to_reset"] is False
+    assert deficit["seconds_to_exhaustion"] is not None
 
 
 def test_codex_official_probe_sanitizes_account_and_quota_frames(tmp_path: Path) -> None:
