@@ -1,0 +1,99 @@
+name: Pages (static demo export)
+
+# Builds tools/export_static_board.py's output -- a self-contained, read-only
+# site over a seeded fictional demo board -- and uploads it as a Pages
+# artifact on every push to main and pull request. It never deploys on its
+# own.
+#
+# Publishing is the repository owner's decision, not this workflow's. Two
+# things both have to be true before anything reaches a public URL:
+#
+#   1. In this repository's Settings -> Pages, "Source" must be set to
+#      "GitHub Actions". Until that is done, the deploy job below has
+#      nothing to deploy to and fails closed. Only that job is affected:
+#      the build job holds no Pages permission and touches no Pages API,
+#      so it stays green on a repository where Pages was never enabled.
+#   2. Deployment only happens on a manual `workflow_dispatch` run --
+#      see the `if:` on the deploy job. A push to main runs the build job
+#      (compiles the bundle, proves it still builds and passes its tests)
+#      and stops there; it does not deploy.
+#
+# To actually publish: Actions tab -> "Pages (static demo export)" -> "Run
+# workflow" on the branch you want live, after step 1 above is done once.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "tools/export_static_board.py"
+      - "tests/test_static_export.py"
+      - "docs/static-demo.md"
+      - ".github/workflows/pages.yml"
+  pull_request:
+    paths:
+      - "tools/export_static_board.py"
+      - "tests/test_static_export.py"
+      - "docs/static-demo.md"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Export and validate the static bundle
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+          cache: pip
+      - name: Install package and test dependencies
+        run: |
+          python -m pip install --upgrade pip 'setuptools>=83'
+          python -m pip install -e '.[dev]'
+      - name: Lint the exporter and its test
+        run: ruff check tools/export_static_board.py tests/test_static_export.py
+      - name: Test the exporter
+        run: pytest -q tests/test_static_export.py
+      - name: Build the static bundle
+        run: python tools/export_static_board.py --out _site
+      - name: Refuse an absolute filesystem path in the built bundle
+        run: |
+          if grep -RIlE '/home/[a-z][a-z0-9_-]*|/Users/|/tmp/' _site; then
+            echo "::error::static bundle contains an absolute filesystem path" >&2
+            exit 1
+          fi
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: _site
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    # Manual only -- see the header comment. A push to main stops after
+    # `build`; nothing here runs without someone choosing "Run workflow".
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      # configure-pages resolves (and enables) the Pages site, which needs the
+      # `pages: write` this job holds and the build job deliberately does not.
+      # upload-pages-artifact does not depend on it, so the build job stays a
+      # read-only check that cannot fail on a repository where Pages is off.
+      - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+      - id: deployment
+        uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5.0.0

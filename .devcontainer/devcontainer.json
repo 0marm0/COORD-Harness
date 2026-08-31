@@ -1,0 +1,16 @@
+{
+  "name": "coordharness",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": ".."
+  },
+  "forwardPorts": [7870],
+  "portsAttributes": {
+    "7870": {
+      "label": "COORD board",
+      "onAutoForward": "notify"
+    }
+  },
+  "postCreateCommand": "coord doctor",
+  "remoteUser": "coordharness"
+}
