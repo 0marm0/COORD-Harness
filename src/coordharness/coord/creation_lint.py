@@ -4,6 +4,7 @@ import json
 import re
 from typing import Any, Iterable
 
+from .config import lane_set as _lane_set
 from .ingest import _resolve_grouping
 from .review_tier import (
     RULING_POINTER,
@@ -296,7 +297,7 @@ def _required_pass_patterns(lane: str) -> tuple[re.Pattern[str], ...]:
 
 def acceptance_requires_assignee_pass(acceptance: Any, assignee: Any) -> bool:
     lane = _text(assignee).casefold()
-    if lane not in {"claude", "codex"}:
+    if lane not in _lane_set():
         return False
     patterns = _required_pass_patterns(lane)
     for fragment in _acceptance_text_fragments(acceptance):
