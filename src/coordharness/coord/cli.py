@@ -148,7 +148,9 @@ class OperatorConsentUnavailable(ValueError):
     """No human could be asked, so no sign-off can be recorded."""
 
 
-def _read_controlling_terminal_confirmation(prompt: str) -> str:
+def _read_controlling_terminal_confirmation(
+    prompt: str, *, device: str = "/dev/tty"
+) -> str:
     """Put a question to this process's controlling terminal and read the answer.
 
     This is the whole human-only mechanism, so it is worth being exact about why
@@ -179,9 +181,26 @@ def _read_controlling_terminal_confirmation(prompt: str) -> str:
     unreachable by an agent that is merely following the documentation. Anything
     past that is not a mistake anyone could make. It is impersonation, and it
     has to be spelled that way.
+
+    ``device`` exists only so a test can point this at a real terminal it
+    allocated. It is not reachable from any subcommand or environment
+    variable, and it widens nothing: an in-process caller that could pass it
+    could equally rewrite this module. It is here because the alternative --
+    monkeypatching ``open`` -- is what let a bug that refused every real
+    terminal survive a full test suite.
     """
+    # Two one-directional handles, not one "r+": a terminal is not seekable,
+    # and "r+" builds a BufferedRandom, which demands seekability and so
+    # raises io.UnsupportedOperation (an OSError subclass) on every real
+    # terminal -- which the handler below would then report as "no
+    # controlling terminal", refusing the very person it exists to ask.
     try:
-        terminal = open("/dev/tty", "r+", buffering=1)  # noqa: SIM115 -- closed below
+        reader = open(device, "r")  # noqa: SIM115 -- closed below
+        try:
+            writer = open(device, "w")  # noqa: SIM115 -- closed below
+        except OSError:
+            reader.close()
+            raise
     except OSError as exc:
         raise OperatorConsentUnavailable(
             "coord sign-off needs a controlling terminal and this process has "
@@ -192,15 +211,15 @@ def _read_controlling_terminal_confirmation(prompt: str) -> str:
             "agent and you are stuck at a review gate, this verb is not yours: "
             "ask the opposite lane for a verdict, or ask the operator to sign."
         ) from exc
-    with terminal:
-        if not os.isatty(terminal.fileno()):
+    with reader, writer:
+        if not os.isatty(reader.fileno()):
             raise OperatorConsentUnavailable(
                 "coord sign-off opened /dev/tty and it is not a terminal; "
                 "refusing to treat it as a person"
             )
-        terminal.write(prompt)
-        terminal.flush()
-        answer = terminal.readline()
+        writer.write(prompt)
+        writer.flush()
+        answer = reader.readline()
     return str(answer or "").strip()
 
 
