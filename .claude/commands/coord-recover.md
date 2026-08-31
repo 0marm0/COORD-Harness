@@ -39,7 +39,11 @@ than letting the lease lapse silently:
 
 Use `--status paused` with `--next-step` and `--resume-when` if the work is
 genuinely resumable; use `--status blocked` with a `--reason` naming the criterion
-if it is not.
+if it is not. Either way `--resume-when` on its own is refused —
+`resume_trigger_contract_invalid` — the CLI also needs exactly one of
+`--resume-manual` (nothing to check, a person decides) or `--resume-predicate`
+(a JSON condition the board can check itself); see `coord-close`'s step 3 for
+worked examples of both.
 
 **The row is blocked with no usable resume contract.** MCP `classify_blocked` to
 type the blockage, then MCP `recover_blocked` once the criterion is met. For a
