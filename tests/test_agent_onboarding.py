@@ -457,3 +457,52 @@ def test_cli_typed_handoff_uses_work_context_fences(monkeypatch, capsys, tmp_pat
         )
     finally:
         conn.close()
+
+
+def test_cli_reassign_snapshots_fences_and_uses_typed_handoff(
+    monkeypatch, capsys, tmp_path: Path
+) -> None:
+    db = tmp_path / ".coordharness" / "coord.db"
+    monkeypatch.setenv("COORD_PROJECT_ROOT", str(tmp_path))
+    monkeypatch.setenv("COORD_DB", str(db))
+    monkeypatch.setenv("COORD_ACTOR", "codex")
+    monkeypatch.setenv("COORD_SESSION_ID", "codex:reassign-test")
+
+    assert coord_main([
+        "--db", str(db), "create", "DEMO-CDX-REASSIGN",
+        "--title", "Reassign this work",
+        "--module", "harness",
+        "--done-signal", "reports/reassign.md",
+        "--acceptance", "typed transfer succeeds",
+        "--note", "exercise the safe convenience command",
+    ]) == 0
+    capsys.readouterr()
+
+    assert coord_main([
+        "--db", str(db), "reassign", "DEMO-CDX-REASSIGN",
+        "--owner-lane", "claude",
+        "--task", "finish reassigned work",
+        "--why", "Claude has the relevant context",
+        "--acceptance", "reports/reassign.md exists",
+        "--ref", "docs/agent-protocol.md",
+        "--constraint", "preserve coord.db authority",
+    ]) == 0
+    receipt = json.loads(capsys.readouterr().out)
+    assert receipt["ok"] is True
+    assert receipt["fresh_snapshot"] is True
+    assert receipt["owner_lane"] == "claude"
+
+    conn = connect(db)
+    try:
+        work = conn.execute(
+            "SELECT assignee, assigned_by FROM work_items WHERE work_id=?",
+            ("DEMO-CDX-REASSIGN",),
+        ).fetchone()
+        assert dict(work) == {"assignee": "claude", "assigned_by": "codex"}
+        event = conn.execute(
+            "SELECT actor, kind, trust FROM events WHERE event_id=?",
+            (receipt["event_id"],),
+        ).fetchone()
+        assert dict(event) == {"actor": "codex", "kind": "handoff", "trust": "agent"}
+    finally:
+        conn.close()

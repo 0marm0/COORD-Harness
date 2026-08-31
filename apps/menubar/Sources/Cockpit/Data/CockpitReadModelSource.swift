@@ -215,9 +215,30 @@ final class CockpitReadModelSource: CockpitReadModelLoading {
                 groupKey: row.string("group_key") ?? bucket,
                 groupLabel: row.string("group_label") ?? bucket.map(labelize),
                 displayOrder: row.int("display_order") ?? 0,
-                actions: actionsByRow[key] ?? workID.flatMap { actionsByRow[$0] } ?? jobID.flatMap { actionsByRow[$0] } ?? []
+                actions: actionsByRow[key] ?? workID.flatMap { actionsByRow[$0] } ?? jobID.flatMap { actionsByRow[$0] } ?? [],
+                workVersion: row.int("work_version"),
+                currentAssignee: row.string("current_assignee") ?? row.string("assignee"),
+                assignmentHeadEventIDs: Self.intArray(row.string("assignment_head_event_ids")),
+                activeClaimIDs: Self.stringArray(row.string("active_claim_ids")),
+                claimStatus: row.string("claim_status"),
+                claimLive: row.bool("claim_live") ?? false,
+                liveRunCount: row.int("live_run_count") ?? 0,
+                nativeOperatorWritesEnabled: row.bool("native_operator_writes_enabled") ?? false,
+                nativeOperatorWritesReason: row.string("native_operator_writes_reason")
             )
         }
+    }
+
+    private static func intArray(_ raw: String?) -> [Int] {
+        guard let raw, let data = raw.data(using: .utf8),
+              let values = try? JSONSerialization.jsonObject(with: data) as? [Int] else { return [] }
+        return values
+    }
+
+    private static func stringArray(_ raw: String?) -> [String] {
+        guard let raw, let data = raw.data(using: .utf8),
+              let values = try? JSONSerialization.jsonObject(with: data) as? [String] else { return [] }
+        return values
     }
 
     private func loadSummary(_ db: CoordSQLite, writerSeq: Int64) throws -> CockpitSummary {

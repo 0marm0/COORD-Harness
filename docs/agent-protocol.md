@@ -407,7 +407,39 @@ ref that, or record it as a note on the row before handing off.
 Note that `handoff_existing` is a deferred tool. It appears in the visible catalog
 only when the deployment's client profile promotes it (`_SERVER_PROMOTION_CANDIDATES`
 in the MCP server); on a profile that does not, the guard against claiming another
-actor's work still applies, and the handoff has to go through the Python API.
+actor's work still applies. The CLI's `coord reassign` command is the concise agent
+path: it reads the row version, assignee, and active assignment heads once and submits
+those exact values to the same typed writer. A concurrent change is rejected; the
+command never refreshes and silently retries a stale transfer.
+
+### What automated routing means
+
+Owner routing is not an implicit side effect of quota selection. `RoutePlanV1`
+is a pure, provider-neutral planner: callers give it an exact work snapshot, active
+assignment heads, lane capability/load snapshots, quota evidence, a versioned policy,
+and explicit observation/expiry times. It returns an expiring recommendation with
+hard exclusions, per-lane score components, confidence, work/policy/evidence hashes,
+and `mutation_allowed=false`.
+
+That last field is the safety boundary. A route plan does not claim, hand off, launch,
+or update work. Applying one requires a separate fenced lifecycle operation. A future
+automatic scheduler should be opt-in, limited to unassigned rows or rows explicitly
+marked for automatic routing, and retain a kill switch, cooldown, and shadow audit.
+
+Use the standalone snapshot surface when a caller already has explicit, versioned
+evidence. It reads a file (or stdin with `-`), emits canonical JSON on stdout, and
+returns nonzero without a plan for malformed, missing, incomplete, future, expired,
+or stale evidence:
+
+```bash
+.venv/bin/python scripts/route_plan_snapshot.py route-plan-snapshot-v1.json
+```
+
+The input envelope is `RoutePlanSnapshotV1` with `work`, `assignment_heads`,
+`lanes`, `usage`, `policy`, and `timestamps` objects, plus optional
+`explicit_user_route`. Timestamps must explicitly provide `evidence_observed_at`,
+`now`, and `expires_at`; the command never reads live telemetry, opens `coord.db`,
+or applies its result.
 
 For ending a whole session rather than moving one row, `session_closeout` takes a
 `summary`, `successor_hints`, and `dead_ends`. The `dead_ends` list is the one most
@@ -432,7 +464,7 @@ when a transcript ends.
 | Read one pointer's full text | `read_note` | read the file | — |
 | Record mid-flight context | `note` | none | Body capped at 2,048 chars; goes to the opposite lane's inbox |
 | Record a binding ruling | `decision` | none | — |
-| Hand a row to another lane | `handoff_existing` | none | Deferred; visible only on a promoting client profile |
+| Hand a row to another lane | `handoff_existing` | `coord handoff`, `coord reassign` | MCP is deferred; `reassign` snapshots fences once, then uses the same writer |
 | End a session | `session_closeout` | none | — |
 
 Related reading: [context architecture](context-architecture.md) for the tiered

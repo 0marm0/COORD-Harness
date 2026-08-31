@@ -3,8 +3,10 @@ from __future__ import annotations
 import fcntl
 import json
 import os
+from pathlib import Path
 import re
 import sqlite3
+import stat
 import time
 from typing import Any
 
@@ -45,6 +47,9 @@ ROW_COLUMNS = (
     "pid", "pgid", "live", "paused", "kind", "resource_class",
     "sidecar_age_s", "stale", "available_actions", "unsafe_actions",
     "requires_confirmation",
+    "work_version", "current_assignee", "assignment_head_event_ids",
+    "active_claim_ids", "claim_status", "claim_live", "live_run_count",
+    "native_operator_writes_enabled", "native_operator_writes_reason",
     "effective_epic", "parent_id", "sublane", "tier", "group_key", "group_label",
 )
 
@@ -148,6 +153,15 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
           available_actions TEXT,
           unsafe_actions TEXT,
           requires_confirmation INTEGER NOT NULL DEFAULT 0,
+          work_version INTEGER,
+          current_assignee TEXT,
+          assignment_head_event_ids TEXT,
+          active_claim_ids TEXT,
+          claim_status TEXT,
+          claim_live INTEGER NOT NULL DEFAULT 0,
+          live_run_count INTEGER NOT NULL DEFAULT 0,
+          native_operator_writes_enabled INTEGER NOT NULL DEFAULT 0,
+          native_operator_writes_reason TEXT,
           effective_epic TEXT,
           parent_id TEXT,
           sublane TEXT,
@@ -238,22 +252,153 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
         str(row["name"])
         for row in conn.execute("PRAGMA table_info(native_cockpit_rows)").fetchall()
     }
-    for col in (
-        "owner_session_id",
-        "owner_session_actor",
-        "owner_session_label",
-        "owner_external_thread_id",
-        "owner_conversation_title",
-        "owner_worktree_id",
-        "effective_epic",
-        "parent_id",
-        "sublane",
-        "tier",
-        "group_key",
-        "group_label",
-    ):
+    additive_columns = {
+        "owner_session_id": "TEXT",
+        "owner_session_actor": "TEXT",
+        "owner_session_label": "TEXT",
+        "owner_external_thread_id": "TEXT",
+        "owner_conversation_title": "TEXT",
+        "owner_worktree_id": "TEXT",
+        "work_version": "INTEGER",
+        "current_assignee": "TEXT",
+        "assignment_head_event_ids": "TEXT",
+        "active_claim_ids": "TEXT",
+        "claim_status": "TEXT",
+        "claim_live": "INTEGER NOT NULL DEFAULT 0",
+        "live_run_count": "INTEGER NOT NULL DEFAULT 0",
+        "native_operator_writes_enabled": "INTEGER NOT NULL DEFAULT 0",
+        "native_operator_writes_reason": "TEXT",
+        "effective_epic": "TEXT",
+        "parent_id": "TEXT",
+        "sublane": "TEXT",
+        "tier": "TEXT",
+        "group_key": "TEXT",
+        "group_label": "TEXT",
+    }
+    for col, declaration in additive_columns.items():
         if col not in existing_cols:
-            conn.execute(f"ALTER TABLE native_cockpit_rows ADD COLUMN {col} TEXT")
+            conn.execute(
+                f"ALTER TABLE native_cockpit_rows ADD COLUMN {col} {declaration}"
+            )
+
+
+_NATIVE_OPERATOR_TOKEN_RE = re.compile(r"[A-Za-z0-9._~-]{32,256}")
+_TERMINAL_TRANSFER_STATES = {
+    "done", "completed", "archived", "superseded", "cancelled", "canceled", "closed"
+}
+
+
+def _native_operator_write_configuration(
+    conn: sqlite3.Connection,
+) -> tuple[bool, str]:
+    if os.environ.get("COORD_NATIVE_OPERATOR_WRITES", "").strip() != "1":
+        return False, "Native operator transfers are off (COORD_NATIVE_OPERATOR_WRITES is not 1)."
+    direct = os.environ.get("COORD_NATIVE_OPERATOR_TOKEN", "").strip()
+    if direct:
+        if _NATIVE_OPERATOR_TOKEN_RE.fullmatch(direct) is None:
+            return False, "The native operator token configuration is invalid."
+        return True, "Enabled for authenticated loopback operator transfers."
+    configured = os.environ.get("COORD_NATIVE_OPERATOR_TOKEN_FILE", "").strip()
+    if configured:
+        token_path = Path(configured).expanduser()
+    else:
+        database_row = next(
+            (row for row in conn.execute("PRAGMA database_list") if row[1] == "main"),
+            None,
+        )
+        database_path = Path(str(database_row[2])) if database_row and database_row[2] else None
+        if database_path is None:
+            return False, "A private native operator token is not configured."
+        token_path = database_path.resolve().parent / "operator-token"
+    try:
+        metadata = token_path.stat()
+        if not stat.S_ISREG(metadata.st_mode) or metadata.st_mode & 0o077:
+            return False, "The native operator token file must be private to its owner."
+        if hasattr(os, "getuid") and metadata.st_uid != os.getuid():
+            return False, "The native operator token file must be owned by this user."
+        raw = token_path.read_bytes()
+        if len(raw) > 512:
+            return False, "The native operator token configuration is invalid."
+        token = raw.decode("utf-8").strip()
+    except (OSError, UnicodeDecodeError):
+        return False, "A private native operator token is not configured."
+    if _NATIVE_OPERATOR_TOKEN_RE.fullmatch(token) is None:
+        return False, "The native operator token configuration is invalid."
+    return True, "Enabled for authenticated loopback operator transfers."
+
+
+def _assignment_projection_state(
+    conn: sqlite3.Connection,
+    row: dict[str, Any],
+    *,
+    at: float,
+) -> None:
+    work_id = str(row.get("work_id") or "").strip()
+    if not work_id or row.get("_unbound_sidecar"):
+        row.update({
+            "_assignment_head_event_ids": [],
+            "_active_claim_ids": [],
+            "_claim_status": "",
+            "_claim_live": False,
+            "_live_run_count": 0,
+            "_done_signal_satisfied": False,
+        })
+        return
+    head_state = coord_db._typed_handoff_head_state_unlocked(conn, work_id)
+    claims = conn.execute(
+        "SELECT claim_id,status FROM claims WHERE work_id=?"
+        " AND status IN (\u0027running\u0027,\u0027paused\u0027,\u0027blocked\u0027)"
+        " AND (expires_at IS NULL OR expires_at>?) ORDER BY acquired_at,claim_id",
+        (work_id, at),
+    ).fetchall()
+    terminal_run_states = tuple(sorted(coord_db.TERMINAL_RUN_STATES))
+    terminal_placeholders = ",".join("?" for _ in terminal_run_states)
+    live_run_count = int(
+        conn.execute(
+            "SELECT COUNT(*) FROM runs WHERE work_id=?"
+            f" AND (state IS NULL OR state NOT IN ({terminal_placeholders}))",
+            (work_id, *terminal_run_states),
+        ).fetchone()[0]
+    )
+    done_signal = str(row.get("done_signal") or "").strip()
+    row.update({
+        "_assignment_head_event_ids": list(head_state["active_event_ids"]),
+        "_active_claim_ids": [str(claim["claim_id"]) for claim in claims],
+        "_claim_status": ",".join(sorted({str(claim["status"]) for claim in claims})),
+        "_claim_live": bool(claims),
+        "_live_run_count": live_run_count,
+        "_done_signal_satisfied": bool(
+            done_signal and coord_db.done_signal_satisfied(conn, done_signal, coord_db.HARNESS_ROOT)
+        ),
+    })
+
+
+def _transfer_disabled_reason(
+    row: dict[str, Any],
+    *,
+    writes_enabled: bool,
+    configuration_reason: str,
+) -> str | None:
+    if row.get("_unbound_sidecar"):
+        return "This local sidecar is not a canonical coord work row."
+    if not writes_enabled:
+        return configuration_reason
+    assignee = str(row.get("assignee") or "").strip().lower()
+    if assignee not in {"claude", "codex"}:
+        return "The current assignee is not a transferable Claude or Codex lane."
+    if str(row.get("intent_state") or "").strip().lower() in _TERMINAL_TRANSFER_STATES:
+        return "Terminal or archived work cannot be transferred."
+    if not str(row.get("done_signal") or "").strip():
+        return "The canonical work row has no declared done signal."
+    if row.get("_done_signal_satisfied"):
+        return "The declared completion proof already resolves."
+    if row.get("has_artifact"):
+        return "The work already carries a derived completion artifact."
+    if row.get("_claim_live"):
+        return "Release or stop the current claim holder before transferring this work."
+    if int(row.get("_live_run_count") or 0) > 0:
+        return "The work has an active run and cannot be transferred."
+    return None
 
 
 def _bucket(status: str) -> tuple[str, int]:
@@ -659,7 +804,20 @@ def _row_payload(row: dict[str, Any], *, writer_seq: int, display_order: int) ->
         "stale": 1 if status_lc == "attention" else 0,
         "available_actions": "[]",
         "unsafe_actions": "[]",
-        "requires_confirmation": 0,
+        "requires_confirmation": 1 if row.get("_claim_live") else 0,
+        "work_version": row.get("version") if not row.get("_unbound_sidecar") else None,
+        "current_assignee": str(row.get("assignee") or "").strip().lower(),
+        "assignment_head_event_ids": json.dumps(
+            row.get("_assignment_head_event_ids") or [], separators=(",", ":")
+        ),
+        "active_claim_ids": json.dumps(
+            row.get("_active_claim_ids") or [], separators=(",", ":")
+        ),
+        "claim_status": row.get("_claim_status") or "",
+        "claim_live": 1 if row.get("_claim_live") else 0,
+        "live_run_count": int(row.get("_live_run_count") or 0),
+        "native_operator_writes_enabled": 1 if row.get("_native_writes_enabled") else 0,
+        "native_operator_writes_reason": row.get("_native_writes_reason") or "",
         "effective_epic": effective_epic,
         "parent_id": row.get("parent_id") or "",
         "sublane": row.get("sublane") or "",
@@ -699,6 +857,7 @@ def _unbound_sidecar_row(canonical_id: str, sidecar: dict[str, Any]) -> dict[str
         "claim_step": step,
         "blocked_reason_class": "unbound_job_progress",
         "_job_progress_sidecar": sidecar,
+        "_unbound_sidecar": True,
     }
 
 
@@ -734,6 +893,16 @@ def refresh(
         if id(sidecar) not in matched_progress
     ]
     rows = list(rows) + unbound_rows
+    writes_enabled, configuration_reason = _native_operator_write_configuration(conn)
+    for row in rows:
+        _assignment_projection_state(conn, row, at=built_at)
+        disabled_reason = _transfer_disabled_reason(
+            row,
+            writes_enabled=writes_enabled,
+            configuration_reason=configuration_reason,
+        )
+        row["_native_writes_enabled"] = writes_enabled
+        row["_native_writes_reason"] = disabled_reason or configuration_reason
     sessions = coord_db.session_rollup(conn, at=built_at)
     previous = conn.execute(
         "SELECT COALESCE(MAX(writer_seq), 0) FROM native_projection_meta"
@@ -744,6 +913,47 @@ def refresh(
         for i, row in enumerate(rows)
         if row.get("work_id")
     ])
+    action_payloads: list[dict[str, Any]] = []
+    for row in row_payloads:
+        general_reason = (
+            None
+            if row["native_operator_writes_enabled"]
+            and row["native_operator_writes_reason"].startswith("Enabled ")
+            else row["native_operator_writes_reason"]
+        )
+        current = str(row.get("current_assignee") or "").lower()
+        action_specs = (
+            ("task.assign.claude", "Assign Claude", "claude"),
+            ("task.assign.codex", "Assign Codex", "codex"),
+            ("handoff.create", "Handoff", None),
+        )
+        for action_order, (action_id, label, target_lane) in enumerate(action_specs):
+            reason = general_reason
+            if reason is None and target_lane == current:
+                reason = f"{target_lane.title()} is already the current assignee."
+            action_payloads.append({
+                "writer_seq": writer_seq,
+                "row_dedup_key": row["dedup_key"],
+                "row_id": row["row_id"],
+                "work_id": row["coord_work_id"],
+                "job_id": row["job_id"],
+                "action": action_id,
+                "label": label,
+                "enabled": 0 if reason else 1,
+                "requires_confirmation": 1,
+                "disabled_reason": reason,
+                "endpoint": "/api/native/action",
+                "method": "POST",
+                "sort_order": action_order,
+            })
+        enabled_actions = [
+            action["action"]
+            for action in action_payloads
+            if action["row_dedup_key"] == row["dedup_key"] and action["enabled"]
+        ]
+        row["available_actions"] = json.dumps(enabled_actions, separators=(",", ":"))
+        row["unsafe_actions"] = json.dumps(enabled_actions, separators=(",", ":"))
+        row["requires_confirmation"] = 1 if enabled_actions else 0
     summary_counts = {
         "total": len(row_payloads),
         "running": sum(1 for r in row_payloads if r["bucket"] == "running"),
@@ -768,6 +978,18 @@ def refresh(
             conn.execute(f"DELETE FROM {table}")
         for payload in row_payloads:
             _insert_row(conn, "native_cockpit_rows", payload, ROW_COLUMNS)
+        for action in action_payloads:
+            conn.execute(
+                "INSERT INTO native_cockpit_row_actions("
+                "writer_seq,row_dedup_key,row_id,work_id,job_id,action,label,enabled,"
+                "requires_confirmation,disabled_reason,endpoint,method,sort_order)"
+                " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                tuple(action[key] for key in (
+                    "writer_seq", "row_dedup_key", "row_id", "work_id", "job_id",
+                    "action", "label", "enabled", "requires_confirmation",
+                    "disabled_reason", "endpoint", "method", "sort_order",
+                )),
+            )
         for order, (key, value) in enumerate(summary_counts.items()):
             conn.execute(
                 "INSERT INTO native_cockpit_summary(writer_seq, summary_key, value_num, value_text, label)"
@@ -868,7 +1090,7 @@ def refresh(
                 mode,
                 live_mode,
                 len(row_payloads),
-                0,
+                len(action_payloads),
             ),
         )
     return {"writer_seq": writer_seq, "row_count": len(row_payloads), "built_at": built_at}

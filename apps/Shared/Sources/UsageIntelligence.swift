@@ -1360,10 +1360,24 @@ enum UsageMetricMode: String, CaseIterable, Equatable, Sendable {
             if let session { return ("Session", session) }
             if let weekly { return ("Weekly", weekly) }
         case .auto:
-            if let session, let remaining = session.resolvedRemainingPercent,
-               remaining <= min(100, max(0, threshold)) { return ("Session", session) }
-            if let weekly { return ("Weekly", weekly) }
-            if let session { return ("Session", session) }
+            _ = threshold // Compatibility input; Auto now means the lowest real remaining quota.
+            switch (session, weekly) {
+            case let (session?, weekly?):
+                let sessionRemaining = session.resolvedRemainingPercent
+                let weeklyRemaining = weekly.resolvedRemainingPercent
+                if sessionRemaining == nil, weeklyRemaining != nil { return ("Weekly", weekly) }
+                if weeklyRemaining == nil, sessionRemaining != nil { return ("Session", session) }
+                guard let sessionRemaining, let weeklyRemaining else { return ("Weekly", weekly) }
+                return sessionRemaining <= weeklyRemaining
+                    ? ("Session", session)
+                    : ("Weekly", weekly)
+            case let (session?, nil):
+                return ("Session", session)
+            case let (nil, weekly?):
+                return ("Weekly", weekly)
+            case (nil, nil):
+                break
+            }
         }
         return nil
     }
@@ -1613,11 +1627,12 @@ struct UsageCompactQuotaTiming: Equatable, Sendable {
     static func make(from window: UsageQuotaWindow?) -> Self {
         guard let window else { return .unavailable }
         let reset = window.countdownSeconds.flatMap(compactDuration)
-        let runout = window.pace?.secondsToExhaustion.flatMap(compactDuration)
+        let runoutSeconds = validRunoutSeconds(for: window)
+        let runout = runoutSeconds.flatMap(compactDuration)
         let resetAccessibility = window.countdownSeconds.map {
             "resets in \(UsageFormat.duration($0))"
         } ?? "reset unavailable"
-        let runoutAccessibility = window.pace?.secondsToExhaustion.map {
+        let runoutAccessibility = runoutSeconds.map {
             "run-out in \(UsageFormat.duration($0))"
         } ?? "run-out unavailable"
         return Self(
@@ -1625,6 +1640,15 @@ struct UsageCompactQuotaTiming: Equatable, Sendable {
             runoutLabel: runout ?? "—",
             accessibilityLabel: "\(resetAccessibility); \(runoutAccessibility)"
         )
+    }
+
+    private static func validRunoutSeconds(for window: UsageQuotaWindow) -> Int? {
+        guard let pace = window.pace,
+              let seconds = pace.secondsToExhaustion,
+              seconds >= 0,
+              pace.willLastToReset != true else { return nil }
+        if let reset = window.countdownSeconds, seconds >= reset { return nil }
+        return seconds
     }
 
     private static func compactDuration(_ seconds: Int) -> String? {

@@ -5203,6 +5203,12 @@ def _has_valid_operator_ok_unlocked(
 
 OPERATOR_AUTHORITY_CHANNEL = "authenticated_resident_controller"
 OPERATOR_SIGN_OFF_WRITER_CONTRACT = "operator_ok.v1"
+OPERATOR_REASSIGNMENT_WRITER_CONTRACT = "operator_reassignment.v1"
+OPERATOR_REASSIGNMENT_RECEIPT_CONTRACT = "operator_reassignment_receipt.v1"
+# Storage callers cannot confer operator authority by spelling a trusted
+# string.  The authenticated resident-controller boundary must deliberately
+# pass this process-local capability after it verifies its own credential.
+_OPERATOR_REASSIGNMENT_CAPABILITY = object()
 
 
 def operator_sign_off_refs_sha256(refs: list[str]) -> str:
@@ -6552,6 +6558,11 @@ def post_event(
         raise ValueError(
             "public post_event cannot mint the reserved operator sign-off "
             "namespace; use the typed human-only writer"
+        )
+    if str(idempotency_key or "").startswith("operator-reassignment:"):
+        raise ValueError(
+            "public post_event cannot mint the reserved operator reassignment "
+            "namespace; use the typed resident-controller writer"
         )
     if normalized_kind == "operator_ok":
         raise ValueError(
@@ -7913,6 +7924,158 @@ def _typed_handoff_request(
     return request, request_sha256
 
 
+def _operator_reassignment_request(
+    *,
+    work_id: str,
+    owner_lane: str,
+    task: str,
+    why: str,
+    acceptance: str,
+    refs: Iterable[str],
+    constraints: Iterable[str],
+    operation_id: str,
+    expected_version: int,
+    expected_assignee: str,
+    expected_head_event_ids: Iterable[int],
+    release_held_claim: bool = False,
+    target_intent: str = "queued",
+) -> tuple[dict[str, Any], str]:
+    """Validate and hash the operator-only assignment-transfer request.
+
+    This deliberately does not route through ``_typed_handoff_request``.  The
+    agent contract proves that the caller is the current assignee and therefore
+    requires ``actor == expected_assignee``.  An operator transition has a
+    different authority predicate, but shares the same bounded capsule and CAS
+    shapes without relaxing that agent-only rule.
+    """
+
+    try:
+        clean_refs = [str(value).strip() for value in refs if str(value).strip()]
+        clean_constraints = [
+            str(value).strip() for value in constraints if str(value).strip()
+        ]
+        clean_heads = list(expected_head_event_ids)
+    except TypeError as exc:
+        raise ValueError(
+            "operator reassignment refs, constraints, and assignment heads must be lists"
+        ) from exc
+    request = {
+        "schema_version": 1,
+        "writer_contract": "operator_reassignment_request.v1",
+        "authority_channel": OPERATOR_AUTHORITY_CHANNEL,
+        "work_id": str(work_id or "").strip(),
+        "owner_lane": str(owner_lane or "").strip().lower(),
+        "target_intent": str(target_intent or "").strip().lower(),
+        "task": str(task or "").strip(),
+        "why": str(why or "").strip(),
+        "acceptance": str(acceptance or "").strip(),
+        "refs": clean_refs,
+        "constraints": clean_constraints,
+        "operation_id": str(operation_id or "").strip(),
+        "expected_version": expected_version,
+        "expected_assignee": str(expected_assignee or "").strip().lower(),
+        "expected_head_event_ids": clean_heads,
+        "release_held_claim": release_held_claim,
+    }
+    if not request["work_id"]:
+        raise ValueError("operator reassignment requires work_id")
+    if len(request["work_id"].encode("utf-8")) > 256:
+        raise ValueError("operator reassignment work_id exceeds 256 UTF-8 bytes")
+    if request["owner_lane"] not in {"claude", "codex"}:
+        raise ValueError("operator reassignment owner_lane must be claude|codex")
+    if request["expected_assignee"] not in {"claude", "codex"}:
+        raise ValueError("operator reassignment expected_assignee must be claude|codex")
+    if request["owner_lane"] == request["expected_assignee"]:
+        raise ValueError(
+            "operator reassignment owner_lane must differ from expected_assignee"
+        )
+    if request["target_intent"] not in {"queued", "blocked"}:
+        raise ValueError("operator reassignment target_intent must be queued|blocked")
+    if not re.fullmatch(
+        r"[A-Za-z0-9][A-Za-z0-9_.:-]{7,199}", request["operation_id"]
+    ):
+        raise ValueError(
+            "operator reassignment operation_id must be 8-200 safe identifier characters"
+        )
+    if (
+        isinstance(expected_version, bool)
+        or not isinstance(expected_version, int)
+        or expected_version < 0
+    ):
+        raise ValueError(
+            "operator reassignment expected_version must be a non-negative exact integer"
+        )
+    if any(_strict_positive_event_id(value) is None for value in clean_heads):
+        raise ValueError(
+            "operator reassignment expected_head_event_ids must contain exact positive integers"
+        )
+    if clean_heads != sorted(set(clean_heads)):
+        raise ValueError(
+            "operator reassignment expected_head_event_ids must be sorted and unique"
+        )
+    if len(clean_heads) > 64:
+        raise ValueError(
+            "operator reassignment expected_head_event_ids is bounded to 64 heads"
+        )
+    if not isinstance(release_held_claim, bool):
+        raise ValueError(
+            "operator reassignment release_held_claim must be an explicit boolean"
+        )
+    if release_held_claim:
+        raise ValueError(
+            "operator reassignment cannot release a live claim; stop or release "
+            "the current holder first"
+        )
+    limits = {
+        "task": (request["task"], 1_000),
+        "why": (request["why"], 2_048),
+        "acceptance": (request["acceptance"], 4_096),
+    }
+    if any(not value for value, _cap in limits.values()):
+        raise ValueError(
+            "operator reassignment task, why, and acceptance must be non-empty"
+        )
+    for name, (value, cap) in limits.items():
+        if len(value.encode("utf-8")) > cap:
+            raise ValueError(
+                f"operator reassignment {name} exceeds {cap} UTF-8 bytes"
+            )
+    if len(clean_refs) > 32 or any(
+        len(value.encode("utf-8")) > 2_048 for value in clean_refs
+    ):
+        raise ValueError(
+            "operator reassignment refs are bounded to 32 pointers of 2048 bytes"
+        )
+    if not clean_refs:
+        raise ValueError("operator reassignment requires at least one pointer ref")
+    if sum(len(value.encode("utf-8")) for value in clean_refs) > 4_096:
+        raise ValueError(
+            "operator reassignment refs are bounded to 4096 aggregate UTF-8 bytes"
+        )
+    if len(clean_constraints) > 16 or any(
+        len(value.encode("utf-8")) > 512 for value in clean_constraints
+    ):
+        raise ValueError(
+            "operator reassignment constraints are bounded to 16 entries of 512 bytes"
+        )
+    if not clean_constraints:
+        raise ValueError(
+            "operator reassignment requires at least one explicit constraint"
+        )
+    if sum(len(value.encode("utf-8")) for value in clean_constraints) > 2_048:
+        raise ValueError(
+            "operator reassignment constraints are bounded to 2048 aggregate UTF-8 bytes"
+        )
+    canonical_request = json.dumps(
+        request, sort_keys=True, separators=(",", ":")
+    ).encode("utf-8")
+    if len(canonical_request) > 12_000:
+        raise ValueError(
+            "operator reassignment canonical request exceeds 12000 UTF-8 bytes"
+        )
+    return request, hashlib.sha256(canonical_request).hexdigest()
+
+
 def _typed_handoff_capsule_warnings(request: dict[str, Any]) -> list[str]:
     from .creation_lint import handoff_capsule_warnings
 
@@ -8155,6 +8318,35 @@ def _typed_handoff_head_state_unlocked(conn, work_id: str) -> dict[str, Any]:
             and str(row["actor"] or "") == str(successor["actor"] or "")
             and str(row["session_id"] or "") == str(successor["session_id"] or "")
         )
+        operator_trusted = bool(
+            schema == 1
+            and prior_id in candidates
+            and by_event_id in candidates
+            and prior_id < by_event_id
+            and successor is not None
+            and successor["kind"] == "handoff"
+            and successor_payload
+            and successor_payload.get("schema_version") == 1
+            and successor_payload.get("writer_contract")
+            == OPERATOR_REASSIGNMENT_WRITER_CONTRACT
+            and successor_payload.get("authority_channel")
+            == OPERATOR_AUTHORITY_CHANNEL
+            and str(successor["actor"] or "") == "operator"
+            and not str(successor["session_id"] or "")
+            and str(successor["trust"] or "") == "system"
+            and str(successor["idempotency_key"] or "").startswith(
+                "operator-reassignment:"
+            )
+            and str(row["idempotency_key"] or "")
+            == f"operator-reassignment-supersede:{by_event_id}:{prior_id}"
+            and payload.get("writer_contract")
+            == "operator_reassignment_supersession.v1"
+            and str(row["actor"] or "") == "operator"
+            and not str(row["session_id"] or "")
+            and str(row["trust"] or "") == "system"
+            and str(row["to_selector"] or "")
+            == str(successor["to_selector"] or "")
+        )
         successor_schema = (
             successor_payload.get("schema_version") if successor_payload else None
         )
@@ -8168,6 +8360,11 @@ def _typed_handoff_head_state_unlocked(conn, work_id: str) -> dict[str, Any]:
             and isinstance(successor_schema, int)
             and not isinstance(successor_schema, bool)
             and successor_schema > 0
+            and (
+                successor_payload is None
+                or successor_payload.get("writer_contract")
+                != OPERATOR_REASSIGNMENT_WRITER_CONTRACT
+            )
             and str(row["actor"] or "") == str(successor["actor"] or "")
             and str(row["session_id"] or "") == str(successor["session_id"] or "")
             and str(row["to_selector"] or "") == str(successor["to_selector"] or "")
@@ -8213,6 +8410,7 @@ def _typed_handoff_head_state_unlocked(conn, work_id: str) -> dict[str, Any]:
         )
         if not (
             typed_trusted
+            or operator_trusted
             or legacy_trusted
             or verdict_trusted
             or policy_moot_trusted
@@ -9131,6 +9329,369 @@ def post_existing_work_handoff(conn, **fields: Any) -> dict[str, Any]:
         "replayed": False,
         "capsule_warnings": _typed_handoff_capsule_warnings(request),
     }
+
+
+def _operator_reassignment_replay_unlocked(
+    conn: sqlite3.Connection,
+    *,
+    request: dict[str, Any],
+    request_sha256: str,
+) -> dict[str, Any] | None:
+    idempotency_key = f"operator-reassignment:{request['operation_id']}"
+    prior = conn.execute(
+        "SELECT event_id,kind,actor,session_id,to_selector,work_id,trust,"
+        " refs_json,payload_json FROM events WHERE idempotency_key=?",
+        (idempotency_key,),
+    ).fetchone()
+    if prior is None:
+        return None
+    payload = _strict_json_mapping(prior["payload_json"])
+    receipt = payload.get("operation_receipt") if payload else None
+    expected_payload = {
+        "task": request["task"],
+        "why": request["why"],
+        "acceptance": request["acceptance"],
+        "constraints": request["constraints"],
+        "refs": request["refs"],
+        "operation_id": request["operation_id"],
+        "operation_request_sha256": request_sha256,
+    }
+    if (
+        str(prior["kind"] or "") != "handoff"
+        or str(prior["actor"] or "") != "operator"
+        or str(prior["session_id"] or "")
+        or str(prior["work_id"] or "") != request["work_id"]
+        or str(prior["to_selector"] or "")
+        != f"actor:{request['owner_lane']}"
+        or str(prior["trust"] or "") != "system"
+        or _strict_json_list(prior["refs_json"]) != request["refs"]
+        or payload is None
+        or payload.get("schema_version") != 1
+        or payload.get("writer_contract")
+        != OPERATOR_REASSIGNMENT_WRITER_CONTRACT
+        or payload.get("authority_channel") != OPERATOR_AUTHORITY_CHANNEL
+        or any(payload.get(key) != value for key, value in expected_payload.items())
+        or payload.get("preconditions")
+        != {
+            "expected_version": request["expected_version"],
+            "expected_assignee": request["expected_assignee"],
+            "expected_head_event_ids": request["expected_head_event_ids"],
+            "release_held_claim": request["release_held_claim"],
+        }
+        or not isinstance(receipt, dict)
+        or receipt.get("schema_version") != 1
+        or receipt.get("writer_contract")
+        != OPERATOR_REASSIGNMENT_RECEIPT_CONTRACT
+        or receipt.get("authority_channel") != OPERATOR_AUTHORITY_CHANNEL
+        or receipt.get("request_sha256") != request_sha256
+    ):
+        raise ValueError(
+            "operator reassignment operation_id was already used for a different request"
+        )
+    postimage = receipt.get("work_postimage")
+    superseded_ids = receipt.get("superseded_event_ids")
+    released_claim_ids = receipt.get("released_claim_ids")
+    if (
+        not isinstance(postimage, dict)
+        or not isinstance(superseded_ids, list)
+        or not isinstance(released_claim_ids, list)
+        or any(
+            _strict_positive_event_id(value) is None for value in superseded_ids
+        )
+        or superseded_ids != sorted(set(superseded_ids))
+        or len(superseded_ids) > 64
+        or any(not isinstance(value, str) or not value for value in released_claim_ids)
+        or len(released_claim_ids) > 1
+        or not isinstance(receipt.get("work_postimage_sha256"), str)
+        or re.fullmatch(r"[a-f0-9]{64}", receipt["work_postimage_sha256"])
+        is None
+        or not isinstance(receipt.get("work_postimage_bytes"), int)
+        or not isinstance(receipt.get("work_postimage_omitted_fields"), dict)
+    ):
+        raise ValueError("operator reassignment immutable receipt is malformed")
+    head_state = _typed_handoff_head_state_unlocked(conn, request["work_id"])
+    event_id = int(prior["event_id"])
+    result = {
+        "schema_version": 1,
+        "writer_contract": OPERATOR_REASSIGNMENT_RECEIPT_CONTRACT,
+        "authority_channel": OPERATOR_AUTHORITY_CHANNEL,
+        "event_id": event_id,
+        "work_id": request["work_id"],
+        "owner_lane": request["owner_lane"],
+        "operation_id": request["operation_id"],
+        "request_sha256": request_sha256,
+        "superseded_event_ids": [int(value) for value in superseded_ids],
+        "released_claim_ids": list(released_claim_ids),
+        "work": dict(postimage),
+        "work_postimage_sha256": receipt["work_postimage_sha256"],
+        "work_postimage_bytes": receipt["work_postimage_bytes"],
+        "work_postimage_omitted_fields": receipt[
+            "work_postimage_omitted_fields"
+        ],
+        "active": event_id in head_state["active_event_ids"],
+        "superseded_by": head_state["superseded_by"].get(event_id),
+        "quarantined_event_ids": head_state["quarantined_event_ids"],
+        "replayed": True,
+        "capsule_warnings": _typed_handoff_capsule_warnings(request),
+    }
+    return compact_existing_work_handoff_result(result)
+
+
+def post_operator_reassignment(
+    conn: sqlite3.Connection,
+    *,
+    work_id: str,
+    owner_lane: str,
+    task: str,
+    why: str,
+    acceptance: str,
+    refs: Iterable[str],
+    constraints: Iterable[str],
+    operation_id: str,
+    expected_version: int,
+    expected_assignee: str,
+    expected_head_event_ids: Iterable[int],
+    release_held_claim: bool = False,
+    target_intent: str = "queued",
+    _authority_capability: object,
+) -> dict[str, Any]:
+    """Reassign one canonical work row under resident-controller authority.
+
+    Unlike the agent handoff writer, this operation has no lane session and
+    never claims that the current assignee initiated the transfer.  It stamps
+    the operator/system authority itself, requires all three assignment fences,
+    and always refuses to disturb a live claim. The operator must stop or
+    release the current holder before requesting a new ownership epoch.
+    """
+
+    if _authority_capability is not _OPERATOR_REASSIGNMENT_CAPABILITY:
+        raise ValueError(
+            "operator reassignment requires the authenticated resident-controller capability"
+        )
+    request, request_sha256 = _operator_reassignment_request(
+        work_id=work_id,
+        owner_lane=owner_lane,
+        task=task,
+        why=why,
+        acceptance=acceptance,
+        refs=refs,
+        constraints=constraints,
+        operation_id=operation_id,
+        expected_version=expected_version,
+        expected_assignee=expected_assignee,
+        expected_head_event_ids=expected_head_event_ids,
+        release_held_claim=release_held_claim,
+        target_intent=target_intent,
+    )
+    clean_work_id = request["work_id"]
+    idempotency_key = f"operator-reassignment:{request['operation_id']}"
+
+    with tx(conn):
+        replay = _operator_reassignment_replay_unlocked(
+            conn,
+            request=request,
+            request_sha256=request_sha256,
+        )
+        if replay is not None:
+            return replay
+
+        existing = conn.execute(
+            "SELECT * FROM work_items WHERE work_id=?", (clean_work_id,)
+        ).fetchone()
+        if existing is None:
+            raise ValueError("operator reassignment work item not found")
+        declared_done = str(existing["done_signal"] or "").strip()
+        if not declared_done:
+            raise ValueError("operator reassignment requires an existing done_signal")
+        current_intent = str(existing["intent_state"] or "").strip().lower()
+        if (
+            current_intent in (set(TERMINAL_WORK_STATES) | {"completed"})
+            or existing["archived_at"] is not None
+        ):
+            raise ValueError("operator reassignment refuses terminal or archived work")
+        if done_signal_satisfied(conn, declared_done, HARNESS_ROOT):
+            raise ValueError("operator reassignment refuses resolved completion proof")
+        if conn.execute(
+            "SELECT 1 FROM artifacts WHERE work_id=?"
+            " AND COALESCE(kind,'') NOT IN ('context_pack') LIMIT 1",
+            (clean_work_id,),
+        ).fetchone() is not None:
+            raise ValueError(
+                "operator reassignment refuses a derived completion artifact"
+            )
+        terminal_run_states = tuple(sorted(TERMINAL_RUN_STATES))
+        terminal_placeholders = ",".join("?" for _ in terminal_run_states)
+        if conn.execute(
+            "SELECT 1 FROM runs WHERE work_id=?"
+            f" AND (state IS NULL OR state NOT IN ({terminal_placeholders})) LIMIT 1",
+            (clean_work_id, *terminal_run_states),
+        ).fetchone() is not None:
+            raise ValueError("operator reassignment refuses a nonterminal run")
+        observed_version = int(existing["version"] or 0)
+        if observed_version != request["expected_version"]:
+            raise ValueError(
+                "operator reassignment version CAS failed: "
+                f"expected {request['expected_version']}, observed {observed_version}"
+            )
+        current_assignee = str(existing["assignee"] or "").strip().lower()
+        if current_assignee != request["expected_assignee"]:
+            raise ValueError(
+                "operator reassignment assignee CAS failed: expected and observed lanes differ"
+            )
+        head_state = _typed_handoff_head_state_unlocked(conn, clean_work_id)
+        if head_state["active_event_ids"] != request["expected_head_event_ids"]:
+            raise ValueError(
+                "operator reassignment assignment-head CAS failed: expected "
+                f"{_typed_handoff_event_id_summary(request['expected_head_event_ids'])}, observed "
+                f"{_typed_handoff_event_id_summary(head_state['active_event_ids'])}"
+            )
+
+        t = db_now(conn)
+        _release_expired_claims_unlocked(conn, at=t, work_id=clean_work_id)
+        held = conn.execute(
+            "SELECT claim_id FROM claims WHERE work_id=?"
+            " AND status IN ('running','paused','blocked')"
+            " AND (expires_at IS NULL OR expires_at > ?)"
+            " ORDER BY acquired_at,claim_id",
+            (clean_work_id, t),
+        ).fetchall()
+        if held:
+            raise ValueError(
+                "operator reassignment refuses a live held claim; stop or release "
+                "the current holder first"
+            )
+        released_claim_ids: list[str] = []
+
+        changed = conn.execute(
+            "UPDATE work_items SET assigned_by='operator',assignee=?,intent_state=?,"
+            " updated_at=?,version=version+1 WHERE work_id=? AND version=?"
+            " AND assignee=? AND archived_at IS NULL",
+            (
+                request["owner_lane"],
+                request["target_intent"],
+                t,
+                clean_work_id,
+                request["expected_version"],
+                request["expected_assignee"],
+            ),
+        )
+        if changed.rowcount != 1:
+            raise ValueError("operator reassignment work-row CAS drift")
+        work = conn.execute(
+            "SELECT work_id,title,note,acceptance_json,assignee,assigned_by,"
+            " intent_state,rubric_verdict,done_signal,version,updated_at"
+            " FROM work_items WHERE work_id=?",
+            (clean_work_id,),
+        ).fetchone()
+        work_postimage, work_postimage_meta = _typed_handoff_work_postimage(dict(work))
+        superseded_ids = list(head_state["active_event_ids"])
+        operation_receipt = {
+            "schema_version": 1,
+            "writer_contract": OPERATOR_REASSIGNMENT_RECEIPT_CONTRACT,
+            "authority_channel": OPERATOR_AUTHORITY_CHANNEL,
+            "request_sha256": request_sha256,
+            "work_postimage": work_postimage,
+            **work_postimage_meta,
+            "superseded_event_ids": superseded_ids,
+            "released_claim_ids": released_claim_ids,
+        }
+        payload = {
+            "schema_version": 1,
+            "writer_contract": OPERATOR_REASSIGNMENT_WRITER_CONTRACT,
+            "authority_channel": OPERATOR_AUTHORITY_CHANNEL,
+            "task": request["task"],
+            "why": request["why"],
+            "acceptance": request["acceptance"],
+            "constraints": request["constraints"],
+            "refs": request["refs"],
+            "done_signal_source": "existing_coord_work_row",
+            "operation_id": request["operation_id"],
+            "operation_request_sha256": request_sha256,
+            "preconditions": {
+                "expected_version": request["expected_version"],
+                "expected_assignee": request["expected_assignee"],
+                "expected_head_event_ids": request["expected_head_event_ids"],
+                "release_held_claim": request["release_held_claim"],
+            },
+            "operation_receipt": operation_receipt,
+        }
+        cur = conn.execute(
+            "INSERT INTO events(ts,kind,actor,session_id,to_selector,work_id,trust,"
+            " title,body,refs_json,payload_json,idempotency_key)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                t,
+                "handoff",
+                "operator",
+                None,
+                f"actor:{request['owner_lane']}",
+                clean_work_id,
+                "system",
+                "Operator reassignment",
+                "Resident controller reassigned canonical work ownership.",
+                json.dumps(request["refs"], separators=(",", ":")),
+                json.dumps(payload, sort_keys=True, separators=(",", ":")),
+                idempotency_key,
+            ),
+        )
+        event_id = int(cur.lastrowid)
+        for prior_id in superseded_ids:
+            conn.execute(
+                "INSERT INTO events(ts,kind,actor,session_id,to_selector,work_id,trust,"
+                " refs_json,payload_json,idempotency_key) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                (
+                    t,
+                    "handoff_superseded",
+                    "operator",
+                    None,
+                    f"actor:{request['owner_lane']}",
+                    clean_work_id,
+                    "system",
+                    json.dumps([f"event:{prior_id}"], separators=(",", ":")),
+                    json.dumps(
+                        {
+                            "schema_version": 1,
+                            "writer_contract": "operator_reassignment_supersession.v1",
+                            "supersedes": prior_id,
+                            "by_event_id": event_id,
+                            "reason": "operator reassignment replaced the active assignment head",
+                        },
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    ),
+                    f"operator-reassignment-supersede:{event_id}:{prior_id}",
+                ),
+            )
+        final_head_state = _typed_handoff_head_state_unlocked(conn, clean_work_id)
+        if (
+            event_id not in final_head_state["active_event_ids"]
+            or any(
+                prior_id in final_head_state["active_event_ids"]
+                for prior_id in superseded_ids
+            )
+        ):
+            raise ValueError("operator reassignment assignment-head receipt failed")
+
+    result = {
+        "schema_version": 1,
+        "writer_contract": OPERATOR_REASSIGNMENT_RECEIPT_CONTRACT,
+        "authority_channel": OPERATOR_AUTHORITY_CHANNEL,
+        "event_id": event_id,
+        "work_id": clean_work_id,
+        "owner_lane": request["owner_lane"],
+        "operation_id": request["operation_id"],
+        "request_sha256": request_sha256,
+        "superseded_event_ids": superseded_ids,
+        "released_claim_ids": released_claim_ids,
+        "work": work_postimage,
+        **work_postimage_meta,
+        "active": True,
+        "superseded_by": None,
+        "quarantined_event_ids": final_head_state["quarantined_event_ids"],
+        "replayed": False,
+        "capsule_warnings": _typed_handoff_capsule_warnings(request),
+    }
+    return compact_existing_work_handoff_result(result)
 
 
 def _post_typed_handoff_canary_rollback_unlocked(
