@@ -179,10 +179,15 @@ def test_staged_authored_and_public_manifests_are_authoritative(tmp_path: Path) 
     assert any("payload.txt: unaccounted" in item for item in gate.run(root).coverage)
 
 
-def test_structural_ipv4_allows_127_block_but_rejects_unspecified_bind(tmp_path: Path) -> None:
-    root = initialize_repo(tmp_path / "repo", {"network.txt": "127.9.8.7\n0.0.0.0\n"})
+def test_structural_ipv4_allows_127_block_and_bind_all_but_rejects_routable(
+    tmp_path: Path,
+) -> None:
+    root = initialize_repo(
+        tmp_path / "repo",
+        {"network.txt": "127.9.8.7\n0.0.0.0\n192.168.1.4\n"},
+    )
     report = gate.run(root)
-    assert report.patterns == ["network.txt:2: bare IPv4 address"]
+    assert report.patterns == ["network.txt:3: bare IPv4 address"]
 
 
 def test_fake_png_is_rejected_even_with_matching_provenance_hash(tmp_path: Path) -> None:
