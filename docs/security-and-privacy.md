@@ -10,14 +10,27 @@ hosted or multi-tenant service.
 
 `coordharness` coordinates trusted processes on one machine, normally under one user
 account and against one checkout. It has no account system, caller authentication, or
-tenant isolation. The optional web board is a loopback, read-only projection; it does not
-turn the product into a trusted network service.
+tenant isolation. The optional web board is, in its default configuration, a loopback,
+read-only projection; it does not turn the product into a trusted network service. One
+opt-in exception exists — see the native-write caveat below.
 
 **Lifecycle authority is local.** The board is a SQLite file (`coord.db`) that trusted
 writer processes open in WAL mode on the same filesystem. MCP uses a local stdio child
-process. The optional `coord-board` opens SQLite read-only and serves a versioned snapshot
-on loopback. Operating-system process and file permissions are the primary access boundary;
-the HTTP viewer adds no authorization boundary of its own.
+process. The optional `coord-board` opens SQLite read-only by default and serves a
+versioned snapshot on loopback. Operating-system process and file permissions are the
+primary access boundary; the HTTP viewer adds no authorization boundary of its own beyond
+that default.
+
+**The native-write exception.** `coord-board` also dispatches one opt-in POST route,
+`/api/native/action`, gated behind the `COORD_NATIVE_OPERATOR_WRITES=1` environment
+variable and a private, uid-owned operator-token file. When active, it opens a
+**read-write** connection to `coord.db` and posts an operator reassignment — the macOS
+menu bar is the one shipped client that calls it, with a bearer token. It is off by
+default and not set by the shipped container image. See
+[`threat-model.md` §2.8](threat-model.md#28-the-read-only-projection--survives-with-two-precise-caveats)
+for the full gating (loopback bind, loopback `Host`, socket-peer check, and the token
+compare) and [`compatibility.md`](compatibility.md#compatibility-promises) for the client
+inventory.
 
 **The database is a file, not a vault.** `coord.db` holds sessions, claims, work-item rows,
 run records, and an event log — the shape of who did what, and when. It is not designed to

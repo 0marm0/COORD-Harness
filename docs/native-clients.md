@@ -1,6 +1,6 @@
 # Native clients
 
-Status: **Preview** in [`feature-status.json`](feature-status.json). The clients are clean-room, read-only views in this branch; there is no app-store, signing, or public distribution claim.
+Status: **Preview** in [`feature-status.json`](feature-status.json). The clients are clean-room, read-only views by default in this branch — `CoordMenuBar` has one opt-in write path, see [Data contract](#data-contract) below; there is no app-store, signing, or public distribution claim.
 
 ## Scope
 
@@ -41,13 +41,20 @@ contract to insulate them.
 Both families keep a last-good local snapshot so the UI can explain temporary unavailability without
 inventing live state.
 
-None of the four implement:
+None of the four open `coord.db` for anything but read-only, query-only SQLite access, and
+none implement lifecycle actions, process controls, signing team IDs, or privileged
+entitlements, or an alternate status resolver.
 
-- `POST`, lifecycle actions, or process controls;
-- read-write database access — the SQLite path is opened read-only and query-only;
-- API tokens or user authentication;
-- signing team IDs or privileged entitlements;
-- an alternate status resolver.
+**One exception, opt-in and off by default:** `CoordMenuBar` (only) can POST an operator
+reassignment to the board server's `/api/native/action` route, through
+[`NativeOperatorTokenSource.swift`](../apps/menubar/Sources/Cockpit/Core/NativeOperatorTokenSource.swift)
+and
+[`NativeCockpitActionBroker.swift`](../apps/menubar/Sources/Cockpit/UI/NativeCockpitActionBroker.swift).
+This requires the server operator to set `COORD_NATIVE_OPERATOR_WRITES=1` and have a private,
+uid-owned operator-token file present; the request carries that token as a bearer credential.
+`CoordCockpitWindow`, `CoordCockpitIOS`, and `CoordCockpitMac` implement no such path. See
+[`threat-model.md` §2.8](threat-model.md#28-the-read-only-projection--survives-with-two-precise-caveats)
+for the full gating.
 
 The bundle identifiers are clean-room placeholders under `org.coordharness.cockpit.*`; no developer team identifier is stored.
 
