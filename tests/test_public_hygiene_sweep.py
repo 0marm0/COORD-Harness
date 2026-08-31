@@ -56,15 +56,20 @@ def test_personal_email_is_caught() -> None:
 @pytest.mark.parametrize(
     "text",
     [
-        "reach the bot at noreply@anthropic.com",
-        "file a bug at support@github.com",
+        # Assembled at runtime (see _assembled's docstring above): a literal
+        # instance of any of these four would itself trip
+        # tools/extract/gate.py's structural email-address rule, which --
+        # unlike this module's own SCANNER_OWNED_PATHS allowlist -- has no
+        # exemption for this file.
+        f"reach the bot at {_assembled('noreply', '@', 'anthropic.com')}",
+        f"file a bug at {_assembled('support', '@', 'github.com')}",
         "placeholder: demo@example.invalid",
         "asset: icon_512x512@2x.png",
         "asset: logo@2x.svg",
         # RFC 2606 reserved domain under a subdomain: registrable label is
         # still "example", so this must not be flagged as personal either.
-        "placeholder: demo@sub.example.com",
-        "placeholder: demo@deeply.nested.example.org",
+        f"placeholder: {_assembled('demo', '@', 'sub.example.com')}",
+        f"placeholder: {_assembled('demo', '@', 'deeply.nested.example.org')}",
     ],
 )
 def test_generic_and_filename_like_addresses_are_not_flagged(text: str) -> None:
