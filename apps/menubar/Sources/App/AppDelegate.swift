@@ -136,6 +136,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem.onUsageMetricModeChange = { [weak self] mode in
             self?.enqueueMenuConfigChange { $0.usageMetricMode = mode.rawValue }
         }
+        statusItem.onBatteryStatusItemVisibilityChange = { [weak self] visible in
+            self?.enqueueMenuConfigChange { $0.batteryStatusItemEnabled = visible }
+        }
         statusItem.onSystemTelemetryVisibilityChange = { [weak self] visible in
             self?.enqueueMenuConfigChange {
                 $0.systemTelemetryEnabled = true

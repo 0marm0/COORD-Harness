@@ -22,6 +22,15 @@ struct PopoverNavigationState {
     mutating func reset() { destination = .main }
 }
 
+private enum UsageWindowGeometry {
+    static let preferredHeight: CGFloat = 860
+    static let detachedScreenInset: CGFloat = 40
+
+    static func detachedHeight(_ desired: CGFloat, screen: NSScreen?) -> CGFloat {
+        guard let visibleHeight = screen?.visibleFrame.height else { return desired }
+        return min(desired, max(42, visibleHeight - detachedScreenInset))
+    }
+}
 @MainActor
 final class PopoverController {
 
@@ -443,11 +452,18 @@ final class PopoverController {
         let detachedSize = detachedVisible ? detachedWindow?.contentView?.bounds.size : nil
         let usageWindowWidth: CGFloat = 460
         let width = detachedVisible ? max(usageWindowWidth, detachedSize?.width ?? usageWindowWidth) : usageWindowWidth
-        // Usage is an expanded route: give its cards, cost charts, and persistent actions
-        // the same screen-fit height as the installed route instead of capping it at 680 points.
-        let height = detachedVisible
-            ? max(520, detachedSize?.height ?? 640)
-            : max(42, availablePopoverHeight())
+        // Keep both providers, the taller Codex plot, and the action rail visible
+        // when the screen permits. The dense route itself retains a ScrollView fallback.
+        let height: CGFloat
+        if detachedVisible {
+            let desired = max(UsageWindowGeometry.preferredHeight, detachedSize?.height ?? 0)
+            height = UsageWindowGeometry.detachedHeight(
+                desired,
+                screen: detachedWindow?.screen ?? NSScreen.main
+            )
+        } else {
+            height = min(UsageWindowGeometry.preferredHeight, availablePopoverHeight())
+        }
         let newContent = FlippedView(frame: NSRect(x: 0, y: 0, width: width, height: height))
         let hosting = NSHostingView(
             rootView: InstalledUsageDashboardView(

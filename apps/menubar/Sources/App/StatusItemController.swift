@@ -9,6 +9,7 @@ final class StatusItemController {
     var onStatusModeChange: ((UsageStatusMode) -> Void)?
     var onUsageMetricModeChange: ((UsageMetricMode) -> Void)?
     var onSystemTelemetryVisibilityChange: ((Bool) -> Void)?
+    var onBatteryStatusItemVisibilityChange: ((Bool) -> Void)?
     var onSystemTelemetryMetricChange: ((String, Bool) -> Void)?
     var onSystemTelemetryProfileChange: ((String) -> Void)?
     var systemTelemetryProfile = "balanced"
@@ -21,6 +22,7 @@ final class StatusItemController {
     var usageWarningMarkersVisible: Bool = true { didSet { requestRender() } }
     var usageWarningThreshold: Double = 20 { didSet { requestRender() } }
     var showSystemTelemetry = false { didSet { requestRender() } }
+    var batteryStatusItemVisible = false
     var systemTelemetryShowCPU = true { didSet { requestRender() } }
     var systemTelemetryShowGPU = true { didSet { requestRender() } }
     var systemTelemetryShowRAM = true { didSet { requestRender() } }
@@ -85,6 +87,7 @@ final class StatusItemController {
         usageWarningMarkersVisible = config.usageWarningMarkersVisible
         usageWarningThreshold = config.usageWarningThreshold
         showSystemTelemetry = config.systemTelemetryEnabled && config.systemTelemetryInStatusItem
+        batteryStatusItemVisible = config.batteryStatusItemEnabled
         systemTelemetryShowCPU = config.systemTelemetryShowCPU
         systemTelemetryShowGPU = config.systemTelemetryShowGPU
         systemTelemetryShowRAM = config.systemTelemetryShowRAM
@@ -238,6 +241,13 @@ final class StatusItemController {
         quotaItem.submenu = quotaMenu
         menu.addItem(quotaItem)
 
+        let batteryItem = NSMenuItem(title: "Battery", action: nil, keyEquivalent: "")
+        let batteryMenu = NSMenu()
+        let batteryVisible = makeItem("Show separate menu-bar item", #selector(menuBatteryStatusItemVisibility(_:)))
+        batteryVisible.state = batteryStatusItemVisible ? .on : .off
+        batteryMenu.addItem(batteryVisible)
+        batteryItem.submenu = batteryMenu
+        menu.addItem(batteryItem)
         let statsItem = NSMenuItem(title: "System stats", action: nil, keyEquivalent: "")
         let statsMenu = NSMenu()
         let visible = makeItem("Show separate menu-bar item", #selector(menuSystemTelemetryVisibility(_:)))
@@ -287,6 +297,9 @@ final class StatusItemController {
         }
     }
     @objc private func menuRefresh() { afterMenuDismissal { [weak self] in self?.onRefresh?() } }
+    @objc private func menuBatteryStatusItemVisibility(_ sender: NSMenuItem) {
+        onBatteryStatusItemVisibilityChange?(!batteryStatusItemVisible)
+    }
     @objc private func menuSystemTelemetryVisibility(_ sender: NSMenuItem) {
         onSystemTelemetryVisibilityChange?(!showSystemTelemetry)
     }

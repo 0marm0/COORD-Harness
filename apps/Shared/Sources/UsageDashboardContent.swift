@@ -508,6 +508,10 @@ private enum UsageDashboardCostFormat {
             ? formatted.replacingOccurrences(of: "USD ", with: "$")
             : formatted
     }
+
+    static func peakDay(_ day: String, nanos: Int64, currency: String?) -> String {
+        "Peak \(display(nanos, currency: currency)) · \(day)"
+    }
 }
 
 private struct UsageDenseTotalCostStrip: View {
@@ -633,9 +637,12 @@ private struct UsageDenseProviderSection: View {
                 Text("Daily cost")
                     .font(.system(size: 10, weight: .bold))
                 Spacer(minLength: 6)
-                Text(latestDailyCost)
+                Text(peakDailyCost)
                     .font(.system(size: 9.5, weight: .semibold).monospacedDigit())
                     .foregroundStyle(tint)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+                    .accessibilityLabel("Peak daily cost \(peakDailyCost)")
             }
             if let dailyProjection {
                 UsageDenseDailyCostChart(
@@ -653,9 +660,11 @@ private struct UsageDenseProviderSection: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private var latestDailyCost: String {
-        let latest = dailyProjection?.points.last
-        return UsageDashboardCostFormat.display(latest?.nanos, currency: latest?.currency ?? "USD")
+    private var peakDailyCost: String {
+        guard let peak = dailyProjection?.points.max(by: { lhs, rhs in
+            lhs.nanos == rhs.nanos ? lhs.day > rhs.day : lhs.nanos < rhs.nanos
+        }) else { return "Peak unavailable" }
+        return UsageDashboardCostFormat.peakDay(peak.day, nanos: peak.nanos, currency: peak.currency)
     }
     private var planLabel: String {
         let plan = card.provider.account?.plan
@@ -730,8 +739,13 @@ private struct UsageDenseDailyCostChart: View {
                 .frame(maxWidth: .infinity, minHeight: plotHeight, alignment: .leading)
         } else {
             let peak = max(points.map(\.nanos).max() ?? 1, 1)
+            let peakPoint = points.max(by: { lhs, rhs in
+                lhs.nanos == rhs.nanos ? lhs.day > rhs.day : lhs.nanos < rhs.nanos
+            }) ?? points[0]
+            let peakIndex = points.firstIndex(where: { $0.day == peakPoint.day && $0.nanos == peakPoint.nanos }) ?? 0
+            let barGap: CGFloat = points.count > 120 ? 0 : 1
             VStack(alignment: .leading, spacing: 3) {
-                HStack(alignment: .bottom, spacing: points.count > 120 ? 0 : 1) {
+                HStack(alignment: .bottom, spacing: barGap) {
                     ForEach(Array(points.enumerated()), id: \.offset) { _, point in
                         RoundedRectangle(cornerRadius: 1)
                             .fill(tint.opacity(projection.sourceKind == .providerReported ? 0.50 : 0.82))
@@ -740,10 +754,26 @@ private struct UsageDenseDailyCostChart: View {
                             .help("\(point.day) · \(UsageDashboardCostFormat.display(point.nanos, currency: point.currency)) · \(point.costKind)")
                     }
                 }
-                .overlay(alignment: .bottom) { Divider().opacity(0.35) }
                 .frame(height: plotHeight, alignment: .bottom)
+                .overlay(alignment: .topLeading) {
+                    GeometryReader { proxy in
+                        let chartWidth = proxy.size.width
+                        let badgeWidth = min(CGFloat(96), chartWidth)
+                        let halfBadge = badgeWidth / 2
+                        let barWidth = max(0, (chartWidth - barGap * CGFloat(max(0, points.count - 1))) / CGFloat(max(1, points.count)))
+                        let peakCenter = barWidth * (CGFloat(peakIndex) + 0.5) + barGap * CGFloat(peakIndex)
+                        UsageDensePeakBadge(point: peakPoint, tint: tint)
+                            .frame(width: badgeWidth)
+                            .position(
+                                x: min(max(halfBadge, peakCenter), max(halfBadge, chartWidth - halfBadge)),
+                                y: 14
+                            )
+                    }
+                    .allowsHitTesting(false)
+                }
+                .overlay(alignment: .bottom) { Divider().opacity(0.35) }
                 .accessibilityLabel("\(projection.providerID) daily estimated cost")
-                .accessibilityValue("\(points.count) observed days; peak \(UsageDashboardCostFormat.display(peak, currency: points.first?.currency))")
+                .accessibilityValue("\(points.count) observed days; \(UsageDashboardCostFormat.peakDay(peakPoint.day, nanos: peakPoint.nanos, currency: peakPoint.currency))")
                 HStack {
                     Text(points.first?.day ?? "Unknown")
                     Spacer()
@@ -753,6 +783,32 @@ private struct UsageDenseDailyCostChart: View {
                 .foregroundStyle(.secondary)
             }
         }
+    }
+}
+
+private struct UsageDensePeakBadge: View {
+    let point: UsageDailyCostTrendPoint
+    let tint: Color
+
+    var body: some View {
+        VStack(spacing: 1) {
+            Text(UsageDashboardCostFormat.display(point.nanos, currency: point.currency))
+                .font(.system(size: 8, weight: .bold).monospacedDigit())
+            Text(point.day)
+                .font(.system(size: 7, weight: .medium).monospacedDigit())
+        }
+        .foregroundStyle(.white)
+        .lineLimit(1)
+        .minimumScaleFactor(0.75)
+        .padding(.horizontal, 5)
+        .padding(.vertical, 3)
+        .background(tint.opacity(0.92), in: RoundedRectangle(cornerRadius: 4, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                .stroke(Color.white.opacity(0.22), lineWidth: 0.5)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Peak daily cost \(UsageDashboardCostFormat.peakDay(point.day, nanos: point.nanos, currency: point.currency))")
     }
 }
 
