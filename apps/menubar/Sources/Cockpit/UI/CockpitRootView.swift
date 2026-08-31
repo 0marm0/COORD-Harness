@@ -2092,11 +2092,15 @@ final class CockpitRootView: NSView, NSTextFieldDelegate, NSSearchFieldDelegate 
     }
 
     private func enabledRowAction(_ row: CockpitRow?, id: String) -> CockpitRowAction? {
-        row?.actions.first { $0.id == id && $0.isEnabled }
+        guard let row, !isCurrentAssignmentAction(row: row, id: id) else { return nil }
+        return row.actions.first { $0.id == id && $0.isEnabled }
     }
 
     private func rowActionState(_ row: CockpitRow?, id: String) -> (enabled: Bool, toolTip: String?) {
         guard let row else { return (false, "Select a work row") }
+        if isCurrentAssignmentAction(row: row, id: id) {
+            return (false, "This is already the current assignee")
+        }
         guard let action = row.actions.first(where: { $0.id == id }) else {
             return (false, "Action unavailable for this row")
         }
@@ -2104,7 +2108,20 @@ final class CockpitRootView: NSView, NSTextFieldDelegate, NSSearchFieldDelegate 
         return (false, action.disabledReason?.isEmpty == false ? action.disabledReason : "Action disabled for this row")
     }
 
+    private func isCurrentAssignmentAction(row: CockpitRow, id: String) -> Bool {
+        let lane: String?
+        switch id {
+        case "task.assign.claude": lane = "claude"
+        case "task.assign.codex": lane = "codex"
+        default: lane = nil
+        }
+        return lane != nil && lane == row.currentAssignee?.lowercased()
+    }
+
     private func unavailableActionMessage(row: CockpitRow, id: String) -> String {
+        if isCurrentAssignmentAction(row: row, id: id) {
+            return "This is already the current assignee"
+        }
         guard let action = row.actions.first(where: { $0.id == id }) else {
             return "Action unavailable"
         }
@@ -2158,15 +2175,16 @@ final class CockpitRootView: NSView, NSTextFieldDelegate, NSSearchFieldDelegate 
 
     private func promptHandoff(row: CockpitRow) {
         let alert = NSAlert()
-        alert.messageText = "Handoff selected"
-        alert.informativeText = workID(row) ?? row.title
-        alert.alertStyle = .informational
-        alert.addButton(withTitle: "Create")
+        alert.messageText = "Confirm operator transfer"
+        alert.informativeText = "Transfer \(workID(row) ?? row.title) from \(row.currentAssignee ?? "the current lane")?"
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Transfer")
         alert.addButton(withTitle: "Cancel")
 
         let content = NSView(frame: NSRect(x: 0, y: 0, width: 340, height: 116))
         let lane = NSPopUpButton(frame: NSRect(x: 0, y: 88, width: 140, height: 26))
-        lane.addItems(withTitles: ["claude", "codex"])
+        let currentLane = row.currentAssignee?.lowercased()
+        lane.addItems(withTitles: ["claude", "codex"].filter { $0 != currentLane })
         let title = NSTextField(frame: NSRect(x: 0, y: 50, width: 340, height: 26))
         title.placeholderString = "Task"
         title.stringValue = row.title
@@ -2193,6 +2211,8 @@ final class CockpitRootView: NSView, NSTextFieldDelegate, NSSearchFieldDelegate 
                     "acceptance": accept,
                     "refs": [self.workID(row) ?? row.dedupKey],
                     "why": "native cockpit handoff",
+                    "constraints": ["Preserve the declared done signal and current evidence."],
+                    "confirmed": true,
                 ]
             )
         }

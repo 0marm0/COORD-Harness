@@ -312,6 +312,7 @@ extension CockpitWindowController: CockpitRootViewDelegate {
             switch result {
             case .success(let actionResult):
                 view.setActionResult(actionResult)
+                guard actionResult.ok else { return }
                 await refreshProjectionThenReload(force: true)
             case .failure(let error):
                 view.setActionStatus(error.localizedDescription)

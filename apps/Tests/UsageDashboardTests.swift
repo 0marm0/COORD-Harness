@@ -732,7 +732,7 @@ final class UsageDashboardTests: XCTestCase {
         )
     }
 
-    func testAutoQuotaModeUsesWeeklyBaselineThenLowSessionAndNeverInventsCodexSession() throws {
+    func testAutoQuotaModeUsesLowestRealWindowAndNeverInventsCodexSession() throws {
         let snapshot = try decoder().decode(UsageIntelligenceSnapshot.self, from: Data(#"""
         {"schema":"coordharness.usage-intelligence.v1","providers":{
           "claude":{"quota_groups":[{"key":"account","windows":[
@@ -743,10 +743,24 @@ final class UsageDashboardTests: XCTestCase {
         """#.utf8))
         let state = UsageDashboardState.success(snapshot, at: Date())
         let auto = UsageStatusPresentation.make(from: state, metricMode: "auto", sessionThreshold: 50)
-        XCTAssertEqual(auto.selections.map { $0.window?.resolvedRemainingPercent }, [42, 34])
-        XCTAssertEqual(auto.selections.map(\.label), ["Session", "Weekly"])
+        XCTAssertEqual(auto.selections.map { $0.window?.resolvedRemainingPercent }, [27, 34])
+        XCTAssertEqual(auto.selections.map(\.label), ["Weekly", "Weekly"])
         let weekly = UsageStatusPresentation.make(from: state, metricMode: "weekly", sessionThreshold: 50)
         XCTAssertEqual(weekly.selections.map { $0.window?.resolvedRemainingPercent }, [27, 34])
+
+        let lowSessionSnapshot = try decoder().decode(UsageIntelligenceSnapshot.self, from: Data(#"""
+        {"schema":"coordharness.usage-intelligence.v1","providers":{
+          "claude":{"quota_groups":[{"key":"account","windows":[
+            {"kind":"session","remaining_percent":8},{"kind":"weekly","remaining_percent":27}]}]}
+        }}
+        """#.utf8))
+        let lowSession = UsageStatusPresentation.make(
+            from: .success(lowSessionSnapshot, at: Date()),
+            metricMode: "auto",
+            sessionThreshold: 0
+        )
+        XCTAssertEqual(lowSession.selections.first?.window?.resolvedRemainingPercent, 8)
+        XCTAssertEqual(lowSession.selections.first?.label, "Session")
     }
 
     func testStatusTaskSelectionCollapsesWidthWhenRowsStopRunning() throws {
@@ -827,6 +841,12 @@ final class UsageDashboardTests: XCTestCase {
               {"key":"fable","label":"Fable quota","windows":[
                 {"kind":"weekly","name":"Fable","remaining_percent":55,"countdown_seconds":86400,
                  "pace":{"seconds_to_exhaustion":3600}}
+              ]},
+              {"key":"bounded","label":"Bounded quota","windows":[
+                {"kind":"daily","remaining_percent":50,"countdown_seconds":3600,
+                 "pace":{"will_last_to_reset":true,"seconds_to_exhaustion":1200}},
+                {"kind":"monthly","remaining_percent":40,"countdown_seconds":3600,
+                 "pace":{"will_last_to_reset":false,"seconds_to_exhaustion":7200}}
               ]}
             ]
           }}
@@ -844,6 +864,10 @@ final class UsageDashboardTests: XCTestCase {
         XCTAssertEqual(claude.fableTiming.resetLabel, "1d")
         XCTAssertEqual(claude.fableTiming.runoutLabel, "1h")
         XCTAssertTrue(peek.accessibilityLabel.contains("run-out unavailable"))
+
+        let bounded = try XCTUnwrap(snapshot.providers["claude"]?.quotaGroups.first { $0.key == "bounded" })
+        XCTAssertEqual(UsageCompactQuotaTiming.make(from: bounded.windows[0]).runoutLabel, "—")
+        XCTAssertEqual(UsageCompactQuotaTiming.make(from: bounded.windows[1]).runoutLabel, "—")
     }
 
     func testDailyTrendProjectionKeepsRetainedAndProviderReportedSourcesSeparate() throws {
@@ -1425,6 +1449,40 @@ final class UsageDashboardTests: XCTestCase {
         XCTAssertTrue(coordContent.contains("Provider settings"))
     }
 
+    func testUsageWindowUsesDollarCostLabelsAndAContainedTallerCodexPlot() throws {
+        let projectRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let content = try String(
+            contentsOf: projectRoot.appendingPathComponent("apps/Shared/Sources/UsageDashboardContent.swift"),
+            encoding: .utf8
+        )
+        let popover = try String(
+            contentsOf: projectRoot.appendingPathComponent("apps/menubar/Sources/App/PopoverController.swift"),
+            encoding: .utf8
+        )
+        let denseStart = try XCTUnwrap(content.range(of: "private struct UsageDenseRoute: View"))
+        let denseEnd = try XCTUnwrap(content.range(of: "private struct UsageDailyTrendOverview", range: denseStart.upperBound..<content.endIndex))
+        let dense = String(content[denseStart.lowerBound..<denseEnd.lowerBound])
+
+        XCTAssertTrue(popover.contains("let usageWindowWidth: CGFloat = 460"))
+        XCTAssertTrue(popover.contains("max(usageWindowWidth, detachedSize?.width ?? usageWindowWidth)"))
+        XCTAssertTrue(content.contains("private enum UsageDashboardCostFormat"))
+        XCTAssertTrue(content.contains("replacingOccurrences(of: \"USD \", with: \"$\")"))
+        XCTAssertTrue(dense.contains("UsageDashboardCostFormat.display(totalEstimatedCostNanos)"))
+        XCTAssertTrue(dense.contains("UsageDashboardCostFormat.display(latest?.nanos"))
+
+        XCTAssertTrue(content.contains("claudeChartPlotHeight: CGFloat = 82"))
+        XCTAssertTrue(content.contains("codexChartPlotHeight: CGFloat = 136"))
+        XCTAssertTrue(dense.contains("case \"claude\": return UsageDenseRouteLayout.claudeChartPlotHeight"))
+        XCTAssertTrue(dense.contains("case \"codex\": return UsageDenseRouteLayout.codexChartPlotHeight"))
+        XCTAssertTrue(dense.contains("plotHeight: effectiveChartPlotHeight"))
+        XCTAssertTrue(dense.contains("chartPanelHeight"))
+        XCTAssertTrue(dense.contains("chart.frame(width: UsageDenseRouteLayout.providerChartWidth, height: chartPanelHeight)"))
+        XCTAssertTrue(dense.contains(".frame(height: plotHeight, alignment: .bottom)"))
+        XCTAssertTrue(dense.contains("ScrollView"), "Taller Codex content must remain scrollable rather than clip.")
+    }
     private func fixture(named name: String = "usage-dashboard-v1") throws -> UsageIntelligenceSnapshot {
         let url = try XCTUnwrap(Bundle(for: Self.self).url(forResource: name, withExtension: "json"))
         return try decoder().decode(UsageIntelligenceSnapshot.self, from: Data(contentsOf: url))

@@ -39,7 +39,43 @@
 .mapbody.continuous-comms .projection-receipt-compact .projection-detail {
   max-width: min(760px, calc(100vw - 2rem));
 }
-.mapbody.continuous-comms.continuous-section-fleet .card { border-radius: 0; }
+.mapbody.continuous-comms.continuous-section-fleet .card {
+  border-radius: 0;
+  padding: .45rem .55rem .35rem;
+}
+.mapbody.continuous-comms.continuous-section-fleet #fleet .tablewrap {
+  margin-top: 0;
+  border-radius: 7px;
+}
+.mapbody.continuous-comms.continuous-section-fleet #fleet .matrix th,
+.mapbody.continuous-comms.continuous-section-fleet #fleet .matrix td {
+  height: 30px;
+  padding: .22rem .38rem;
+  line-height: 1;
+}
+.mapbody.continuous-comms.continuous-section-fleet #fleet .matrix tr:first-child th {
+  height: 66px;
+  padding-top: .25rem;
+  padding-bottom: .35rem;
+}
+.mapbody.continuous-comms.continuous-section-fleet #fleet .matrix tr:first-child th span {
+  font-size: 10.5px;
+  letter-spacing: .035em;
+}
+.mapbody.continuous-comms.continuous-section-fleet #fleet .matrix th.corner,
+.mapbody.continuous-comms.continuous-section-fleet #fleet .matrix th.who,
+.mapbody.continuous-comms.continuous-section-fleet #fleet .matrix td {
+  font-size: 11px;
+}
+.mapbody.continuous-comms.continuous-section-fleet #fleet .matrix th.who .mark {
+  width: 12px;
+  height: 12px;
+  margin-right: .35em;
+}
+.mapbody.continuous-comms.continuous-section-fleet #fleet .legend {
+  margin-top: .35rem;
+  font-size: .69rem;
+}
 
 .mapbody .mast { align-items: center; }
 .mapbody .maphead .meta { margin: 0; font-size: .8rem; }

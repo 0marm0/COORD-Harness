@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 from datetime import datetime, timezone
+import hmac
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import html
@@ -9,8 +10,10 @@ from importlib.resources import files
 import json
 import mimetypes
 import os
+from pathlib import Path
 from pathlib import PurePosixPath
 import re
+import stat
 import sys
 import threading
 import time
@@ -47,6 +50,8 @@ from coordharness.board.snapshot import (
 from coordharness.usage.account_actions import UsageAccountActionForwarder
 from coordharness.usage.dashboard_proxy import UsageDashboardProxy
 from coordharness.board.system_telemetry_proxy import SystemTelemetryProxy
+from coordharness.coord import coord_db
+from coordharness.coord.config import connect
 from coordharness.usage.provider_management import ProviderManagementForwarder
 
 DEFAULT_HOST = "127.0.0.1"
@@ -67,6 +72,9 @@ _PROVIDER_ACTION_SHAPES = {
     "credential_clear": {"action", "provider_id", "profile_id"},
     "routing_policy_update": {"action", "policy"},
 }
+_NATIVE_OPERATOR_ACTIONS = {"work.reassign", "handoff.create"}
+_NATIVE_OPERATOR_TOKEN_RE = re.compile(r"[A-Za-z0-9._~-]{32,256}")
+_NATIVE_OPERATOR_BODY_LIMIT = 16_384
 _STATIC = files("coordharness.board").joinpath("static")
 _STATIC_ALLOWLIST = {
     "index.html",
@@ -207,6 +215,139 @@ def _strict_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
             raise ValueError("duplicate JSON key")
         result[key] = value
     return result
+
+
+def _native_operator_token(
+    db_path: str | None,
+    *,
+    environment: dict[str, str] | None = None,
+) -> tuple[str | None, str]:
+    """Resolve one private resident-controller token without publishing it."""
+
+    env = os.environ if environment is None else environment
+    direct = str(env.get("COORD_NATIVE_OPERATOR_TOKEN") or "").strip()
+    if direct:
+        if _NATIVE_OPERATOR_TOKEN_RE.fullmatch(direct) is None:
+            return None, "invalid_token_configuration"
+        return direct, "configured"
+
+    configured_path = str(env.get("COORD_NATIVE_OPERATOR_TOKEN_FILE") or "").strip()
+    if configured_path:
+        token_path = Path(configured_path).expanduser()
+    else:
+        source = Path(db_path) if db_path is not None else config.coord_db_path()
+        token_path = source.expanduser().resolve().parent / "operator-token"
+    try:
+        metadata = token_path.stat()
+        if not stat.S_ISREG(metadata.st_mode) or metadata.st_mode & 0o077:
+            return None, "private_token_required"
+        if hasattr(os, "getuid") and metadata.st_uid != os.getuid():
+            return None, "private_token_required"
+        raw = token_path.read_bytes()
+        if len(raw) > 512:
+            return None, "invalid_token_configuration"
+        token = raw.decode("utf-8").strip()
+    except (OSError, UnicodeDecodeError):
+        return None, "token_not_configured"
+    if _NATIVE_OPERATOR_TOKEN_RE.fullmatch(token) is None:
+        return None, "invalid_token_configuration"
+    return token, "configured"
+
+
+def _native_operator_configuration(
+    db_path: str | None,
+    *,
+    environment: dict[str, str] | None = None,
+) -> tuple[bool, str | None, str]:
+    env = os.environ if environment is None else environment
+    if str(env.get("COORD_NATIVE_OPERATOR_WRITES") or "").strip() != "1":
+        return False, None, "native_operator_writes_disabled"
+    token, reason = _native_operator_token(db_path, environment=env)
+    if token is None:
+        return False, None, reason
+    return True, token, "enabled"
+
+
+def _native_operator_request_fields(document: Any) -> dict[str, Any]:
+    outer = {
+        "schema_version", "action_id", "source_face", "actor", "action",
+        "target", "payload", "dry_run",
+    }
+    target_keys = {
+        "work_id", "expected_version", "expected_assignee",
+        "expected_head_event_ids",
+    }
+    payload_keys = {
+        "owner_lane", "target_intent", "task", "why", "acceptance", "refs",
+        "constraints", "release_held_claim", "confirmed",
+    }
+    if not isinstance(document, dict) or set(document) != outer:
+        raise ValueError("invalid native operator document")
+    target = document.get("target")
+    payload = document.get("payload")
+    if not isinstance(target, dict) or set(target) != target_keys:
+        raise ValueError("invalid native operator target")
+    if not isinstance(payload, dict) or set(payload) != payload_keys:
+        raise ValueError("invalid native operator payload")
+    action_id = document.get("action_id")
+    action = document.get("action")
+    heads = target.get("expected_head_event_ids")
+    refs = payload.get("refs")
+    constraints = payload.get("constraints")
+    if (
+        document.get("schema_version") != 1
+        or document.get("source_face") != "native_cockpit"
+        or document.get("actor") != "operator"
+        or document.get("dry_run") is not False
+        or action not in _NATIVE_OPERATOR_ACTIONS
+        or not isinstance(action_id, str)
+        or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.:-]{7,199}", action_id) is None
+        or not isinstance(target.get("work_id"), str)
+        or isinstance(target.get("expected_version"), bool)
+        or not isinstance(target.get("expected_version"), int)
+        or not isinstance(target.get("expected_assignee"), str)
+        or not isinstance(heads, list)
+        or any(isinstance(value, bool) or not isinstance(value, int) for value in heads)
+        or not isinstance(refs, list)
+        or any(not isinstance(value, str) for value in refs)
+        or not isinstance(constraints, list)
+        or any(not isinstance(value, str) for value in constraints)
+        or payload.get("release_held_claim") is not False
+        or payload.get("confirmed") is not True
+        or any(
+            not isinstance(payload.get(key), str)
+            for key in ("owner_lane", "target_intent", "task", "why", "acceptance")
+        )
+    ):
+        raise ValueError("invalid native operator field")
+    return {
+        "work_id": target["work_id"],
+        "owner_lane": payload["owner_lane"],
+        "target_intent": payload["target_intent"],
+        "task": payload["task"],
+        "why": payload["why"],
+        "acceptance": payload["acceptance"],
+        "refs": refs,
+        "constraints": constraints,
+        "operation_id": action_id,
+        "expected_version": target["expected_version"],
+        "expected_assignee": target["expected_assignee"],
+        "expected_head_event_ids": heads,
+        "release_held_claim": payload["release_held_claim"],
+    }
+
+
+def _native_operator_conflict(error: ValueError) -> tuple[int, str, str]:
+    message = str(error).lower()
+    if "live held claim" in message or "held-claim" in message:
+        return HTTPStatus.CONFLICT, "claim_conflict", "The assignment claim changed; refresh before transferring."
+    if "active run" in message:
+        return HTTPStatus.CONFLICT, "live_run_conflict", "The work has an active run and cannot be transferred."
+    if "cas" in message or "operation_id was already used" in message:
+        return HTTPStatus.CONFLICT, "stale_fence", "The assignment changed; refresh and confirm the current row."
+    if any(term in message for term in ("terminal", "completion proof", "completion artifact")):
+        return HTTPStatus.CONFLICT, "target_conflict", "The work is no longer eligible for transfer."
+    return HTTPStatus.BAD_REQUEST, "invalid_request", "The transfer request was refused."
 
 
 def build_documents(db_path: str | None) -> tuple[dict[str, Any], ...]:
@@ -451,6 +592,11 @@ class BoardServer(ThreadingHTTPServer):
         self.allowed_hosts = allowed_hosts
         self.db_path = db_path
         self.refresh_interval = max(0.0, float(refresh_interval))
+        (
+            self.native_operator_writes_enabled,
+            self._native_operator_token,
+            self.native_operator_writes_reason,
+        ) = _native_operator_configuration(db_path)
         # Independent read-through transport only: provider usage never enters
         # coord.db or the lifecycle snapshot/cache generation below.
         self._usage_dashboard_proxy = usage_dashboard_proxy or UsageDashboardProxy()
@@ -591,6 +737,62 @@ class BoardServer(ThreadingHTTPServer):
 
     def provider_management_action(self, document: dict[str, Any]) -> tuple[int, dict[str, Any]]:
         return self._provider_management_forwarder.forward(document)
+
+    def native_operator_action(
+        self,
+        document: dict[str, Any],
+        *,
+        authority_capability: object | None = None,
+    ) -> tuple[int, dict[str, Any]]:
+        try:
+            fields = _native_operator_request_fields(document)
+        except (TypeError, ValueError):
+            return HTTPStatus.BAD_REQUEST, {
+                "schema_version": "NativeOperatorActionErrorV1",
+                "ok": False,
+                "status": "refused",
+                "reason": "The transfer request document is invalid.",
+                "error": {"code": "invalid_document", "retryable": False},
+            }
+        conn = connect(self.db_path)
+        try:
+            try:
+                receipt = coord_db.post_operator_reassignment(
+                    conn,
+                    **fields,
+                    _authority_capability=authority_capability,
+                )
+            except ValueError as exc:
+                status, code, message = _native_operator_conflict(exc)
+                return status, {
+                    "schema_version": "NativeOperatorActionErrorV1",
+                    "ok": False,
+                    "status": "stale" if status == HTTPStatus.CONFLICT else "refused",
+                    "action_id": document["action_id"],
+                    "reason": message,
+                    "error": {"code": code, "retryable": status == HTTPStatus.CONFLICT},
+                }
+        finally:
+            conn.close()
+        if self.refresh_interval:
+            self._next_refresh = 0.0
+        work = receipt.get("work") if isinstance(receipt.get("work"), dict) else {}
+        return HTTPStatus.OK, {
+            "schema_version": "NativeOperatorActionReceiptV1",
+            "ok": True,
+            "status": "replayed" if receipt.get("replayed") else "applied",
+            "action_id": document["action_id"],
+            "operation_id": receipt.get("operation_id"),
+            "work_id": receipt.get("work_id"),
+            "owner_lane": receipt.get("owner_lane"),
+            "event_id": receipt.get("event_id"),
+            "work_version": work.get("version"),
+            "request_sha256": receipt.get("request_sha256"),
+            "released_claim_ids": receipt.get("released_claim_ids") or [],
+            "superseded_event_ids": receipt.get("superseded_event_ids") or [],
+            "replayed": bool(receipt.get("replayed")),
+            "refresh_hint": "native_projection",
+        }
 
     def _read_status_locked(self, *, generated_at: str | None = None) -> dict[str, Any]:
         """Return the cache receipt while ``_snapshot_lock`` is held."""
@@ -1156,7 +1358,10 @@ class BoardHandler(BaseHTTPRequestHandler):
             return
         path = urlsplit(self.path).path
         self.send_response(HTTPStatus.NO_CONTENT)
-        allow = "GET, HEAD, OPTIONS, POST" if path in {"/api/v1/usage-actions", "/api/v1/provider-management"} else "GET, HEAD, OPTIONS"
+        post_paths = {"/api/v1/usage-actions", "/api/v1/provider-management"}
+        if self.server.native_operator_writes_enabled:
+            post_paths.add("/api/native/action")
+        allow = "GET, HEAD, OPTIONS, POST" if path in post_paths else "GET, HEAD, OPTIONS"
         self.send_header("Allow", allow)
         for name, value in SECURITY_HEADERS.items():
             self.send_header(name, value)
@@ -1166,6 +1371,9 @@ class BoardHandler(BaseHTTPRequestHandler):
         if not self._security_ok():
             return
         request = urlsplit(self.path)
+        if request.path == "/api/native/action":
+            self._post_native_operator_action(request)
+            return
         if request.path not in {"/api/v1/usage-actions", "/api/v1/provider-management"}:
             self._readonly()
             return
@@ -1236,11 +1444,92 @@ class BoardHandler(BaseHTTPRequestHandler):
         status, document = self.server.usage_account_action(forwarded)
         self._send_json(status, document)
 
+    def _post_native_operator_action(self, request) -> None:
+        if not self.server.native_operator_writes_enabled:
+            self._readonly()
+            return
+        host = self.headers.get("Host", "")
+        peer = str(self.client_address[0] if self.client_address else "")
+        if (
+            not is_loopback_bind(str(self.server.server_address[0]))
+            or not is_loopback_bind(host)
+            or not is_loopback_bind(peer)
+        ):
+            self._send_json(
+                HTTPStatus.FORBIDDEN,
+                {"ok": False, "status": "refused", "error": {"code": "loopback_required"}},
+            )
+            return
+        if request.query:
+            self._send_json(
+                HTTPStatus.BAD_REQUEST,
+                {"ok": False, "status": "refused", "error": {"code": "query_not_allowed"}},
+            )
+            return
+        if self.headers.get("Transfer-Encoding"):
+            self._send_json(
+                HTTPStatus.BAD_REQUEST,
+                {"ok": False, "status": "refused", "error": {"code": "framing_invalid"}},
+            )
+            return
+        if self.headers.get("Content-Type", "").strip().lower() != "application/json":
+            self._send_json(
+                HTTPStatus.UNSUPPORTED_MEDIA_TYPE,
+                {"ok": False, "status": "refused", "error": {"code": "json_required"}},
+            )
+            return
+        authorization = self.headers.get("Authorization", "")
+        expected = self.server._native_operator_token or ""
+        presented = authorization[7:] if authorization.startswith("Bearer ") else ""
+        if not presented or not hmac.compare_digest(presented, expected):
+            self._send_json(
+                HTTPStatus.UNAUTHORIZED,
+                {"ok": False, "status": "refused", "error": {"code": "authentication_required"}},
+            )
+            return
+        try:
+            length = int(self.headers.get("Content-Length", ""))
+        except ValueError:
+            length = -1
+        if not 0 < length <= _NATIVE_OPERATOR_BODY_LIMIT:
+            self._send_json(
+                HTTPStatus.REQUEST_ENTITY_TOO_LARGE
+                if length > _NATIVE_OPERATOR_BODY_LIMIT
+                else HTTPStatus.BAD_REQUEST,
+                {"ok": False, "status": "refused", "error": {"code": "body_size_invalid"}},
+            )
+            return
+        try:
+            body = json.loads(
+                self.rfile.read(length),
+                parse_constant=_reject_json_constant,
+                object_pairs_hook=_strict_json_object,
+            )
+        except (UnicodeDecodeError, ValueError, json.JSONDecodeError):
+            self._send_json(
+                HTTPStatus.BAD_REQUEST,
+                {"ok": False, "status": "refused", "error": {"code": "invalid_json"}},
+            )
+            return
+        # Keep the resident-controller capability out of untrusted documents.
+        # It crosses this boundary only after the fixed loopback bearer check.
+        status, document = self.server.native_operator_action(
+            body,
+            authority_capability=coord_db._OPERATOR_REASSIGNMENT_CAPABILITY,
+        )
+        self._send_json(status, document)
+
     def _readonly(self) -> None:
         if not self._security_ok():
             return
         self.send_response(HTTPStatus.METHOD_NOT_ALLOWED)
-        self.send_header("Allow", "GET, HEAD, OPTIONS")
+        allow = (
+            "POST, OPTIONS"
+            if urlsplit(self.path).path == "/api/native/action"
+            and self.server.native_operator_writes_enabled
+            else "GET, HEAD, OPTIONS"
+        )
+        self.send_header("Allow", allow)
         self.send_header("Content-Length", "0")
         for name, value in SECURITY_HEADERS.items():
             self.send_header(name, value)

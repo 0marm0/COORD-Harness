@@ -12,6 +12,10 @@ struct NativeCockpitActionResult: Equatable {
     var refreshHint: String?
     var httpStatus: Int?
     var replayCount: Int?
+    var replayed: Bool?
+    var workVersion: Int?
+    var ownerLane: String?
+    var releasedClaimCount: Int?
     var capabilityResultID: String?
     var cached: Bool?
     var operatorSummary: String?
@@ -36,6 +40,10 @@ struct NativeCockpitActionResult: Equatable {
         self.refreshHint = NativeCockpitActionResult.optionalString(object["refresh_hint"] ?? raw["refresh_hint"])
         self.httpStatus = NativeCockpitActionResult.int(object["http_status"] ?? raw["http_status"])
         self.replayCount = NativeCockpitActionResult.int(raw["replay_count"])
+        self.replayed = NativeCockpitActionResult.optionalBool(object["replayed"] ?? raw["replayed"])
+        self.workVersion = NativeCockpitActionResult.int(object["work_version"] ?? raw["work_version"])
+        self.ownerLane = NativeCockpitActionResult.optionalString(object["owner_lane"] ?? raw["owner_lane"])
+        self.releasedClaimCount = NativeCockpitActionResult.count(object["released_claim_ids"] ?? raw["released_claim_ids"])
         self.capabilityResultID = NativeCockpitActionResult.optionalString(detail?["result_id"] ?? object["capability_result_id"])
         self.cached = NativeCockpitActionResult.optionalBool(detail?["cached"] ?? object["cached"])
         self.operatorSummary = NativeCockpitActionResult.summaryText(from: detail?["operator_summary"] ?? object["operator_summary"])
@@ -55,6 +63,9 @@ struct NativeCockpitActionResult: Equatable {
         let verb = ok ? "Applied" : status.capitalized
         parts.append(actionID.isEmpty ? verb : "\(verb) \(shortActionID)")
         if let whereText, !whereText.isEmpty { parts.append(whereText) }
+        if let ownerLane, !ownerLane.isEmpty { parts.append("owner \(ownerLane)") }
+        if let workVersion { parts.append("version \(workVersion)") }
+        if replayed == true { parts.append("replayed") }
         if let eventID { parts.append("event \(eventID)") }
         if let bulkSummary, !bulkSummary.isEmpty { parts.append(bulkSummary) }
         if let resultID, !resultID.isEmpty { parts.append("result \(resultID)") }
