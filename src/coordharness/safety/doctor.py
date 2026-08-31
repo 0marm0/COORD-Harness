@@ -15,19 +15,24 @@ still works.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import errno
 import hashlib
+from http import HTTPStatus
 from importlib.resources import files
 import json
 import os
 from pathlib import Path
 import re
 import shutil
+import socket
 import sqlite3
 import stat
 import time
+import urllib.request
 from typing import Any, Iterable
 from urllib.parse import quote
 
+from ..board.server import DEFAULT_PORT as _DEFAULT_BOARD_PORT
 from ..coord.process_liveness import pid_matches
 from .mcp import McpConfigError, McpServer, read_config, redacted_inventory, security_issues
 from .paths import (
@@ -1028,6 +1033,151 @@ def _check_mcp(
     )
 
 
+def _configured_board_port() -> int:
+    """The port `coord-board` would bind, read the same way it reads it:
+    `--port` is a CLI flag this read-only check has no access to, so this
+    mirrors only the fallback chain `coord-board` itself applies when the
+    flag is absent -- `COORD_BOARD_PORT`, then the packaged default.
+    """
+    return int(os.environ.get("COORD_BOARD_PORT", _DEFAULT_BOARD_PORT))
+
+
+def _board_answers_on(port: int) -> bool:
+    """Whether the process holding `port` identifies itself as `coord-board`.
+
+    The bind probe alone cannot distinguish our own running board from a
+    foreign squatter, and those two states need opposite verdicts. The
+    board's `/healthz` names the service, so one short loopback request
+    settles it; anything that does not answer that way is treated as
+    foreign, which keeps the check fail-closed toward reporting a conflict.
+    """
+    try:
+        with urllib.request.urlopen(
+            f"http://127.0.0.1:{port}/healthz", timeout=0.5
+        ) as response:
+            if response.status != HTTPStatus.OK:
+                return False
+            payload = json.loads(response.read(512).decode("utf-8", "replace"))
+    except Exception:
+        return False
+    return isinstance(payload, dict) and payload.get("service") == "coord-board"
+
+
+def _check_db_file_modes(db_path: Path) -> DoctorFinding:
+    """Whether the database and its sidecars actually hold their intended mode.
+
+    The trust boundary for this control plane is the filesystem, so the mode on
+    these files IS the boundary. Enforcement elsewhere is best effort by design
+    -- a database owned by another account cannot be tightened by this process,
+    and refusing to open it would be the worse outcome -- so the guarantee only
+    exists if something reads the result back afterwards. That is this check.
+
+    It only ever stats: this module is read-only, and a health check that
+    quietly repaired the thing it was asked to report on could never tell you
+    the mode had been wrong.
+    """
+    from ..coord.config import COORD_DB_FILE_MODE, DB_SIDECAR_SUFFIXES
+
+    observed: dict[str, str] = {}
+    widened: dict[str, str] = {}
+    for suffix in ("", *DB_SIDECAR_SUFFIXES):
+        target = Path(str(db_path) + suffix)
+        name = suffix or "db"
+        try:
+            info = target.lstat()
+        except OSError:
+            continue
+        if not stat.S_ISREG(info.st_mode) or stat.S_ISLNK(info.st_mode):
+            observed[name] = "not-a-regular-file"
+            widened[name] = observed[name]
+            continue
+        mode = stat.S_IMODE(info.st_mode)
+        observed[name] = oct(mode)
+        if mode & 0o077:
+            widened[name] = observed[name]
+    remediations: tuple[Remediation, ...] = ()
+    if widened:
+        names = ", ".join(
+            f"{'the database' if name == 'db' else name} is {mode}"
+            for name, mode in sorted(widened.items())
+        )
+        remediations = (
+            Remediation(
+                "doctor.db_file_modes.readable_by_others",
+                f"{names}; these carry the coordination record",
+                f"restrict them with `chmod {oct(COORD_DB_FILE_MODE)[2:]} "
+                f"{db_path}` (SQLite recreates its sidecars from the database "
+                "file's own mode, so tightening the database is usually "
+                "enough), or move the database somewhere this account owns",
+            ),
+        )
+    code, remediation = _prioritized(remediations)
+    return _finding(
+        "doctor.db_file_modes",
+        bool(widened),
+        "database and sidecar files are not readable by other accounts"
+        if not widened
+        else "database or sidecar files are readable by other accounts",
+        code=code or "doctor.db_file_modes.ok",
+        remediation=remediation,
+        remediations=remediations,
+        modes=observed,
+    )
+
+
+def _check_board_port() -> DoctorFinding:
+    """A cheap loopback bind probe for the configured `coord-board` port.
+
+    `coord-board` fails at startup with an opaque `OSError: [Errno 48]
+    Address already in use` when something else already holds its port --
+    surfacing that here, before the board is ever started, gives the reader
+    the same fix `coord-board`'s own `_address_in_use_message` prints. Any
+    bind failure other than address-in-use (a permission-denied low port, no
+    loopback route, and so on) is not evidence of a port conflict and must
+    not be reported as one -- the probe fails open on everything except the
+    one errno this check exists to name.
+    """
+    port = _configured_board_port()
+    bound = False
+    try:
+        probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            probe.bind(("127.0.0.1", port))
+        finally:
+            probe.close()
+    except OSError as exc:
+        bound = exc.errno == errno.EADDRINUSE
+    # A bound port is only a fault when a FOREIGN process holds it. The
+    # ordinary healthy state of a working installation is `coord-board`
+    # already running, and reporting that as a problem would make the
+    # doctor fail precisely when the product is working.
+    conflict = bound and not _board_answers_on(port)
+    remediations: tuple[Remediation, ...] = ()
+    if conflict:
+        remediations = (
+            Remediation(
+                "doctor.board_port.address_in_use",
+                f"port {port} is already bound on the loopback interface",
+                "another process is already listening on this port; find it "
+                f"with `lsof -i :{port}`, then either stop it or point "
+                f"`coord-board` at a free one with `--port <port>` or by "
+                f"setting `COORD_BOARD_PORT=<port>`",
+            ),
+        )
+    code, remediation = _prioritized(remediations)
+    return _finding(
+        "doctor.board_port",
+        conflict,
+        "configured board port is free on the loopback interface"
+        if not conflict
+        else "configured board port is already bound on the loopback interface",
+        code=code or "doctor.board_port.ok",
+        remediation=remediation,
+        remediations=remediations,
+        port=port,
+    )
+
+
 def run_doctor(
     *,
     db_path: str | os.PathLike[str],
@@ -1151,6 +1301,8 @@ def run_doctor(
         _check_jobs_projection(conn, state_root=state),
         _check_public_paths(conn, project_root=project),
         _check_mcp(configs, project_root=project, state_root=state),
+        _check_board_port(),
+        _check_db_file_modes(supplied_db),
     ]
     if conn is not None:
         conn.close()
