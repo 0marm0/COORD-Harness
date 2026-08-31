@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -19,6 +20,9 @@ def board(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setenv("COORD_PROJECT_ROOT", str(tmp_path))
     monkeypatch.setenv("COORD_HOME", str(tmp_path / ".coordharness"))
     monkeypatch.setattr(coord_db, "HARNESS_ROOT", tmp_path)
+    # A git repository, because a resolved completion proof now means one git's
+    # index carries -- for every artifact type, not only Markdown.
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
     database = tmp_path / "coord.db"
     bootstrap_database(database)
     conn = connect(database)
@@ -232,9 +236,19 @@ def test_operator_reassignment_refuses_completed_or_live_work(
             )
             expected = "terminal or archived"
         elif barrier == "proof":
-            proof = coord_db.HARNESS_ROOT / "artifacts/operator-reassignment-proof.json"
+            root = coord_db.HARNESS_ROOT
+            proof = root / "artifacts/operator-reassignment-proof.json"
             proof.parent.mkdir(parents=True, exist_ok=True)
             proof.write_text('{"done":true}\n', encoding="utf-8")
+            # A proof "resolves" only once git's index carries it -- true of
+            # every artifact type since 0.1.0, not only Markdown. Writing the
+            # file alone no longer raises this barrier, so the fixture stages
+            # it: the barrier under test is reassignment, not custody.
+            subprocess.run(
+                ["git", "add", "artifacts/operator-reassignment-proof.json"],
+                cwd=root,
+                check=True,
+            )
             expected = "resolved completion proof"
         elif barrier == "artifact":
             coord_db.store_artifact(

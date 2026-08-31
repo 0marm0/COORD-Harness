@@ -130,7 +130,8 @@ does four things, in order, inside one transaction:
 4. Applies custody validation to reject empty, incomplete, telemetry-shaped,
    or otherwise non-proof artifacts before writing the terminal receipt.
 
-For Markdown done-signals, the current implementation requires the proof path
+For done-signals of every artifact type -- except the few kinds that structurally
+cannot live in a git index -- the implementation requires the proof path
 to be tracked by Git's current index. Staging with `git add` is sufficient; a
 commit is not required. A deployment that needs commit-pinned custody should
 add that stronger condition as acceptance or policy and bind the commit identity

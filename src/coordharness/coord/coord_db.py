@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any, Iterable, Iterator, Optional
 
 from coordharness.config import HARNESS_ROOT, state_dir
+from coordharness.jobs import status as job_status
 from coordharness.jobs.status import done_signal_custodied, done_signal_exists
 
 from .config import (
@@ -6000,15 +6001,32 @@ def complete_claim(
                     )
         proof = declared_proof
         if not done_signal_satisfied(conn, proof, root):
-            # A valid Markdown proof can fail only because it is not in the Git
+            # A valid proof can fail here only because it is not in the Git
             # index. Invalid or empty artifacts need content repair, not git add.
             if done_signal_exists(proof, root):
-                raise ValueError(
+                message = (
                     f"complete_claim artifact proof exists but is not carried by git's "
                     f"index for claim {claim_id!r}: {proof}. The custody gate requires "
                     f"the proof to be staged -- run `git add {proof}` and retry. Staging "
                     f"is enough; it does not need to be committed."
                 )
+                if Path(proof.split("::", 1)[0]).suffix.lower() != ".md":
+                    # This refusal is new in 0.1.0: before it, every non-Markdown
+                    # proof completed on existence alone. Someone who just hit a
+                    # refusal that used to succeed must not have to read source
+                    # to find that out, or to find the way out. The Markdown
+                    # branch says nothing extra because nothing changed for it.
+                    message += (
+                        " Since 0.1.0 this applies to a declared proof of ANY type,"
+                        " not only Markdown -- a completion that previously succeeded"
+                        " on existence alone is now refused until the artifact is"
+                        " tracked. If this artifact kind structurally cannot live in"
+                        f" git, name its suffix in {job_status.CUSTODY_EXEMPT_ENV}"
+                        f" (default: {','.join(sorted(job_status.DEFAULT_CUSTODY_EXEMPT_SUFFIXES))});"
+                        f" {job_status.CUSTODY_EXEMPT_ENV}={job_status.CUSTODY_EXEMPT_ALL}"
+                        " turns the custody requirement off entirely."
+                    )
+                raise ValueError(message)
             path_part = proof.split("::", 1)[0]
             physical = Path(path_part).expanduser()
             if not physical.is_absolute():

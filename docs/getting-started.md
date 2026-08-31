@@ -222,9 +222,9 @@ git add docs/reports/ops-503.md
 .venv/bin/coord doctor
 ```
 
-Completion checks that this session holds the live claim, that the explicit path matches the controller-declared `done_signal`, that the proof is non-empty and allowed by custody rules, and that terminal/review guards permit completion. Markdown proof must be tracked by Git's current index; staging is sufficient, and no commit is required. The transition and receipt are written transactionally.
+Completion checks that this session holds the live claim, that the explicit path matches the controller-declared `done_signal`, that the proof is non-empty and allowed by custody rules, and that terminal/review guards permit completion. The proof must be tracked by Git's current index -- every artifact type, apart from the few kinds that cannot live there at all; staging is sufficient, and no commit is required. The transition and receipt are written transactionally.
 
-The `git add` is not decoration. Without it the Markdown proof is untracked and `done` refuses; in a directory that is not a Git repository at all it refuses for the same reason.
+The `git add` is not decoration. Without it the proof is untracked and `done` refuses; in a directory that is not a Git repository at all it refuses for the same reason.
 
 `coord done` records the proof as the repository-relative path the row declared, not as an absolute host path, so the final `coord doctor` reports the same `PASS` it did before the completion.
 
@@ -368,7 +368,7 @@ Use the correct actor/session identity or a typed handoff. Do not overwrite the 
 
 Confirm that the artifact path exactly matches the row's declared `done_signal`, resolves beneath `COORD_PROJECT_ROOT`, exists, is non-empty, and is not a telemetry/control marker rejected by custody rules.
 
-A Markdown proof must additionally be tracked by Git's current index. `git add` the file — staging is enough, no commit is needed. The same refusal appears when the project is not a Git repository, because nothing can be tracked there; initialise one, or declare a non-Markdown proof path.
+The proof must additionally be tracked by Git's current index, whatever type of artifact it is. `git add` the file — staging is enough, no commit is needed. The same refusal appears when the project is not a Git repository, because nothing can be tracked there; initialise one. The exceptions are artifact kinds that structurally cannot be tracked — `.parquet`, `.duckdb`, `.db`, `.joblib`, `.bz2`, `.backup` — which must still exist; `COORD_COMPLETION_CUSTODY_EXEMPT` rebinds that list.
 
 ### `coord doctor` reports `database_outside_state_root`
 

@@ -2345,7 +2345,7 @@ def _complete_claim_with_proof_index_refresh(
     except ValueError as exc:
         if (
             _COMPLETION_PROOF_MISSING_ERROR not in str(exc)
-            or Path(declared_proof).suffix.lower() != ".md"
+            or not job_status.custody_requires_tracking(declared_proof)
         ):
             raise
 
@@ -5936,6 +5936,10 @@ environment:
   COORD_CLAIM_STRICT         1 = refuse claims on rows missing
                              done_signal/acceptance on every surface,
                              0 = warn and proceed on every surface
+  COORD_COMPLETION_CUSTODY_EXEMPT
+                             comma-separated artifact suffixes exempt from the
+                             git-custody requirement at completion; replaces the
+                             built-in list, "*" turns the requirement off
 """
 
 

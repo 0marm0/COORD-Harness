@@ -537,6 +537,15 @@ def _git_repo_root(path: str) -> str | None:
 
 
 def completion_proof_is_tracked(path: str | Path, root: str | Path) -> bool:
+    """Whether git's current index carries this declared proof.
+
+    A file is carried when its repo-relative path is in ``git ls-files``. A
+    *directory* proof is carried when at least one file beneath it is: git's
+    index holds files and never directories, so asking the literal question of
+    a directory would answer "no" for every directory that ever existed --
+    including one whose entire contents are committed.
+    """
+
     repo_root = _git_repo_root(str(Path(root).resolve(strict=False)))
     if not repo_root:
         return False
@@ -545,12 +554,125 @@ def completion_proof_is_tracked(path: str | Path, root: str | Path) -> bool:
         relative = candidate.relative_to(Path(repo_root).resolve(strict=False)).as_posix()
     except ValueError:
         return False
-    return relative in _git_tracked_files(repo_root)
+    tracked = _git_tracked_files(repo_root)
+    if relative in tracked:
+        return True
+    if not candidate.is_dir():
+        return False
+    prefix = f"{relative}/"
+    return any(name.startswith(prefix) for name in tracked)
+
+
+#: The env var that rebinds the exemption list, read only by
+#: :func:`custody_exempt_suffixes` so no second surface can drift from it.
+CUSTODY_EXEMPT_ENV = "COORD_COMPLETION_CUSTODY_EXEMPT"
+
+#: The token that turns the custody requirement off entirely.
+CUSTODY_EXEMPT_ALL = "*"
+
+_SUFFIX_TOKEN_RE = re.compile(r"\.?[A-Za-z0-9][A-Za-z0-9._-]{0,31}")
+
+# Artifact kinds that structurally cannot live in git's index, so "staged" is
+# not a question that can be asked of them. Every other suffix -- every kind of
+# plain text -- must be tracked before a completion is allowed.
+#
+# The list is derived from a read-only census of 6,249 declared completion
+# artifacts on a long-lived coordination corpus, not from imagination: 27.4% of
+# declared proofs were non-Markdown, and of those only the 124 rows below (~2%
+# of all rows) were binary, large, or mutable enough that committing them is
+# not a thing anyone does. The other ~93% of the non-Markdown share is plain
+# text that should have been custodied all along.
+#
+#   .parquet  92 rows -- columnar dataset dump, binary and regenerable
+#   .duckdb   21 rows -- embedded database file, binary and mutable in place
+#   .db        5 rows -- embedded database file, same
+#   .joblib    4 rows -- serialized model weights, binary
+#   .bz2       1 row  -- compressed archive
+#   .backup    1 row  -- backup snapshot bundle
+#
+# Deliberately NOT here: an IDE project bundle (`.xcodeproj`), the one other
+# kind the census flagged as untrackable. It is a directory, and
+# `completion_proof_is_tracked` already answers directories by looking for a
+# tracked file inside -- which is the right answer for a bundle whose contents
+# are normally committed, and a stricter one than a blanket exemption.
+#
+# This list grows by declaration, never by a silent "not Markdown" default: an
+# operator with an artifact kind that is genuinely untrackable rebinds
+# `COORD_COMPLETION_CUSTODY_EXEMPT` rather than waiting for a release.
+DEFAULT_CUSTODY_EXEMPT_SUFFIXES: frozenset[str] = frozenset(
+    {".parquet", ".duckdb", ".db", ".joblib", ".bz2", ".backup"}
+)
+
+
+def custody_exempt_suffixes() -> frozenset[str]:
+    """Suffixes exempt from the git-custody requirement, for this process.
+
+    Read from ``COORD_COMPLETION_CUSTODY_EXEMPT`` (comma-separated, leading dot
+    optional, case-insensitive) on every call so a test or an operator can
+    rebind the set without reimporting the gate. An explicit value *replaces*
+    :data:`DEFAULT_CUSTODY_EXEMPT_SUFFIXES` rather than adding to it, so the
+    effective list is always exactly what the variable says.
+
+    Two boundary values are deliberate, and they fail in opposite directions:
+
+    * ``"*"`` exempts every suffix -- the emergency off switch, which restores
+      existence-only completion for artifacts of any kind, Markdown included.
+    * an empty value exempts nothing, the strictest setting. Unlike
+      ``COORD_LANES``, an empty list here is a coherent request rather than a
+      broken one (it refuses nothing that a stricter deployment would not want
+      refused), so it is honoured instead of raising.
+    """
+
+    raw = os.environ.get(CUSTODY_EXEMPT_ENV)
+    if raw is None:
+        return DEFAULT_CUSTODY_EXEMPT_SUFFIXES
+    suffixes: set[str] = set()
+    for token in str(raw).split(","):
+        clean = token.strip().lower()
+        if not clean:
+            continue
+        if clean == CUSTODY_EXEMPT_ALL:
+            return frozenset({CUSTODY_EXEMPT_ALL})
+        if _SUFFIX_TOKEN_RE.fullmatch(clean) is None:
+            raise ValueError(
+                f"{CUSTODY_EXEMPT_ENV} entry {token!r} is not a file suffix "
+                f"(expected e.g. '.parquet,.duckdb', or '*' to exempt everything)"
+            )
+        suffixes.add(clean if clean.startswith(".") else f".{clean}")
+    return frozenset(suffixes)
+
+
+def custody_requires_tracking(path: str | Path) -> bool:
+    """Whether this declared proof has to be in git's index to complete.
+
+    True for every suffix that is not exempt -- including a proof with no
+    suffix at all, which is the ambiguous case and is resolved toward custody.
+    """
+
+    exempt = custody_exempt_suffixes()
+    if CUSTODY_EXEMPT_ALL in exempt:
+        return False
+    return Path(path).suffix.lower() not in exempt
 
 
 def done_signal_custodied(sig: str | None, root: str | Path) -> bool:
+    """Whether a declared proof is admissible *and* in the custody git can prove.
+
+    Existence is never waived. On top of it, a proof must be carried by git's
+    index unless its suffix is exempt (:func:`custody_exempt_suffixes`) -- the
+    exemption is about custody, not about proof.
+
+    Before 0.1.0 this requirement was scoped to ``.md`` and every other suffix
+    short-circuited to True, so the headline promise ("completion is refused
+    until the declared proof is in the index") held for exactly one file
+    extension. It now holds generally.
+    """
+
     table_signal = _duckdb_table_signal(sig, root)
     if table_signal is not None:
+        # A `path.duckdb::table` signal names rows inside a database file, not
+        # a file to stage. It is answered by reading the table, exactly as
+        # before, and never reaches the custody question.
         path, table = table_signal
         return _duckdb_table_has_row(path, table)
     valid = [
@@ -561,7 +683,7 @@ def done_signal_custodied(sig: str | None, root: str | Path) -> bool:
     if not valid:
         return False
     return any(
-        path.suffix.lower() != ".md" or completion_proof_is_tracked(path, root)
+        not custody_requires_tracking(path) or completion_proof_is_tracked(path, root)
         for path in valid
     )
 

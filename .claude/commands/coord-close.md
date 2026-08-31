@@ -19,8 +19,8 @@ or MCP `work_context`. Take the row's `done_signal` verbatim. The gate accepts t
 path and no other. Three states fail closed:
 
 - the artifact is at a different path than the one declared;
-- the proof is Markdown that Git's current index does not track (`git add` is
-  enough — a commit is not required);
+- Git's current index does not track the proof (`git add` is enough — a commit is
+  not required; only kinds that cannot be tracked at all are exempt);
 - you do not hold a live claim on the row.
 
 Do not repoint `done_signal` at whatever you happened to produce. The declaration

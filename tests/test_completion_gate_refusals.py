@@ -75,6 +75,18 @@ def _write_proof(project: Path) -> None:
     artifact.write_text(json.dumps({"rows": 3}), encoding="utf-8")
 
 
+def _stage_proof(project: Path) -> None:
+    """Put the proof in git's index, which since 0.1.0 every suffix needs.
+
+    Only the success case calls this. The refusal cases leave the artifact
+    unstaged on purpose: each one has to refuse for *its* reason (dead lease,
+    released claim, undeclared proof) before the custody check is ever
+    reached, and an already-staged artifact could not tell them apart.
+    """
+
+    subprocess.run(["git", "add", PROOF], cwd=project, check=True)
+
+
 def _claim_status(conn, claim_id: str) -> str:
     return str(
         conn.execute(
@@ -177,6 +189,7 @@ def test_the_gate_opens_for_a_live_claim_with_its_declared_proof(
 ) -> None:
     claim_id = _claimed(conn)
     _write_proof(project)
+    _stage_proof(project)
 
     coord_db.complete_claim(
         conn, claim_id, proof_root=project, session_id=SESSION, actor="claude"
