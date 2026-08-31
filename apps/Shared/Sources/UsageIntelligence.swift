@@ -1570,7 +1570,26 @@ enum UsageFormat {
     }
 
     private static func decimalNanos(_ value: Int64) -> String {
-        String(format: "%.2f", Double(value) / 1_000_000_000)
+        let magnitude = value.magnitude
+        var whole = magnitude / 1_000_000_000
+        var hundredths = ((magnitude % 1_000_000_000) + 5_000_000) / 10_000_000
+        if hundredths == 100 {
+            whole += 1
+            hundredths = 0
+        }
+        let sign = value < 0 ? "-" : ""
+        return "\(sign)\(groupedDecimal(whole)).\(String(format: "%02d", Int(hundredths)))"
+    }
+
+    private static func groupedDecimal(_ value: UInt64) -> String {
+        var output: [Character] = []
+        for (index, character) in String(value).reversed().enumerated() {
+            if index > 0, index.isMultiple(of: 3) {
+                output.append(",")
+            }
+            output.append(character)
+        }
+        return String(output.reversed())
     }
 }
 

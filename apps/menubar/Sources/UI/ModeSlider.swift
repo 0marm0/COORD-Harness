@@ -4,10 +4,16 @@ import AppKit
 final class ModeSlider: NSView {
 
     enum Stop: Int, CaseIterable {
-        case light = 0, medium = 1, full = 2
-        var name: String { ["light", "medium", "full"][rawValue] }
-        var letter: String { ["L", "M", "H"][rawValue] }
-        init(_ mode: String) { self = Stop(rawValue: ["light", "medium", "full"].firstIndex(of: mode.lowercased()) ?? 2) ?? .full }
+        case pause = 0, medium = 1, full = 2
+        var name: String { ["pause", "medium", "full"][rawValue] }
+        var letter: String { ["⏸", "M", "F"][rawValue] }
+        init(_ mode: String) {
+            switch mode.lowercased() {
+            case "pause": self = .pause
+            case "medium": self = .medium
+            default: self = .full
+            }
+        }
     }
 
     var onSetMode: ((String) -> Void)?
@@ -32,7 +38,7 @@ final class ModeSlider: NSView {
             } else { pendingName = nil; pendingAt = nil }
         }
         self.paused = paused
-        if mode != "pause", let s = Stop(rawValue: Stop(mode).rawValue) { self.stop = s }
+        self.stop = paused ? .pause : Stop(mode)
         needsDisplay = true
     }
 
@@ -82,9 +88,9 @@ final class ModeSlider: NSView {
     override func mouseDragged(with e: NSEvent) { dragIdx = nearest(convert(e.locationInWindow, from: nil)); needsDisplay = true }
     override func mouseUp(with e: NSEvent) {
         let idx = nearest(convert(e.locationInWindow, from: nil))
-        dragIdx = nil; paused = false
+        dragIdx = nil
         let s = Stop(rawValue: idx) ?? .full
-        stop = s; needsDisplay = true
+        stop = s; paused = s == .pause; needsDisplay = true
         pendingName = s.name; pendingAt = Date()
         onSetMode?(s.name)
     }

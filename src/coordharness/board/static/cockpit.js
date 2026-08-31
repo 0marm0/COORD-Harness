@@ -46,6 +46,7 @@ let continuousCommsMode = false;
 let continuousCommsSection = "";
 let continuousHeightFrame = 0;
 let continuousPublishedHeight = 0;
+let continuousPublishedFleetStatus = -1;
 let depsHops = 1;
 let searchController = null;
 let bundleFailure = "";
@@ -123,17 +124,19 @@ function renderFleet() {
   }).join("");
 
   const matrixHeading = continuousCommsMode
-    ? `<h3 class="continuous-fleet-label" id="fleet-matrix-label">Fleet matrix <span>${owners.length} agents · ${modules.length} verticals</span></h3>`
+    ? `<h3 class="visually-hidden" id="fleet-matrix-label">Agent by vertical matrix</h3>`
     : `<h3 id="fleet-matrix-label">Who is working where</h3>`;
   const matrixDescription = `<p class="${continuousCommsMode ? "visually-hidden" : "meta"}" id="fleet-matrix-description">${
     owners.length} agents across ${modules.length} verticals. A cell counts the rows that agent holds in that vertical; the marker says whether any row is recorded running.</p>`;
   const continuousReceipts = continuousCommsMode
     ? projectionReceiptHtml() + topologyExplanationHtml() : "";
+  const runningLanes = continuousCommsMode
+    ? "" : `<div class="lanes">${strip || `<div class="card"><p class="meta">No row is recorded running in this bundle.</p></div>`}</div>`;
   return `<div class="card">${matrixHeading}${matrixDescription}
     <div class="tablewrap"><table class="matrix" aria-labelledby="fleet-matrix-label" aria-describedby="fleet-matrix-description">${head}${body}${foot}</table></div>
     ${continuousReceipts}
     <p class="legend"><i class="dot run"></i>running <i class="dot stuck"></i>blocked or needing attention</p></div>
-    <div class="lanes">${strip || `<div class="card"><p class="meta">No row is recorded running in this bundle.</p></div>`}</div>`;
+    ${runningLanes}`;
 }
 
 // ----------------------------------------------------------- dependency view
@@ -1091,24 +1094,47 @@ function renderLens(name) {
   if (globalThis.coordMotion) coordMotion.afterPaint(panel);
 }
 
+function continuousCommsParentOrigin() {
+  try {
+    const referrerOrigin = new URL(document.referrer).origin;
+    if (referrerOrigin) return referrerOrigin;
+  } catch (_error) {}
+  try {
+    if (parent.location.origin === location.origin) return location.origin;
+  } catch (_error) {}
+  return "";
+}
+
 function publishContinuousCommsHeight() {
   if (!continuousCommsMode || parent === window) return;
   cancelAnimationFrame(continuousHeightFrame);
   continuousHeightFrame = requestAnimationFrame(() => {
     const height = Math.ceil(document.documentElement.scrollHeight);
+    const parentOrigin = continuousCommsParentOrigin();
+    if (!parentOrigin) return;
+    if (continuousCommsSection === "fleet") {
+      const runningCount = (snapshot?.rows || []).filter(row => stateOf(row) === "running").length;
+      if (runningCount !== continuousPublishedFleetStatus) {
+        continuousPublishedFleetStatus = runningCount;
+        parent.postMessage({
+          type: "coord.continuous-comms.fleet-status",
+          runningCount,
+        }, parentOrigin);
+      }
+    }
     if (!height || Math.abs(height - continuousPublishedHeight) < 2) return;
     continuousPublishedHeight = height;
     parent.postMessage({
       type: "coord.continuous-comms.height",
       height,
-    }, location.origin);
+    }, parentOrigin);
   });
 }
 
 function paint() {
   syncRelationshipTabs();
   if (continuousCommsMode) {
-    const continuousPanels = continuousCommsSection ? [continuousCommsSection] : ["fleet", "pulse"];
+    const continuousPanels = continuousCommsSection ? [continuousCommsSection] : ["fleet", "deps", "pulse"];
     for (const name of continuousPanels) {
       const panel = document.getElementById(name);
       if (!panel) continue;
@@ -1268,7 +1294,7 @@ function start() {
   // masthead when embedded rather than stacking two headers.
   const params = new URLSearchParams(location.search);
   continuousCommsMode = params.get("continuous") === "1";
-  continuousCommsSection = continuousCommsMode && ["fleet", "pulse"].includes(params.get("section"))
+  continuousCommsSection = continuousCommsMode && ["fleet", "deps", "pulse"].includes(params.get("section"))
     ? params.get("section") : "";
   if (params.get("native_map") === "1" || params.get("embedded") === "1" || continuousCommsMode) {
     document.documentElement.setAttribute("data-embedded", "1");
@@ -1276,12 +1302,19 @@ function start() {
   if (continuousCommsMode) {
     document.body.classList.add("continuous-comms");
     document.querySelector("#maptabs")?.setAttribute("hidden", "");
+    addEventListener("message", event => {
+      const parentOrigin = continuousCommsParentOrigin();
+      if (event.source !== parent || event.origin !== parentOrigin ||
+          event.data?.type !== "coord.continuous-comms.request-status") return;
+      continuousPublishedFleetStatus = -1;
+      publishContinuousCommsHeight();
+    });
     if (continuousCommsSection) {
       document.body.classList.add(`continuous-section-${continuousCommsSection}`);
     }
     for (const panel of document.querySelectorAll("main > .panel")) {
       const visible = continuousCommsSection ? panel.id === continuousCommsSection
-        : panel.id === "fleet" || panel.id === "pulse";
+        : panel.id === "fleet" || panel.id === "deps" || panel.id === "pulse";
       panel.hidden = !visible;
       panel.classList.toggle("active", visible);
     }

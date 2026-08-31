@@ -641,6 +641,11 @@ enum CapabilityResultCache {
     }
 }
 
+struct HarnessControlOutcome: Equatable {
+    let ok: Bool
+    let message: String
+}
+
 enum HarnessControl {
     private static let base = "\(HarnessEndpoint.base)"
     private static let session: URLSession = {
@@ -651,10 +656,13 @@ enum HarnessControl {
     }()
 
 
-    static func setMode(_ mode: String) {
-        guard var c = URLComponents(string: "\(base)/api/mode") else { return }
+    static func setMode(_ mode: String, done: ((HarnessControlOutcome) -> Void)? = nil) {
+        guard var c = URLComponents(string: "\(base)/api/mode") else {
+            done?(.init(ok: false, message: "Invalid mode endpoint.")); return
+        }
         c.queryItems = [URLQueryItem(name: "set", value: mode)]
-        if let u = c.url { post(u) }
+        guard let url = c.url else { done?(.init(ok: false, message: "Invalid mode URL.")); return }
+        postOutcome(url, success: "Performance mode · \(mode) verified", done: done)
     }
 
 
@@ -669,10 +677,13 @@ enum HarnessControl {
     }
 
 
-    static func pauseAll(jobIds: [String]) {
-        guard var c = URLComponents(string: "\(base)/api/bulk_control") else { return }
+    static func pauseAll(jobIds: [String], done: ((HarnessControlOutcome) -> Void)? = nil) {
+        guard var c = URLComponents(string: "\(base)/api/bulk_control") else {
+            done?(.init(ok: false, message: "Invalid pause endpoint.")); return
+        }
         c.queryItems = [URLQueryItem(name: "action", value: "pause")]
-        if let u = c.url { post(u) }
+        guard let url = c.url else { done?(.init(ok: false, message: "Invalid pause URL.")); return }
+        postOutcome(url, success: "All eligible work paused · verified", done: done)
     }
 
     static func resumeAll(jobIds: [String]) {
@@ -726,6 +737,40 @@ enum HarnessControl {
             "title": "handoff to \(ownerLane): \(job)",
         ]
         postJSON(u, body: body)
+    }
+
+    private static func postOutcome(
+        _ url: URL,
+        success: String,
+        done: ((HarnessControlOutcome) -> Void)?
+    ) {
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.httpBody = Data()
+        request.setValue("swift-\(UUID().uuidString)", forHTTPHeaderField: "X-Request-Id")
+        session.dataTask(with: request) { data, response, error in
+            if let error {
+                done?(.init(ok: false, message: error.localizedDescription))
+                return
+            }
+            guard let http = response as? HTTPURLResponse else {
+                done?(.init(ok: false, message: "Control endpoint returned no HTTP response."))
+                return
+            }
+            let object = data.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+            let reason = object?["reason"] as? String
+                ?? object?["error"] as? String
+                ?? object?["message"] as? String
+            guard (200..<300).contains(http.statusCode) else {
+                done?(.init(ok: false, message: reason ?? "Control failed with HTTP \(http.statusCode)."))
+                return
+            }
+            if object?["ok"] as? Bool == false {
+                done?(.init(ok: false, message: reason ?? "Control endpoint refused the action."))
+                return
+            }
+            done?(.init(ok: true, message: reason?.isEmpty == false ? reason! : success))
+        }.resume()
     }
 
     private static func post(_ url: URL, _ done: ((Bool) -> Void)? = nil) {

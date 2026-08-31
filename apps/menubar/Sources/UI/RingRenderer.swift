@@ -137,7 +137,8 @@ enum RingRenderer {
                 y: rowCenter - 1.5,
                 width: UsageStatusLayout.quotaBarWidth,
                 color: quotaColor,
-                warningMarkerPercent: usage.warningMarkerPercent
+                warningMarkerPercent: usage.warningMarkerPercent,
+                warningMarkerColor: warningMarkerColor(for: palette)
             )
             drawText(
                 quotaPercent(usage.displayPercent(selection?.window)),
@@ -201,12 +202,20 @@ enum RingRenderer {
         switch severity {
         case .unavailable: return .secondaryLabelColor
         case .normal: return .systemBlue
-        case .warning: return .systemOrange
+        case .warning: return Tokens.Color.statsWarningOrange
         case .critical: return .systemRed
         }
     }
 
-    private static func drawTinyBar(_ remaining: Double?, x: CGFloat, y: CGFloat, width: CGFloat, color: NSColor, warningMarkerPercent: Double? = nil) {
+    private static func drawTinyBar(
+        _ remaining: Double?,
+        x: CGFloat,
+        y: CGFloat,
+        width: CGFloat,
+        color: NSColor,
+        warningMarkerPercent: Double? = nil,
+        warningMarkerColor: NSColor = .systemRed
+    ) {
         let track = NSBezierPath(roundedRect: NSRect(x: x, y: y, width: width, height: 3), xRadius: 1.5, yRadius: 1.5)
         NSColor.labelColor.withAlphaComponent(0.25).setFill()
         track.fill()
@@ -217,7 +226,7 @@ enum RingRenderer {
         fill.fill()
         if let warningMarkerPercent {
             let markerX = x + width * CGFloat(min(100, max(0, warningMarkerPercent))) / 100
-            NSColor.systemRed.withAlphaComponent(0.95).setStroke()
+            warningMarkerColor.withAlphaComponent(0.95).setStroke()
             let marker = NSBezierPath()
             marker.move(to: NSPoint(x: markerX, y: y - 1))
             marker.line(to: NSPoint(x: markerX, y: y + 4))
@@ -270,9 +279,13 @@ enum RingRenderer {
         NSGraphicsContext.restoreGraphicsState()
     }
 
-    private static func quotaPercent(_ remaining: Double?) -> String {
+    static func quotaPercent(_ remaining: Double?) -> String {
         guard let remaining else { return "—" }
-        return "\(Int(min(max(remaining, 0), 100).rounded()))%"
+        return "\(Int(min(max(remaining, 0), 100).rounded()))"
+    }
+
+    static func warningMarkerColor(for palette: UsageBarPalette) -> NSColor {
+        palette == .colored ? .white : .systemRed
     }
 
     private static func drawFreshness(
@@ -286,9 +299,9 @@ enum RingRenderer {
         NSBezierPath(ovalIn: NSRect(x: x, y: y, width: diameter, height: diameter)).fill()
     }
 
-    private static func providerColor(_ identity: String) -> NSColor {
+    static func providerColor(_ identity: String) -> NSColor {
         identity == "claude"
-            ? NSColor(calibratedRed: 0.96, green: 0.50, blue: 0.32, alpha: 1)
+            ? Tokens.Color.claudeOrange
             : NSColor(calibratedRed: 0.58, green: 0.40, blue: 0.96, alpha: 1)
     }
 

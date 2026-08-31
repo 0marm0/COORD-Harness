@@ -93,9 +93,33 @@ final class NativeNavigationTests: XCTestCase {
         let pathAssignment = try XCTUnwrap(menuRoot.range(of: "view.surfacePath = surface.embedPath"))
         let activation = try XCTUnwrap(menuRoot.range(of: "view.activate()", range: pathAssignment.upperBound..<menuRoot.endIndex))
         XCTAssertLessThan(pathAssignment.lowerBound, activation.lowerBound, "the exact path must be assigned before first activation")
-        XCTAssertTrue(menuWebView.contains("activate(forceReload: false)"))
+        XCTAssertTrue(menuWebView.contains("activate(forceReload: lastLoadFailed)"))
         XCTAssertTrue(menuWebView.contains("loadIfNeeded(force: forceReload)"))
         XCTAssertTrue(menuWebView.contains("guard isProductMapSurface else { return }"), "Comms must not be forced into Product Map")
+    }
+
+    func testMenuBarCommsPerformsInitialLoadAndRetriesFailedSameRoute() throws {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let menuRoot = try String(
+            contentsOf: root.appendingPathComponent("apps/menubar/Sources/Cockpit/UI/CockpitRootView.swift"),
+            encoding: .utf8
+        )
+        let webSource = try String(
+            contentsOf: root.appendingPathComponent("apps/menubar/Sources/Cockpit/UI/CockpitMapWebView.swift"),
+            encoding: .utf8
+        )
+
+        XCTAssertTrue(menuRoot.contains("let retryingSameSurface = activeSurface == surface"))
+        XCTAssertTrue(menuRoot.contains("else if retryingSameSurface {\n                view.retrySurface()"))
+        XCTAssertTrue(webSource.contains("func activate() {\n        activate(forceReload: lastLoadFailed)"))
+        XCTAssertTrue(webSource.contains("func retrySurface() {\n        activate(forceReload: true)"))
+        XCTAssertTrue(webSource.contains("hasLoaded = false\n        lastLoadFailed = true"))
+        XCTAssertTrue(webSource.contains("fallback.stringValue = failureText(error.localizedDescription)"))
+        XCTAssertTrue(webSource.contains("networkError.code == NSURLErrorCancelled"))
+        XCTAssertTrue(webSource.contains("fallback.stringValue = \"Loading \\(surfaceLabel)...\""))
     }
 
     func testStandaloneMacCommsRoutePreservesOriginAndExactHash() {
