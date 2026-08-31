@@ -18,6 +18,13 @@ Each package contains:
 - `references/context.md` — exact, bounded, retrieval, and recall planes;
 - `agents/openai.yaml` — optional Codex and ChatGPT presentation metadata.
 
+This page covers only the skill package. Alongside it, a mirrored slash-command
+tree — `coord-start`, `coord-claim`, `coord-close`, `coord-handoff`, and
+`coord-recover` — ships at `.claude/commands/` and `.agents/commands/`, the same
+per-client discovery split as the skill, kept byte-identical by the same mirror
+test. See [Claude Code plugin](claude-code-plugin.md) for how the two packages
+install together.
+
 ## Use
 
 From anywhere in this repository, explicitly invoke

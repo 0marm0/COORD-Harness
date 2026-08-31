@@ -204,3 +204,24 @@ For recall, use MCP `facts_query`, `facts_lookup`, `knowledge_index_status`, and
 `knowledge_search`. A fresh missing `knowledge.db` honestly returns zero facts and a
 missing/stale index. `knowledge.db`, KFTS hits, accepted memory, and proposals never
 claim, hand off, or complete work; only `coord.db` does.
+
+## 8. Run the packaged commands instead of retyping the sequence
+
+Sections 4 through 6 are the sequence an agent gets wrong most often — orienting
+after claiming, claiming a row whose proof it can never satisfy, discovering the
+completion gate only when it refuses. That sequence ships as five commands, mirrored
+byte-for-byte at `.claude/commands/` and `.agents/commands/`:
+
+| Command | What it covers | Sections |
+|---|---|---|
+| `coord-start` | one stable session identity, wiring check, bounded orientation, no claim | 1–3, 5 |
+| `coord-claim` | read the row's `done_signal` and acceptance first, claim with a step, declare a write set, claim before any fan-out | 4 |
+| `coord-close` | check the declared proof before calling `done`; otherwise park or block with a resume contract | 4 |
+| `coord-handoff` | copy the exact fences from `work-context` into one typed transfer | 6 |
+| `coord-recover` | reconcile a stale claim, a dead session, a blocked row, or overlapping write sets | — |
+
+Claude Code invokes them as `/coord-start`; a Codex prompt reference is
+`$coord-start`. They call the same CLI and MCP surfaces documented above and add no
+state of their own — `tests/test_agent_commands.py` checks every invocation named
+inside them against the live `coord` subcommands and the live MCP tool catalogue, so
+a command cannot outlive the verb it names.

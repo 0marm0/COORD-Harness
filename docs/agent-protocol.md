@@ -54,6 +54,27 @@ four-step shape:
    resume contract — a concrete `next_step` and a `resume_when` condition — not a
    vague "will get back to this."
 
+### The contract, packaged as commands
+
+The four steps above are shipped as commands so an agent does not have to
+re-derive them from this document mid-task. They live in `.claude/commands/` and
+`.agents/commands/`, mirrored byte-for-byte the way the operating skill is, and
+they invoke only the CLI and MCP surfaces described here — no command holds state
+of its own.
+
+| Step | Command | The mistake it prevents |
+|---|---|---|
+| Orient | `coord-start` | claiming first and reading the board afterwards; a session id minted per prompt |
+| Claim | `coord-claim` | taking a row whose `done_signal` or acceptance is missing, so the close is unreachable; fanning out subagents under no claim |
+| Heartbeat | `coord-claim` | treating a lease renewal as a progress log |
+| Close | `coord-close` | meeting the completion gate as a refusal rather than a checklist; parking with no resume contract |
+| Move it | `coord-handoff` | handing off by note, or with fences copied from a stale read |
+| Repair it | `coord-recover` | editing the database or a projection to make the board agree with reality |
+
+`tests/test_agent_commands.py` pins the mirror and resolves every invocation named
+inside a command against the live `coord` subcommand list and the live MCP tool
+catalogue, so a renamed verb fails there rather than in a stranger's session.
+
 ## Progress lives in the verb, not the heartbeat
 
 It's tempting to treat heartbeat as a chat channel — "still working on the
@@ -205,6 +226,9 @@ You coordinate through the shared board, not around it.
   hand off by leaving a note somewhere and hoping it's read.
 - If your work might touch the same files as another live agent, declare your
   write set and check for overlaps before you start editing.
+- In a checkout that ships them, run the packaged commands rather than
+  reconstructing this sequence: coord-start, coord-claim, coord-close,
+  coord-handoff, coord-recover.
 ```
 
 ## Where an agent's memory lives
