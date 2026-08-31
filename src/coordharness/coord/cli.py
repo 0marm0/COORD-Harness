@@ -433,6 +433,23 @@ def main(argv=None) -> int:
     p.add_argument("--ref", action="append", required=True)
     p.add_argument("--constraint", action="append", required=True)
     p.add_argument("--target-intent", choices=("queued", "blocked"), default="queued")
+    p = sub.add_parser(
+        "reassign",
+        help="one-command typed handoff using a fresh exact-state snapshot",
+    )
+    p.add_argument("work_id")
+    p.add_argument("--owner-lane", required=True, choices=("claude", "codex"))
+    p.add_argument("--task", required=True)
+    p.add_argument("--why", required=True)
+    p.add_argument("--acceptance", required=True)
+    p.add_argument(
+        "--operation-id",
+        default=None,
+        help="stable retry id; generated when omitted",
+    )
+    p.add_argument("--ref", action="append", required=True)
+    p.add_argument("--constraint", action="append", required=True)
+    p.add_argument("--target-intent", choices=("queued", "blocked"), default="queued")
     p = sub.add_parser("release")
     p.add_argument("claim_id")
     p.add_argument(
@@ -808,6 +825,49 @@ def main(argv=None) -> int:
                 "ok": True,
                 **coord_db.compact_existing_work_handoff_result(result),
                 "policy": policy,
+            })
+
+        elif args.cmd == "reassign":
+            # Convenience, not a weaker writer. Read the exact row and active
+            # assignment heads once, then submit those values to the same
+            # compare-and-swap transaction used by ``handoff``. A concurrent
+            # change therefore fails closed; this command never refreshes and
+            # silently retries a stale transfer.
+            _register_identity_session(conn, ident)
+            row = _work_row(conn, args.work_id)
+            if not row:
+                raise ValueError(f"work_id {args.work_id!r} is not present in coord.db")
+            head = coord_db._typed_handoff_head_state_unlocked(conn, args.work_id)
+            policy = _run_lifecycle_policy(
+                conn,
+                action="handoff",
+                work_id=args.work_id,
+                ident=ident,
+                payload={"target_intent": args.target_intent},
+            )
+            operation_id = args.operation_id or coord_db.new_id("reassign")
+            result = coord_db.post_existing_work_handoff(
+                conn,
+                work_id=args.work_id,
+                actor=ident["actor"],
+                session_id=sid,
+                owner_lane=args.owner_lane,
+                target_intent=args.target_intent,
+                task=args.task,
+                why=args.why,
+                acceptance=args.acceptance,
+                refs=args.ref,
+                constraints=args.constraint,
+                operation_id=operation_id,
+                expected_version=int(row["version"]),
+                expected_assignee=str(row.get("assignee") or "").strip().lower(),
+                expected_head_event_ids=list(head["active_event_ids"]),
+            )
+            _emit({
+                "ok": True,
+                **coord_db.compact_existing_work_handoff_result(result),
+                "policy": policy,
+                "fresh_snapshot": True,
             })
 
         elif args.cmd == "claim":
