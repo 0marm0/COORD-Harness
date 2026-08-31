@@ -144,7 +144,7 @@ The synthetic walkthrough below remains useful for exploring a populated board, 
 From the repository root:
 
 ```bash
-.venv/bin/python -m coordharness.demo
+.venv/bin/coord demo
 .venv/bin/coord board --group-by module
 ```
 
@@ -326,7 +326,7 @@ operator explicitly configures the exact database path; it is not a fallback aut
 
 Stop any process using the demo board, then remove only the exact `.coordharness/` directory inside the disposable clone. Do not use an unresolved environment variable, home directory, or broad recursive target.
 
-Re-running `python -m coordharness.demo` against an existing board is idempotent for the synthetic work rows but does not promise to erase lifecycle history. A fresh disposable clone is the cleanest reset.
+Re-running `coord demo` against an existing board is idempotent for the synthetic work rows but does not promise to erase lifecycle history. A fresh disposable clone is the cleanest reset.
 
 ## Troubleshooting
 
@@ -336,7 +336,7 @@ Check that the parent directory is writable and the path is not a zero-byte or f
 
 ### `unknown work_id 'OPS-503'`
 
-Run `python -m coordharness.demo` against the same `COORD_DB` used by `coord`.
+Run `coord demo` against the same `COORD_DB` used by `coord`.
 
 ### `ValueError: ambiguous agent identity`
 

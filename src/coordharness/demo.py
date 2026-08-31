@@ -1,8 +1,10 @@
 """Seed a database with a fictional project so the harness can be explored.
 
 Every row here is invented. Nothing is derived from any real board, and the
-generator is deterministic, so two people running `coord demo seed` get the
-same board and can compare notes.
+generator is deterministic, so two people running `coord demo` get the same
+board and can compare notes. `python -m coordharness.demo` runs this same
+seeder directly and keeps working for anything that already invokes it that
+way.
 
 The scenario is a small team porting a payments service, staffed by three
 agents working different parts of it. It exists to exercise the shapes that
