@@ -345,7 +345,10 @@ def test_the_reader_takes_the_terminal_and_not_stdin(monkeypatch: pytest.MonkeyP
 
     answer = module._read_controlling_terminal_confirmation("sign? ")
 
-    assert opened == ["/dev/tty"]
+    # Every open goes to the terminal and none to stdin; the reader takes two
+    # handles on the device (a read side and a write side) because a terminal
+    # is not seekable and a single read/write handle cannot be opened on one.
+    assert opened and set(opened) == {"/dev/tty"}
     assert answer == "from-the-terminal"
     assert terminal.written == ["sign? "], "the prompt goes to the terminal too"
 
@@ -583,3 +586,35 @@ def test_an_unknown_row_is_refused_before_anyone_is_asked(
     """No prompt for a row that does not exist."""
     assert entry.main(_sign_off_argv(board, work_id="DEMO-NOPE")) != 0
     assert operator_at_the_keyboard.prompts == []
+
+
+def test_a_real_terminal_can_actually_answer():
+    """The one test here that does not monkeypatch `open`.
+
+    Every other terminal test in this file substitutes `builtins.open`, and
+    that is precisely how a defect that refused EVERY real terminal survived:
+    the reader opened `/dev/tty` with mode `"r+"`, which builds a
+    `BufferedRandom` and demands a seekable stream, so on a genuine tty it
+    raised `io.UnsupportedOperation` -- an `OSError` subclass, caught by the
+    handler for "this process has no controlling terminal" and reported to a
+    real, present human as their own absence. `coord sign-off` was
+    unreachable by anyone.
+
+    So this one allocates an actual terminal and reads an actual answer
+    through it. A mock cannot fail the way the device did.
+    """
+    import os
+
+    from coordharness.coord import cli as module
+
+    master, subordinate = os.openpty()
+    try:
+        os.write(master, b"the-typed-answer\n")
+        answer = module._read_controlling_terminal_confirmation(
+            "sign? ", device=os.ttyname(subordinate)
+        )
+    finally:
+        os.close(master)
+        os.close(subordinate)
+
+    assert answer == "the-typed-answer"
