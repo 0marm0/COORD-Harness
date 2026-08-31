@@ -4,10 +4,12 @@ on:
   push:
     paths:
       - "apps/**"
+      - "scripts/native_context_bridge.py"
       - ".github/workflows/native.yml"
   pull_request:
     paths:
       - "apps/**"
+      - "scripts/native_context_bridge.py"
       - ".github/workflows/native.yml"
   workflow_dispatch:
 
