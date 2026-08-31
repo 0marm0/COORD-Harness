@@ -346,7 +346,7 @@ writes lands in a disposable clone's own gitignored `.coordharness/` directory:
 ```bash
 coord demo                     # seeds .coordharness/coord.db with 37 synthetic rows
 coord doctor                   # read-only health report; prints PASS and exits 0
-coord board --group-by module  # the same board as JSON
+coord board --group-by module  # at a terminal: the grouped human table; add --json for the board as JSON
 coord-board                    # read-only web board on http://127.0.0.1:7870
 ```
 
