@@ -57,7 +57,7 @@ the configured database and permits bounded read-only `preflight` against a fres
 Set `COORD_DEPLOYMENT_PROFILE=generic` explicitly when a client configuration might inherit
 an unrelated shell environment.
 
-All 33 default tools answer under `generic` against a fresh local database, including the
+All 36 default tools answer under `generic` against a fresh local database, including the
 read surfaces — `preflight`, `board`, `next_work`, `work_context`, `facts_lookup`,
 `knowledge_search`, `inbox`, and `runs`.
 

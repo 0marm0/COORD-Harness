@@ -229,9 +229,10 @@ can express "the board does not publish this" as absence. `CockpitState`'s summa
 non-optional `Int`s filled in with `?? 0`, so any document at all would render "0 done
 today" over a board that has finished work; `capability_inventory: []` would assert the
 harness has no capability planes. A 404 leaves each client on its own read model, which
-is the true answer. Removal of the two dead probes is ranked in
-[next steps §4f](next-steps.md); that entry distinguishes the served menubar
-document from the two intentionally unserved capability probes.
+is the true answer. Removal of the two dead probes is tracked in
+[release readiness checklist §2a](next-steps.md#2a-two-capability-probe-endpoints-stay-unserved-by-design);
+that entry distinguishes the served menubar document from the two
+intentionally unserved capability probes.
 
 ### 2.5 The reaper: what runs it, and what happens if nothing does
 
@@ -397,11 +398,11 @@ rather than how it looks. If you are adding UI, take `--green` for the accent an
 Two known holes, both already ranked:
 
 - Sharing a URL carries the row (`#<id>`) but not the accent
-  ([next steps §3f](next-steps.md)).
+  ([release readiness checklist §2b](next-steps.md#2b-sharing-a-url-does-not-carry-the-accent)).
 - Two colours once escaped the switch — an inline literal, which outranks any token, and
   a `var()` fallback whose variable was never defined. They were found by sweeping
   computed styles, not by reading the stylesheet, and there is still no regression test
-  ([next steps §4g](next-steps.md)).
+  ([release readiness checklist §2c](next-steps.md#2c-two-accent-literal-regressions-have-no-test-coverage)).
 
 ---
 
@@ -464,8 +465,9 @@ $ coord board --group-by module
 
 `coord claim`, `heartbeat-claim`, `done`, `release`, `inbox` and `doctor` work for the
 same reason, as does the whole web board. This is the open deployment-profile boundary
-declared in [MCP integration](mcp-integration.md) ("Fresh-board caveat") and ranked as
-[next steps §4e](next-steps.md) — not a bug to bypass. Until it closes, orient with
+declared in [MCP integration](mcp-integration.md) and tracked as
+[release readiness checklist §2d](next-steps.md#2d-the-fresh-board-deployment-profile-boundary-is-still-open)
+— not a bug to bypass. Until it closes, orient with
 `coord board` and the web board at `/`, then do the work over whichever surface answers.
 
 Note also that `preflight` and the CLI capsule are two independently written orientation
@@ -848,8 +850,8 @@ $ python -m pytest -q tests/test_no_hardcoded_endpoints.py
 7 passed in 0.09s
 ```
 
-[next steps §4a](next-steps.md) records this guard as built and keeps endpoint
-configuration centralized in `HarnessEndpoint`.
+[release readiness checklist §2e](next-steps.md#2e-the-hardcoded-endpoint-guard-is-built-and-enforced)
+records this guard as built and keeps endpoint configuration centralized in `HarnessEndpoint`.
 
 The usage dashboard is a separate deployment boundary. The service launcher must
 inject `COORD_USAGE_DASHBOARD_URL` with the canonical local `/api/usage/v1` URL;
@@ -992,4 +994,4 @@ describes it as "run read-only safety and integrity checks", and the response ca
 [Safety doctor](safety-doctor.md) ·
 [Security and privacy](security-and-privacy.md) ·
 [Context architecture](context-architecture.md) ·
-[Next steps](next-steps.md)
+[Release readiness](next-steps.md)

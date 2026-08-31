@@ -21,11 +21,13 @@
 <p align="center"><sub><b>This is the surface an operator lives in.</b> Grouped, dense, and capped: each group renders a bounded number of rows and then states exactly how many it is withholding. The title is the only element at full contrast, so the list can be scanned by title alone.</sub></p>
 
 <p align="center">
+  <a href="#install">Install</a> ·
   <a href="#two-agents-one-file">How two agents share work</a> ·
   <a href="#five-minute-start">Five-minute start</a> ·
   <a href="#what-an-operator-actually-sees">The product</a> ·
   <a href="#how-work-moves">Mechanism</a> ·
-  <a href="#what-the-harness-remembers">Context and memory</a>
+  <a href="#what-the-harness-remembers">Context and memory</a> ·
+  <a href="#troubleshooting">Troubleshooting</a>
 </p>
 
 A single agent in a chat window needs none of this. A **fleet** does — several
@@ -57,6 +59,188 @@ door.
 </p>
 
 <p align="center"><sub>One database owns lifecycle truth. CLI, MCP, and Python are clients of its fenced operation contract, never parallel authorities. Claims prevent collisions, heartbeats renew ownership, completion is proof-gated, and every viewer is a read-only projection.</sub></p>
+
+---
+
+## Install
+
+Requires Python 3.11 or newer and Git. Nothing below configures a provider account
+or a background service.
+
+**One command**, on any OS with Python 3.11+ (no Xcode or XcodeGen required for
+this base path):
+
+```bash
+git clone https://github.com/0marm0/COORD-Harness.git && cd COORD-Harness && ./scripts/setup.sh
+```
+
+It creates `.venv`, installs the package with MCP support, and owns the clone's
+`.coordharness/coord.db`. By default it does **not** touch anything outside the
+clone: Claude Code/Codex client registration is opt-in via `--register-clients`,
+and the native macOS/iOS app lane is opt-in via `--native` (macOS + Xcode
+command-line tools + [XcodeGen](https://github.com/yonaskolb/XcodeGen) only — a
+no-op notice on other OSes). `./scripts/setup-macos.sh` — kept only as a 2-line
+shim to this script for existing doc references — used to default both flags on;
+see [Native projections](#native-projections).
+
+**Manual, five commands** — no Xcode required, works on Linux too:
+
+```bash
+git clone https://github.com/0marm0/COORD-Harness.git
+cd COORD-Harness
+python3 -m venv .venv
+. .venv/bin/activate
+python -m pip install -e '.[mcp,dev]'
+```
+
+Core CLI and library use only the Python standard library. The `[mcp]` extra installs
+the MCP runtime; `[dev]` installs the test and lint toolchain — install `-e .` alone
+for just the core.
+
+Verify entry points (either path leaves a `.venv` at the repo root):
+
+```bash
+.venv/bin/coord --help
+.venv/bin/coord-board --help
+.venv/bin/coord-jobs --help
+```
+
+### Connect an MCP client
+
+Point each client at the same project root and database:
+
+**Claude Code**, from the repository you want to coordinate:
+
+```bash
+claude mcp add --scope project --transport stdio \
+  -e COORD_PROJECT_ROOT=/absolute/path/to/project \
+  -e COORD_DB=/absolute/path/to/project/.coordharness/coord.db \
+  -e COORD_DEPLOYMENT_PROFILE=generic \
+  coordharness -- /absolute/path/to/COORD-Harness/.venv/bin/coord-mcp
+```
+
+**Codex**, registering the same executable and authority:
+
+```bash
+codex mcp add coordharness \
+  --env COORD_PROJECT_ROOT=/absolute/path/to/project \
+  --env COORD_DB=/absolute/path/to/project/.coordharness/coord.db \
+  --env COORD_DEPLOYMENT_PROFILE=generic \
+  -- /absolute/path/to/COORD-Harness/.venv/bin/coord-mcp
+```
+
+**Generic MCP client:**
+
+```json
+{
+  "mcpServers": {
+    "coordharness": {
+      "command": "/absolute/path/to/COORD-Harness/.venv/bin/coord-mcp",
+      "env": {
+        "COORD_PROJECT_ROOT": "/absolute/path/to/project",
+        "COORD_DB": "/absolute/path/to/project/.coordharness/coord.db"
+      }
+    }
+  }
+}
+```
+
+These registrations use absolute paths because they point a client at a repository it
+does not necessarily run in. The repository's own checked-in `.mcp.json` and
+`.codex/config.toml` are the other case: a project-scoped client launched *in* this
+repository, where `./.venv/bin/python`, `COORD_PROJECT_ROOT="."`, and
+`COORD_DB=".coordharness/coord.db"` resolve against that working directory and stay
+free of any developer's absolute path. Use relative paths in-repo and absolute paths
+whenever the MCP process does not inherit the coordinated repository as its working
+directory — see [agent onboarding](docs/agent-onboarding.md). Full client setup, tool
+groups, and a complete session sequence live in
+[MCP integration](docs/mcp-integration.md) and
+[MCP server reference](docs/mcp-server.md).
+
+### Try it: claim a row, produce proof, complete it
+
+Run this in a disposable clone. The demo data is synthetic; set `SOURCE_DATE_EPOCH`
+when a fixed capture clock is required.
+
+```bash
+python -m coordharness.demo
+coord board --group-by module
+
+# ML-204 is a planned Codex row in the synthetic board. COORD_ACTOR and
+# COORD_SESSION_ID outrank every ambient identity, so this works even inside
+# a Claude Code shell, where CLAUDE_CODE_SESSION_ID would otherwise win.
+export COORD_ACTOR=codex COORD_SESSION_ID=codex:demo
+coord claim ML-204 --step "documenting the quantisation pass"
+
+mkdir -p docs/reports
+printf '%s\n' '# Quantisation for the local runtime' '' 'Synthetic demo proof.' \
+  > docs/reports/ml-204.md
+git add docs/reports/ml-204.md
+
+coord done ML-204 --artifact docs/reports/ml-204.md
+coord board --group-by module
+coord doctor    # still PASS, exit 0, with the completion recorded
+```
+
+`coord` creates `.coordharness/coord.db` and applies migrations on first use. The
+`done` command succeeds because `ML-204` declares `docs/reports/ml-204.md` as its
+`done_signal`, the non-empty Markdown proof exists, and Git's current index tracks
+it. Staging is sufficient; no commit is required — but a Markdown proof that is
+untracked, or a project that is not a Git repository at all, is refused with
+`artifact proof does not exist or is incomplete`. For a clean reset, remove only the
+disposable clone's `.coordharness/` directory; never point cleanup commands at a
+broad directory or an unresolved variable.
+
+**Everything at once:**
+
+```bash
+./scripts/demo.sh --native
+```
+
+Seeds a synthetic board under `var/demo/`, serves it on `http://127.0.0.1:7870`, builds
+both macOS apps and launches them against that board. Nothing touches a real database:
+the clients are started with `COORD_DB` pointed at the demo, and they are launched as
+binaries rather than through `open`, because `open` does not pass environment through.
+Add `--reset` to rebuild the board from scratch. `Ctrl-C` stops the server; the apps
+are separate processes and are quit from the menu bar and the window.
+
+**Tracked local jobs:**
+
+```bash
+# OPS-501 is a planned Codex row in the synthetic demo.
+coord claim OPS-501 --step "launching the synthetic telemetry check"
+
+# Copy claim_id and claim_fence exactly from that JSON response.
+coord-jobs launch \
+  --job-id DEMO-JOB \
+  --roadmap-id OPS-501 \
+  --session-id codex:demo \
+  --claim-id CLAIM_ID_FROM_CLAIM \
+  --claim-fence CLAIM_FENCE_FROM_CLAIM \
+  -- python -c "import time; [time.sleep(1) for _ in range(5)]"
+```
+
+Runnable, narrower walkthroughs live in [`examples/`](examples/). For client wiring,
+local data locations, capability boundaries, uninstall, and a clean-machine checklist,
+use the [standalone setup guide](docs/standalone-setup.md).
+
+---
+
+## Point your agent at this repo
+
+Once a client is wired up (above), the fastest orientation is to let the agent read
+its own contract instead of paraphrasing it by hand. Paste this into Claude Code or
+Codex from the repository you want it to coordinate:
+
+> Read AGENTS.md and set this repository up for yourself. Then run
+> `.venv/bin/coord onboard` and show me the receipt.
+
+[`AGENTS.md`](AGENTS.md) is the machine-readable operating contract every agent in
+this repository follows. `coord onboard` is the command that actually detects the
+caller's identity, checks lifecycle policy, and — asked for explicitly — registers
+this clone with the MCP clients installed on the machine; the JSON receipt it prints
+is the same one [getting started](docs/getting-started.md) and
+[agent onboarding](docs/agent-onboarding.md) walk through by hand.
 
 ---
 
@@ -153,21 +337,12 @@ stays legible once several agents are working at once.
 
 ## Five-minute start
 
-For a real project, including client wiring, local data locations, capability
-boundaries, uninstall, and a clean-machine checklist, use the
-[standalone setup guide](docs/standalone-setup.md). The commands below are a fictional
-demo and do not configure provider accounts or background services.
-
-Run it in a disposable clone. The board it seeds is fictional, and every file it
-writes lands in that clone's own gitignored `.coordharness/` directory:
+Already installed (see [Install](#install) above)? This is a second, wider demo —
+a fictional multi-row board to look around in, rather than the single claimed row
+above. It configures no provider account or background service, and every file it
+writes lands in a disposable clone's own gitignored `.coordharness/` directory:
 
 ```bash
-git clone https://github.com/0marm0/COORD-Harness.git
-cd COORD-Harness
-python3 -m venv .venv
-. .venv/bin/activate
-python -m pip install -e '.[mcp]'
-
 python -m coordharness.demo    # seeds .coordharness/coord.db with 37 synthetic rows
 coord doctor                   # read-only health report; prints PASS and exits 0
 coord board --group-by module  # the same board as JSON
@@ -465,16 +640,16 @@ the CLI calls — a claim made through `claim_work` and a claim made through
 `coord claim` are the same row, written by the same code, because the MCP layer is a
 transport rather than a second implementation.
 
-It declares 34 tools and exposes 33 by default; `handoff_existing` is withheld from
+It declares 37 tools and exposes 36 by default; `handoff_existing` is withheld from
 the default profile and promoted deliberately, because handing a row to another
 agent is the one operation that moves ownership out from under a live holder.
 
-> **Current boundary:** the default generic profile is the one to use. All 33 default tools
+> **Current boundary:** the default generic profile is the one to use. All 36 default tools
 > register against a fresh local database, and the ones a first session needs answer there:
 > `preflight`, `board`, `next_work`, `work_context`, `event_context`, `inbox`, `inbox_recent`,
 > `runs`, `knowledge_search`, `facts_query`, `knowledge_index_status`, the memory-proposal reads,
 > and the `claim_work`/`heartbeat`/`note`/`audit`/`decision`/`park`/`release` writers. Two of the
-> 33 fail closed on a fresh checkout rather than answering: `facts_lookup` raises
+> 36 fail closed on a fresh checkout rather than answering: `facts_lookup` raises
 > `FactStoreUnavailable` until a knowledge store exists — no MCP read creates one — and `orient`
 > requires an enforced exact-authority policy that a fresh checkout does not activate. The
 > remaining lifecycle writers refuse by contract until their preconditions hold: `complete`
@@ -487,132 +662,11 @@ agent is the one operation that moves ownership out from under a live holder.
 > hand. `coord reassign` is the concise twin: it snapshots those same fences once and still fails
 > closed if another writer changes them before commit.
 
-<details>
-<summary><b>MCP client setup</b> &mdash; Claude Code, Codex, and generic clients</summary>
-
-Install the optional dependency and point each client at the same project root and database:
-
-```bash
-python -m pip install -e '.[mcp]'
-```
-
-**Claude Code**, from the repository you want to coordinate:
-
-```bash
-claude mcp add --scope project --transport stdio \
-  -e COORD_PROJECT_ROOT=/absolute/path/to/project \
-  -e COORD_DB=/absolute/path/to/project/.coordharness/coord.db \
-  -e COORD_DEPLOYMENT_PROFILE=generic \
-  coordharness -- /absolute/path/to/COORD-Harness/.venv/bin/coord-mcp
-```
-
-**Codex**, registering the same executable and authority:
-
-```bash
-codex mcp add coordharness \
-  --env COORD_PROJECT_ROOT=/absolute/path/to/project \
-  --env COORD_DB=/absolute/path/to/project/.coordharness/coord.db \
-  --env COORD_DEPLOYMENT_PROFILE=generic \
-  -- /absolute/path/to/COORD-Harness/.venv/bin/coord-mcp
-```
-
-**Generic MCP client:**
-
-```json
-{
-  "mcpServers": {
-    "coordharness": {
-      "command": "/absolute/path/to/COORD-Harness/.venv/bin/coord-mcp",
-      "env": {
-        "COORD_PROJECT_ROOT": "/absolute/path/to/project",
-        "COORD_DB": "/absolute/path/to/project/.coordharness/coord.db"
-      }
-    }
-  }
-}
-```
-
-These registrations use absolute paths because they point a client at a repository it does not necessarily run in. The repository's own checked-in `.mcp.json` and `.codex/config.toml` are the other case: a project-scoped client launched *in* this repository, where `./.venv/bin/python`, `COORD_PROJECT_ROOT="."`, and `COORD_DB=".coordharness/coord.db"` resolve against that working directory and stay free of any developer's absolute path. Use relative paths in-repo and absolute paths whenever the MCP process does not inherit the coordinated repository as its working directory — see [agent onboarding](docs/agent-onboarding.md). Full client setup, tool groups, and a complete session sequence live in [MCP integration](docs/mcp-integration.md) and [MCP server reference](docs/mcp-server.md).
-
-</details>
-
-<details>
-<summary><b>Full installation, guided demos, and tracked local jobs</b></summary>
-
-Requires Python 3.11 or newer.
-
-```bash
-git clone https://github.com/0marm0/COORD-Harness.git
-cd COORD-Harness
-python3 -m venv .venv
-. .venv/bin/activate
-python -m pip install --upgrade pip
-python -m pip install -e '.[mcp,dev]'
-```
-
-Core CLI and library use only the Python standard library. The `[mcp]` extra installs the MCP runtime; `[dev]` installs the test and lint toolchain.
-
-### Quick demo: one Codex-owned row
-
-Run this in a disposable clone. The demo data is synthetic; set `SOURCE_DATE_EPOCH` when a fixed capture clock is required.
-
-```bash
-python -m coordharness.demo
-coord board --group-by module
-
-# ML-204 is a planned Codex row in the synthetic board. COORD_ACTOR and
-# COORD_SESSION_ID outrank every ambient identity, so this works even inside
-# a Claude Code shell, where CLAUDE_CODE_SESSION_ID would otherwise win.
-export COORD_ACTOR=codex COORD_SESSION_ID=codex:demo
-coord claim ML-204 --step "documenting the quantisation pass"
-
-mkdir -p docs/reports
-printf '%s\n' '# Quantisation for the local runtime' '' 'Synthetic demo proof.' \
-  > docs/reports/ml-204.md
-git add docs/reports/ml-204.md
-
-coord done ML-204 --artifact docs/reports/ml-204.md
-coord board --group-by module
-coord doctor    # still PASS, exit 0, with the completion recorded
-```
-
-`coord` creates `.coordharness/coord.db` and applies migrations on first use. The `done` command succeeds because `ML-204` declares `docs/reports/ml-204.md` as its `done_signal`, the non-empty Markdown proof exists, and Git's current index tracks it. Staging is sufficient; no commit is required — but a Markdown proof that is untracked, or a project that is not a Git repository at all, is refused with `artifact proof does not exist or is incomplete`.
-
-The completion is stored as the repository-relative path the row declared, which is why `coord doctor` reports the same `PASS` before and after it.
-
-For a clean reset, remove only the disposable clone's `.coordharness/` directory. Never point cleanup commands at a broad directory or an unresolved variable.
-
-### Everything at once
-
-```bash
-./scripts/demo.sh --native
-```
-
-Seeds a synthetic board under `var/demo/`, serves it on `http://127.0.0.1:7870`, builds
-both macOS apps and launches them against that board. Nothing touches a real database:
-the clients are started with `COORD_DB` pointed at the demo, and they are launched as
-binaries rather than through `open`, because `open` does not pass environment through.
-
-Add `--reset` to rebuild the board from scratch. `Ctrl-C` stops the server; the apps
-are separate processes and are quit from the menu bar and the window.
-
-### Tracked local jobs
-
-```bash
-# OPS-501 is a planned Codex row in the synthetic demo.
-coord claim OPS-501 --step "launching the synthetic telemetry check"
-
-# Copy claim_id and claim_fence exactly from that JSON response.
-coord-jobs launch \
-  --job-id DEMO-JOB \
-  --roadmap-id OPS-501 \
-  --session-id codex:demo \
-  --claim-id CLAIM_ID_FROM_CLAIM \
-  --claim-fence CLAIM_FENCE_FROM_CLAIM \
-  -- python -c "import time; [time.sleep(1) for _ in range(5)]"
-```
-
-</details>
+Client wiring commands, the claim-and-complete walkthrough, and the tracked-jobs
+demo all moved to [Install](#install) so a new reader hits them before any
+conceptual prose — see
+[Connect an MCP client](#connect-an-mcp-client) and
+[Try it: claim a row, produce proof, complete it](#try-it-claim-a-row-produce-proof-complete-it).
 
 ---
 
@@ -697,7 +751,7 @@ The machine-readable source for this table is [`docs/feature-status.json`](docs/
 |---|---|---|
 | SQLite-WAL lifecycle, claims, leases, proof, events | **Shipped** | Stable local core |
 | `coord` CLI and Python API | **Shipped** | Stable core surface |
-| MCP stdio server | **Preview** | 34 tools declared, 33 exposed by default; fresh generic preflight, board, and lifecycle writes answer, while `facts_lookup` and `orient` fail closed until a knowledge store and an enforced exact-authority policy exist; strict-profile custody remains deployment-specific |
+| MCP stdio server | **Preview** | 37 tools declared, 36 exposed by default; fresh generic preflight, board, and lifecycle writes answer, while `facts_lookup` and `orient` fail closed until a knowledge store and an enforced exact-authority policy exist; strict-profile custody remains deployment-specific |
 | `coord-mcp` executable | **Preview** | Packaged stdio launcher; the checked-in project-scoped configs use paths relative to the project root, and absolute paths are required whenever the client does not launch the server there |
 | Local jobs and run telemetry | **Shipped** | Library surface; CLI is preview |
 | Bounded context, facts, and full-text retrieval | **Preview** | The capsule, digest, skeleton, focus, search, and curation lenses render on a fresh generic `coord.db`; the MCP server names the fact ledger on every read but does not create it, and knowledge indexing and accepted-memory bootstrap remain library workflows |
@@ -723,6 +777,52 @@ The machine-readable source for this table is [`docs/feature-status.json`](docs/
 
 Read the full [security and privacy model](docs/security-and-privacy.md) and [security policy](.github/SECURITY.md).
 
+## Platform support
+
+macOS has the full path: CLI, MCP, board, and the native menu-bar/Cockpit/iOS
+clients. Linux has the CLI and MCP path — core coordination, the web board, and
+local jobs — without the native Xcode-built clients, which are macOS-only by
+toolchain. Windows process-liveness support is planned, not a current claim; see
+[compatibility](docs/compatibility.md) for the full runtime matrix and promises.
+
+## Versioning
+
+`main` is the release channel until `v0.1.0` tags land — no numbered releases exist
+yet, and compatibility promises attach to shipped surfaces (see
+[compatibility](docs/compatibility.md)), not to a version number.
+
+## Troubleshooting
+
+Full list of nine, with fixes, in
+[getting started → Troubleshooting](docs/getting-started.md#troubleshooting). The
+six most likely on a first run:
+
+**`coord: could not prepare the database`** — the parent directory is not
+writable, or the path is a zero-byte or foreign SQLite file. The loader fails
+closed rather than writing coordination tables into an unrelated database.
+
+**`ValueError: ambiguous agent identity`** — both a Claude Code and a Codex
+session variable are set, so the CLI refuses to guess which lane owns the work.
+Set `COORD_ACTOR=claude` or `COORD_ACTOR=codex` with a matching
+`COORD_SESSION_ID` and re-run.
+
+**`claim` says the row belongs to another actor** — use the correct
+actor/session identity or a typed handoff. Never overwrite the assignee or reuse
+another process's session ID.
+
+**`done` says proof is missing or incomplete** — the artifact path must exactly
+match the row's declared `done_signal`, resolve beneath `COORD_PROJECT_ROOT`,
+exist, and be non-empty. A Markdown proof must also be tracked in Git's index —
+`git add` it; staging is enough, no commit needed.
+
+**`coord doctor` reports `database_outside_state_root`** — the database exists
+but sits outside the state root doctor was given. Pass a matching `--state-root`,
+or keep the database at the default `.coordharness/coord.db`.
+
+**The board viewer cannot open the database** — create it first with any `coord`
+command or the demo seeder, and confirm the viewer and CLI point to the same
+absolute `COORD_DB`.
+
 ## Documentation
 
 | Start here | Then |
@@ -734,6 +834,7 @@ Read the full [security and privacy model](docs/security-and-privacy.md) and [se
 | [Operators' handbook](docs/operators-handbook.md) | [Jobs and runs](docs/jobs-and-runs.md) · [Local models](docs/local-models.md) |
 | [Visual atlas](docs/visual-atlas.md) | [Operations Atlas contract](docs/operations-atlas.md) · [Swarm Mesh](docs/swarm-mesh.md) |
 | [Security and privacy](docs/security-and-privacy.md) | [Governance](docs/governance.md) · [Releasing](docs/releasing.md) |
+| [Compatibility](docs/compatibility.md) | [Comparison with adjacent tools](docs/comparison.md) · [Examples](examples/) |
 
 Contributing guidance is in [CONTRIBUTING.md](.github/CONTRIBUTING.md); COORD-Harness is released under the [MIT License](LICENSE).
 

@@ -7,6 +7,9 @@ started" (that's `docs/ideas.md` — read it first; every item below points
 back to an entry there). Order within a tier is not priority order. Items
 move between tiers, or off the list entirely, without notice.
 
+For readiness gates and already-scoped tactical gaps rather than direction,
+see the [release readiness checklist](next-steps.md).
+
 The three tiers mean different things:
 
 - **Near** — the gap is understood, the smallest first step is known, and
@@ -103,6 +106,56 @@ to it. The honest first step toward a hosted profile is an audit of which
 existing guards survive an untrusted `actor`, not a login screen; that audit
 hasn't happened, and nothing past it belongs on a roadmap yet. See "What a
 hosted profile would need."
+
+## Continuing themes
+
+These are the standing directional themes this project keeps returning to —
+broader than any single *Near*/*Next*/*Someday* entry above and not each
+individually backed by a `docs/ideas.md` entry, but still the shape future
+roadmap items in this area should take.
+
+### 1. Installation and first-run confidence
+
+- keep the one-command macOS setup path reproducible;
+- expand clean-install tests across supported Python versions;
+- make client configuration validation actionable and reversible;
+- preserve a deterministic demo that contains only fictional work.
+
+### 2. Provider usage and routing
+
+- harden persistent provider authentication and explicit account switching;
+- keep provider quotas, costs, histories, and freshness separate;
+- improve routing recommendations using declared quota thresholds;
+- never infer account state from another application or copy credentials.
+
+### 3. System telemetry
+
+- keep CPU, GPU, memory, and disk collection bounded and low overhead;
+- document platform-specific sampling semantics;
+- retain user-configurable warning and critical thresholds;
+- expose detailed history only on demand.
+
+### 4. Context and memory
+
+- extend source-aware retrieval over operator-selected repositories;
+- keep accepted memory separate from proposals;
+- add export and backup receipts for local knowledge stores;
+- preserve clear absence, stale, truncated, and unavailable states.
+
+### 5. Coordination surfaces
+
+- improve compact board navigation and accessible graph inspection;
+- keep Fleet and Pulse summaries source-backed and collapsible;
+- align web and native clients on one snapshot schema;
+- add regression screenshots only from fictional fixtures.
+
+### 6. Reliability and security
+
+- fuzz lifecycle and review boundaries;
+- verify recovery from interrupted database and sidecar writes;
+- keep publication privacy checks mandatory in CI;
+- require a fresh private vocabulary during official releases;
+- review dependency updates manually before bot automation is enabled.
 
 ## What this list is not
 

@@ -34,7 +34,10 @@
       "name": "MCP stdio server",
       "status": "Preview",
       "source": ["src/coordharness/coord/mcp_coord_server.py"],
-      "notes": "34 tools are declared and 33 register in the default generic profile; handoff_existing is deferred behind the promotion contract. Against a fresh generic coord.db, preflight, board, next_work, work_context, event_context, inbox, inbox_recent, runs, knowledge_search, facts_query, knowledge_index_status, the memory-proposal reads, and the claim/heartbeat/note/audit/decision/park/release writers all answer. Two default tools fail closed on a fresh checkout rather than answering: facts_lookup raises FactStoreUnavailable until a knowledge store exists, and orient requires an enforced exact-authority policy. The remaining writers refuse by contract until their preconditions hold rather than because the profile is unsupported: complete requires the declared artifact in Git's index, verdict refuses a same-lane pass, and request_audit refuses T2/T1 rows that self-verify. The strict deployment profile's board-backed reads fail closed by design."
+      "mcp_tools_registered": 37,
+      "mcp_tools_default_exposed": 36,
+      "mcp_tools_deferred": ["handoff_existing"],
+      "notes": "37 tools are declared and 36 register in the default generic profile; handoff_existing is deferred behind the promotion contract. Against a fresh generic coord.db, preflight, board, next_work, work_context, event_context, inbox, inbox_recent, runs, knowledge_search, facts_query, knowledge_index_status, the memory-proposal reads, and the claim/heartbeat/note/audit/decision/park/release writers all answer. Two default tools fail closed on a fresh checkout rather than answering: facts_lookup raises FactStoreUnavailable until a knowledge store exists, and orient requires an enforced exact-authority policy. The remaining writers refuse by contract until their preconditions hold rather than because the profile is unsupported: complete requires the declared artifact in Git's index, verdict refuses a same-lane pass, and request_audit refuses T2/T1 rows that self-verify. The strict deployment profile's board-backed reads fail closed by design."
     },
     {
       "id": "coord-mcp-entrypoint",
