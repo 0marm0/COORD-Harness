@@ -1022,6 +1022,7 @@ struct UsageDaily: Codable, Equatable, Identifiable, Sendable {
     let cacheCreateOtherTokens: Int64?
     let providerNativeCostNanos: Int64?
     let apiRateEstimateNanos: Int64?
+    let modelBreakdowns: [UsageDailyModelBreakdown]?
 
     enum CodingKeys: String, CodingKey {
         case date
@@ -1034,9 +1035,43 @@ struct UsageDaily: Codable, Equatable, Identifiable, Sendable {
         case cacheCreateOtherTokens = "cache_create_other_tokens"
         case providerNativeCostNanos = "provider_native_cost_nanos"
         case apiRateEstimateNanos = "api_rate_estimate_nanos"
+        case modelBreakdowns = "model_breakdowns"
     }
 
     var id: String { date }
+}
+
+struct UsageDailyModelBreakdown: Codable, Equatable, Identifiable, Sendable {
+    let key: String?
+    let label: String?
+    let totalTokens: Int64?
+    let inputTokens: Int64?
+    let outputTokens: Int64?
+    let cacheReadTokens: Int64?
+    let cacheCreate5MTokens: Int64?
+    let cacheCreate1HTokens: Int64?
+    let cacheCreateOtherTokens: Int64?
+    let providerNativeCostNanos: Int64?
+    let apiRateEstimateNanos: Int64?
+
+    enum CodingKeys: String, CodingKey {
+        case key, label
+        case totalTokens = "total_tokens"
+        case inputTokens = "input_tokens"
+        case outputTokens = "output_tokens"
+        case cacheReadTokens = "cache_read_tokens"
+        case cacheCreate5MTokens = "cache_create_5m_tokens"
+        case cacheCreate1HTokens = "cache_create_1h_tokens"
+        case cacheCreateOtherTokens = "cache_create_other_tokens"
+        case providerNativeCostNanos = "provider_native_cost_nanos"
+        case apiRateEstimateNanos = "api_rate_estimate_nanos"
+    }
+
+    var id: String { key ?? label ?? "unknown-model" }
+    var displayLabel: String {
+        let trimmed = label?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed?.isEmpty == false ? trimmed! : "Unknown model"
+    }
 }
 
 struct UsageCosts: Codable, Equatable, Sendable {
