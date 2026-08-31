@@ -11,7 +11,7 @@ import time
 from typing import Any
 
 from coordharness import config as _harness_config
-from . import coord_db
+from . import coord_db, process_liveness
 from coordharness.jobs import sidecar_snapshot, status as jobstatus
 
 CONTRACT = "native_cockpit.v1"
@@ -477,14 +477,14 @@ def _sidecar_index(*, now: float) -> dict[str, dict[str, Any]]:
         if state not in JOB_PROGRESS_RUNNING_STATES:
             continue
         age = _progress_age_s(sidecar, now=now)
-        pid_alive = False
         pid = _int_or_none(sidecar.get("pid"))
-        if pid is not None:
-            try:
-                os.kill(pid, 0)
-                pid_alive = True
-            except OSError:
-                pid_alive = False
+        # pid_matches cross-checks the recorded start time when the sidecar
+        # carries pid_started_at; sidecars written before that field existed
+        # fall back to the bare pid_exists check (expected_start_time=None),
+        # matching prior behavior exactly.
+        pid_alive = pid is not None and process_liveness.pid_matches(
+            pid, sidecar.get("pid_started_at")
+        )
         if not pid_alive and (age is None or age > JOB_PROGRESS_STALE_S):
             continue
         canonical = jobstatus.canonical_id(sidecar)

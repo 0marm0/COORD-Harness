@@ -20,6 +20,7 @@ EOF
 }
 
 LABEL="org.coordharness.board"
+LABEL_REAPER="org.coordharness.reaper"
 APP_DIR_INPUT="${COORD_APP_DIR:-$HOME/Applications}"
 
 while [[ $# -gt 0 ]]; do
@@ -68,6 +69,7 @@ LOG_DIR="$(absolute_existing_parent "$LOG_DIR")"
 LAUNCH_AGENT_DIR="${COORD_LAUNCH_AGENT_DIR:-$HOME/Library/LaunchAgents}"
 LAUNCH_AGENT_DIR="$(absolute_existing_parent "$LAUNCH_AGENT_DIR")"
 PLIST="$LAUNCH_AGENT_DIR/$LABEL.plist"
+PLIST_REAPER="$LAUNCH_AGENT_DIR/$LABEL_REAPER.plist"
 MENU_TARGET="$APP_DIR/COORD.app"
 WINDOW_TARGET="$APP_DIR/COORD Cockpit.app"
 
@@ -95,6 +97,17 @@ if [[ -e "$PLIST" ]]; then
   installed_label="$(/usr/libexec/PlistBuddy -c 'Print :Label' "$PLIST" 2>/dev/null || true)"
   [[ "$installed_label" == "$LABEL" ]] || fail "refusing to remove foreign plist at $PLIST"
   rm -f -- "$PLIST"
+fi
+
+# Optional, only present if the operator passed --install-reaper-agent to
+# apps/install.sh -- absence here is not an error. Mirrors the board
+# LaunchAgent removal above: guarded bootout + label-verified rm.
+launchctl bootout "gui/$UID/$LABEL_REAPER" >/dev/null 2>&1 || true
+if [[ -e "$PLIST_REAPER" ]]; then
+  installed_label_reaper="$(/usr/libexec/PlistBuddy -c 'Print :Label' "$PLIST_REAPER" 2>/dev/null || true)"
+  [[ "$installed_label_reaper" == "$LABEL_REAPER" ]] \
+    || fail "refusing to remove foreign plist at $PLIST_REAPER"
+  rm -f -- "$PLIST_REAPER"
 fi
 
 bundle_identifier() {
