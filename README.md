@@ -160,10 +160,11 @@ groups, and a complete session sequence live in
 ### Try it: claim a row, produce proof, complete it
 
 Run this in a disposable clone. The demo data is synthetic; set `SOURCE_DATE_EPOCH`
-when a fixed capture clock is required.
+when a fixed capture clock is required (`python -m coordharness.demo` still works too,
+if you prefer invoking the module directly).
 
 ```bash
-python -m coordharness.demo
+coord demo
 coord board --group-by module
 
 # ML-204 is a planned Codex row in the synthetic board. COORD_ACTOR and
@@ -343,7 +344,7 @@ above. It configures no provider account or background service, and every file i
 writes lands in a disposable clone's own gitignored `.coordharness/` directory:
 
 ```bash
-python -m coordharness.demo    # seeds .coordharness/coord.db with 37 synthetic rows
+coord demo                     # seeds .coordharness/coord.db with 37 synthetic rows
 coord doctor                   # read-only health report; prints PASS and exits 0
 coord board --group-by module  # the same board as JSON
 coord-board                    # read-only web board on http://127.0.0.1:7870
