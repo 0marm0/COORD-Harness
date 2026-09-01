@@ -49,10 +49,18 @@ def test_an_invocation_that_reaches_no_handler_creates_no_state(
     monkeypatch.setenv("COORD_PROJECT_ROOT", str(clone))
     monkeypatch.chdir(clone)
 
-    with pytest.raises(SystemExit) as exited:
-        entry.main(argv)
+    # The property under test is the exit CODE and the absence of state, not
+    # the mechanism that produces them. `--help` still exits through argparse's
+    # SystemExit, while a bare invocation now returns its code so it can print
+    # a curated pointer at the commands that matter instead of dumping every
+    # subcommand. Both are "reached no handler"; pinning SystemExit would fail
+    # a caller that answers more helpfully without touching the disk.
+    try:
+        code = entry.main(argv)
+    except SystemExit as exited:  # --help / -h
+        code = exited.code
 
-    assert exited.value.code == expected_code
+    assert code == expected_code
     assert sorted(path.name for path in clone.iterdir()) == []
 
 

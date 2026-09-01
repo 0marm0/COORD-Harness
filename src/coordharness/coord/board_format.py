@@ -178,7 +178,18 @@ def render_board_table(
     if now is None:
         now = time.time()
     if not rows:
-        return f"(no work items; grouped by {group_by})"
+        # A newcomer's first `coord board` almost always lands here -- nothing
+        # has been created yet -- and "(no work items)" alone answers only
+        # "did it work" without saying what to do next. Two concrete next
+        # commands, not a link to documentation: `coord demo` seeds a
+        # disposable board to look around in, `coord create` starts a real
+        # one. Kept to one line on purpose -- see
+        # ``test_render_board_table_empty_board``.
+        return (
+            f"(no work items; grouped by {group_by} -- "
+            "seed a demo board with 'coord demo', or create the first row "
+            "with 'coord create')"
+        )
 
     title_width = _title_width(_terminal_width(width))
     lines = [_header_line(title_width)]
