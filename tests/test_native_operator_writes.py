@@ -36,6 +36,12 @@ def _seed(database: Path, monkeypatch: pytest.MonkeyPatch) -> None:
             acceptance_json=json.dumps(["proof exists"]),
             note="native operator endpoint fixture",
             intent_state="queued",
+            # Ranked, because `/api/v1/actions` resolves its target against the
+            # rows the snapshot carries, and the snapshot's operator surface
+            # keeps queued work only where somebody gave it a priority. These
+            # tests are about whether the served routes refuse to write, so the
+            # fixture seeds a row that is on the board to be refused.
+            priority=1,
         )
     finally:
         conn.close()

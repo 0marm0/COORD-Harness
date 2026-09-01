@@ -30,7 +30,12 @@ def test_stable_copy_of_clean_database_creates_no_source_sidecars(tmp_path: Path
     bootstrap_database(db)
     writer = connect(db)
     try:
-        coord_db.upsert_work(writer, "CLEAN-1", title="clean database row")
+        # Ranked, because the snapshot's operator surface only carries queued
+        # work somebody put a priority on. This test is about whether the read
+        # reaches the row at all, so it seeds one the surface will keep.
+        coord_db.upsert_work(
+            writer, "CLEAN-1", title="clean database row", priority=1
+        )
     finally:
         writer.close()
 
@@ -53,7 +58,14 @@ def test_stable_copy_preserves_committed_rows_that_exist_only_in_wal(tmp_path: P
     try:
         writer.execute("PRAGMA wal_autocheckpoint = 0")
         writer.execute("PRAGMA wal_checkpoint(TRUNCATE)")
-        coord_db.upsert_work(writer, "WAL-ONLY-1", title="latest committed WAL row")
+        coord_db.upsert_work(
+            writer,
+            "WAL-ONLY-1",
+            title="latest committed WAL row",
+            # See CLEAN-1: ranked so the operator surface carries it, leaving
+            # the WAL question this test asks the only one it can fail on.
+            priority=1,
+        )
 
         wal = Path(f"{db}-wal")
         assert wal.stat().st_size > 0
