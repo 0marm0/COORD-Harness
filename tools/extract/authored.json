@@ -73,6 +73,7 @@
     "apps/Tests/EndpointTestFixtures.swift": "neutral endpoint-only XCTest fixtures written fresh",
     "apps/Tests/HarnessEndpointTests.swift": "standalone endpoint selection regressions written fresh",
     "apps/Tests/MenuBarPerformanceTests.swift": "bounded menu-bar scheduling and refresh performance regressions written fresh",
+    "apps/Tests/MenubarBucketingTests.swift": "regressions holding the section rule: paused work is never filed as up-next with or without a bucket, an unknown status never overrides the server's bucket, and a group key is read as a section name only when no bucket was sent; written fresh",
     "apps/Tests/NativeDetailPolishTests.swift": "native detail hierarchy and layout contract regressions written fresh",
     "apps/Tests/NativeNavigationTests.swift": "native compact-navigation visibility regressions written fresh",
     "apps/Tests/NativeOperatorWritesTests.swift": "native XCTest regression asserting the native-operator action broker binds only to the fixed loopback endpoint with a private, restrictively-permissioned bearer token, checked by reading NativeOperatorTokenSource.swift and NativeCockpitActionBroker.swift as source text rather than a live network probe",
@@ -125,6 +126,7 @@
     "apps/menubar/Sources/Cockpit/UI/CockpitMapWebView.swift": "native client source; began as a port and now diverges deliberately — this window embeds the harness's own Mesh/Map/Atlas routes, the source product embeds its own console routes",
     "apps/menubar/Sources/Cockpit/UI/CockpitRootView.swift": "native client source; began as a port and now diverges deliberately — this window embeds the harness's own Mesh/Map/Atlas routes, the source product embeds its own console routes",
     "apps/menubar/Sources/Data/ConfigPersistence.swift": "small atomic property-list persistence helper written fresh",
+    "apps/menubar/Sources/Data/RowSectionPolicy.swift": "the panel section rule as a free function over plain values: the server's bucket decides, the status string is the fallback, and paused work is held beside running rather than queued as next; written fresh",
     "apps/menubar/Sources/Data/SystemTelemetryDisplayPolicy.swift": "standalone compact telemetry geometry, ordering, and threshold policy written fresh",
     "apps/menubar/Sources/UI/CoordBrandFont.swift": "native client source",
     "apps/menubar/Sources/UI/PremiumSystemTelemetryDetailView.swift": "written fresh: the dense Stats detail popover -- layout contract, module ordering, ring and battery geometry -- that the standalone dockable Stats status item opens",
@@ -649,12 +651,12 @@
     },
     "apps/menubar/Sources/Data/HarnessClient.swift": {
       "origin": "ported from a pinned private status client, then substantially adapted for the standalone harness",
-      "reason": "The client now uses the public endpoint policy, bounded timeouts, generic routes, and no private source-tree assumptions. Re-reviewed (agent self-review, not independent human review) after setMode and pauseAll gained an optional completion callback (HarnessControlOutcome) reported via a new postOutcome helper, so a caller can show verified success or failure instead of a fire-and-forget POST; same endpoints, same query parameters.\n\nRe-pinned: Row(cockpit:) carries the resolved session group key/label across; section stays the epic (agent self-review) (tool-assisted: the hash was updated to the staged bytes by tools/extract/repin.py --apply. This records acceptance of the new content, not an independent re-review of it.)",
-      "reviewed_sha256": "277544a7aa9d50c38d80ce590253b5503d199294010311fb0ac44997ea43b752",
+      "reason": "The client now uses the public endpoint policy, bounded timeouts, generic routes, and no private source-tree assumptions. Re-reviewed (agent self-review, not independent human review) after setMode and pauseAll gained an optional completion callback (HarnessControlOutcome) reported via a new postOutcome helper, so a caller can show verified success or failure instead of a fire-and-forget POST; same endpoints, same query parameters.\n\nRe-pinned: Row(cockpit:) carries the resolved session group key/label across; section stays the epic (agent self-review) (tool-assisted: the hash was updated to the staged bytes by tools/extract/repin.py --apply. This records acceptance of the new content, not an independent re-review of it.)\n\nRe-pinned: bucket(for:) delegates to RowSectionPolicy and passes the server's bucket (lane) ahead of the group key (section); no other behaviour changed (tool-assisted: the hash was updated to the staged bytes by tools/extract/repin.py --apply. This records acceptance of the new content, not an independent re-review of it.)",
+      "reviewed_sha256": "9feeb8df907ad7dce947c410ae638cf8bbf1159f822e46519bfd4367315b6315",
       "repin": {
-        "reason": "Row(cockpit:) carries the resolved session group key/label across; section stays the epic (agent self-review)",
+        "reason": "bucket(for:) delegates to RowSectionPolicy and passes the server's bucket (lane) ahead of the group key (section); no other behaviour changed",
         "method": "tool-assisted: the hash was updated to the staged bytes by tools/extract/repin.py --apply. This records acceptance of the new content, not an independent re-review of it.",
-        "previous_sha256": "61a15ad3e9fdd6e6942e23d91d036c4b2672f6ba101af193b5555918af7d6148"
+        "previous_sha256": "277544a7aa9d50c38d80ce590253b5503d199294010311fb0ac44997ea43b752"
       }
     },
     "apps/menubar/Sources/Data/Models.swift": {
