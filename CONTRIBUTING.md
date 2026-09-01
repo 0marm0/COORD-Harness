@@ -135,6 +135,58 @@ candidate must never contain (live databases, real work-item text, absolute
 paths, unreviewed screenshots, anything source-derived). Read it before
 adding a fixture, a screenshot, or an example that might look real.
 
+## Declaring the files you add, and re-pinning the ones you change
+
+The gate requires every tracked file to be accounted for in exactly one place:
+ported files in `tools/extract/manifest.json`, files written here in
+`tools/extract/authored.json` under `files`, and files that were ported and
+then substantially adapted under `derived` — where each entry also pins the
+SHA-256 of the content that was reviewed. Both halves drift on their own. A
+change that adds files leaves them undeclared; a change to an adapted file
+leaves its `reviewed_sha256` pointing at bytes that are no longer there. Left
+alone this accumulates, and a gate that is red for reasons unrelated to your
+change is a gate everybody learns to ignore.
+
+Before opening a pull request:
+
+```bash
+python tools/extract/repin.py --check
+```
+
+It reads **Git's index** — the same inventory the gate reads, so the two cannot
+disagree — and prints, for each undeclared file and each stale pin, the command
+that fixes it. Stage your work first; an unstaged edit is invisible to this
+check and to CI alike, and the check says so rather than passing silently.
+
+```bash
+python tools/extract/repin.py --apply \
+  --declare src/coordharness/example.py --description "what this file is"
+python tools/extract/repin.py --apply \
+  --repin src/coordharness/example.py --reason "why the new content is acceptable"
+```
+
+`--apply` does only the mechanical half. It will not write a description it was
+not given, and it will not re-pin a hash without a reason, because those two
+sentences are the review: *what this file is* and *why its new bytes are
+acceptable*. A tool that fills them in is forging a review.
+
+What `--check` enforces about those two sentences, wherever they came from, is
+a floor and not a judgement of quality: a description or a reason must not be
+empty, must not begin with a placeholder token (`TODO`, `TBD`, `n/a`, …), and
+must be at least 12 characters and 3 words. `--description "file"` is therefore
+rejected; a terse but real statement such as `"unit tests for the new endpoint"`
+passes. The floor stops a lane clearing a red gate by declaring a dozen files
+with one short word — it cannot tell you the sentence is *true*, which is what
+review is for. A re-pin takes one `--reason` per file, in the same order as the
+`--repin` paths, and `--repin-all` refuses when more than one pin is stale and
+prints the per-file commands instead: one sentence spread across several files
+is a rubber stamp, not a judgement about any of them. Every automated re-pin is
+stamped `repin.method` and folded into that entry's `reason`, recording that
+the hash was re-computed rather than that anyone re-read the file — if you
+re-pin someone else's adapted file, that stamp is what stops the record from
+claiming you reviewed it, and what stops the previous reviewer's paragraph from
+reading as though it described the new bytes.
+
 ## The mirrored agent-experience trees
 
 `.claude/commands/` and `.agents/commands/` — and `.claude/skills/` and
@@ -173,6 +225,7 @@ Before opening a pull request:
 pytest -m "not slow"          # fast loop while iterating
 pytest                          # full suite, including the wheel-install test
 ruff check src tests tools .github/scripts
+python tools/extract/repin.py --check
 python tools/extract/gate.py
 python tools/privacy_hygiene.py --history
 python tools/public_hygiene_sweep.py
