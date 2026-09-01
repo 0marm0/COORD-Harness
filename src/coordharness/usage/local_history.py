@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 import hashlib
+import heapq
 import json
 from pathlib import Path
 from typing import Any, Mapping
@@ -53,7 +54,7 @@ def _day(value: object) -> str | None:
         parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
     except ValueError:
         return None
-    return parsed.date().isoformat() if parsed.tzinfo is not None else None
+    return parsed.astimezone().date().isoformat() if parsed.tzinfo is not None else None
 
 
 def _model(value: object, fallback: str = "unknown") -> str:
@@ -154,14 +155,22 @@ def discover_local_cli_history(
     scan_root = root / ("projects" if provider == "claude" else "sessions")
     files = []
     if scan_root.is_dir() and not scan_root.is_symlink():
-        files = sorted(
+
+        def recency(path: Path) -> tuple[int, str]:
+            try:
+                return path.stat().st_mtime_ns, path.as_posix()
+            except OSError:
+                return -1, path.as_posix()
+
+        files = heapq.nlargest(
+            max_files,
             (
                 path
                 for path in scan_root.rglob("*.jsonl")
                 if path.is_file() and not path.is_symlink()
             ),
-            key=lambda path: path.as_posix(),
-        )[:max_files]
+            key=recency,
+        )
     totals: dict[tuple[str, str], dict[str, int]] = {}
     manifest = hashlib.sha256()
     file_count = scanned = accepted = rejected = errors = total_bytes = 0

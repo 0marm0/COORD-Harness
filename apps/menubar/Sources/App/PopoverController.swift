@@ -22,15 +22,6 @@ struct PopoverNavigationState {
     mutating func reset() { destination = .main }
 }
 
-private enum UsageWindowGeometry {
-    static let preferredHeight: CGFloat = 880
-    static let detachedScreenInset: CGFloat = 40
-
-    static func detachedHeight(_ desired: CGFloat, screen: NSScreen?) -> CGFloat {
-        guard let visibleHeight = screen?.visibleFrame.height else { return desired }
-        return min(desired, max(42, visibleHeight - detachedScreenInset))
-    }
-}
 @MainActor
 final class PopoverController {
 
@@ -450,21 +441,36 @@ final class PopoverController {
         forceUsageRefresh()
         let detachedVisible = detachedWindow?.isVisible == true
         let detachedSize = detachedVisible ? detachedWindow?.contentView?.bounds.size : nil
-        let usageWindowWidth: CGFloat = 460
-        let width = detachedVisible ? max(usageWindowWidth, detachedSize?.width ?? usageWindowWidth) : usageWindowWidth
+        let anchorScreen = anchorScreenFrame.flatMap { anchor in
+            NSScreen.screens.first { $0.frame.intersects(anchor) }
+        }
+        let screen = detachedVisible
+            ? (detachedWindow?.screen ?? anchorScreen ?? NSScreen.main)
+            : (anchorScreen ?? NSScreen.main)
         // Keep both providers, the taller Codex plot, and the action rail visible
         // when the screen permits. The dense route itself retains a ScrollView fallback.
-        let height: CGFloat
+        let targetSize: NSSize
         if detachedVisible {
-            let desired = max(UsageWindowGeometry.preferredHeight, detachedSize?.height ?? 0)
-            height = UsageWindowGeometry.detachedHeight(
-                desired,
-                screen: detachedWindow?.screen ?? NSScreen.main
+            targetSize = UsageWindowGeometry.detachedContentSize(
+                currentSize: detachedSize ?? NSSize(
+                    width: UsageWindowGeometry.preferredWidth,
+                    height: UsageWindowGeometry.preferredHeight
+                ),
+                visibleFrame: screen?.visibleFrame
             )
         } else {
-            height = min(UsageWindowGeometry.preferredHeight, availablePopoverHeight())
+            targetSize = NSSize(
+                width: UsageWindowGeometry.preferredWidth,
+                height: UsageWindowGeometry.attachedHeight(
+                    visibleFrame: screen?.visibleFrame,
+                    anchorFrame: anchorScreenFrame
+                )
+            )
         }
+        let width = targetSize.width
+        let height = targetSize.height
         let newContent = FlippedView(frame: NSRect(x: 0, y: 0, width: width, height: height))
+        newContent.autoresizingMask = [.width, .height]
         let hosting = NSHostingView(
             rootView: InstalledUsageDashboardView(
                 compact: !detachedVisible,
@@ -485,10 +491,15 @@ final class PopoverController {
         boardScrollView?.removeFromSuperview(); boardScrollView = nil
         pinnedFooter?.removeFromSuperview(); pinnedFooter = nil
         content.removeFromSuperview(); content = newContent
-        if detachedVisible {
-            glass.frame = NSRect(origin: .zero, size: NSSize(width: width, height: height))
+        if detachedVisible, let window = detachedWindow {
+            window.setContentSize(targetSize)
+            if let screen {
+                let constrainedFrame = window.constrainFrameRect(window.frame, to: screen)
+                window.setFrame(constrainedFrame, display: true)
+            }
+            glass.frame = window.contentView?.bounds ?? NSRect(origin: .zero, size: targetSize)
         } else {
-            popover.contentSize = NSSize(width: width, height: height)
+            popover.contentSize = targetSize
         }
         CATransaction.commit()
     }
