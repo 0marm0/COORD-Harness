@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import json
+import os
 from pathlib import Path
 
 from coordharness.usage.account_actions import UsageAccountActionForwarder
@@ -10,15 +11,21 @@ from coordharness.usage.local_account_actions import LocalAccountActionService
 from coordharness.usage.local_history import discover_local_cli_history
 from coordharness.usage.local_profiles import LocalProfileRegistry, LocalRoutingPolicyStore
 from coordharness.usage.local_provider_management import LocalProviderManagementService
-from coordharness.usage.local_service import LocalUsageService, ProviderProbe, _quota_pace, probe_codex_account
+from coordharness.usage.local_service import (
+    LocalUsageService,
+    ProviderProbe,
+    _quota_pace,
+    probe_codex_account,
+)
 from coordharness.usage.provider_management import ProviderManagementForwarder
 
 
 NOW = datetime(2026, 8, 28, 12, 0, tzinfo=timezone.utc)
+FIXTURES = Path(__file__).with_name("fixtures")
 
 
 def _write_jsonl(path: Path, rows: list[object]) -> None:
-    path.parent.mkdir(parents=True)
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
 
 
@@ -128,6 +135,162 @@ def test_clean_home_history_import_is_bounded_partial_and_nonidentifying(tmp_pat
     assert "private prompt" not in provenance and "private answer" not in provenance
 
 
+def test_bounded_history_scan_prefers_recent_files(tmp_path: Path) -> None:
+    root = tmp_path / ".codex"
+    older = root / "sessions" / "z-older.jsonl"
+    newer = root / "sessions" / "a-newer.jsonl"
+    for path, model in ((older, "model-old"), (newer, "model-new")):
+        _write_jsonl(
+            path,
+            [
+                {
+                    "timestamp": "2026-08-28T11:00:00Z",
+                    "type": "turn_context",
+                    "payload": {"model": model},
+                },
+                {
+                    "timestamp": "2026-08-28T11:01:00Z",
+                    "type": "event_msg",
+                    "payload": {
+                        "type": "token_count",
+                        "info": {
+                            "last_token_usage": {
+                                "input_tokens": 1,
+                                "cached_input_tokens": 0,
+                                "output_tokens": 1,
+                            }
+                        },
+                    },
+                },
+            ],
+        )
+    os.utime(older, ns=(1_000_000_000, 1_000_000_000))
+    os.utime(newer, ns=(2_000_000_000, 2_000_000_000))
+
+    imported = discover_local_cli_history(root, provider="codex", max_files=1)
+
+    assert imported.files_scanned == 1
+    assert [row.model for row in imported.rows] == ["model-new"]
+
+
+def test_redacted_real_shape_fixture_emits_per_day_model_detail(tmp_path: Path) -> None:
+    """The fixture preserves the turn_context/token_count shape emitted by Codex history."""
+
+    home = tmp_path / "clean-home"
+    target = home / ".codex" / "sessions" / "2026" / "08" / "session.jsonl"
+    target.parent.mkdir(parents=True)
+    target.write_bytes((FIXTURES / "codex_model_attribution.jsonl").read_bytes())
+
+    service = LocalUsageService(
+        home=home, now=lambda: NOW, claude_probe=_claude, codex_probe=_codex
+    )
+    day = UsageDashboardProxy(url="", local_provider=service.dashboard).get()["providers"]["codex"][
+        "history"
+    ]["daily"][0]
+
+    assert day["total_tokens"] == 44
+    assert [item["label"] for item in day["model_breakdowns"]] == [
+        "model-beta",
+        "model-alpha",
+    ]
+    assert [item["total_tokens"] for item in day["model_breakdowns"]] == [29, 15]
+
+
+def test_missing_model_attribution_keeps_daily_totals_with_public_fallback(
+    tmp_path: Path,
+) -> None:
+    home = tmp_path / "clean-home"
+    _write_jsonl(
+        home / ".codex" / "sessions" / "2026" / "08" / "session.jsonl",
+        [
+            {
+                "timestamp": "2026-08-28T11:01:00Z",
+                "type": "event_msg",
+                "payload": {
+                    "type": "token_count",
+                    "info": {
+                        "last_token_usage": {
+                            "input_tokens": 30,
+                            "cached_input_tokens": 5,
+                            "output_tokens": 7,
+                        }
+                    },
+                },
+            }
+        ],
+    )
+
+    service = LocalUsageService(
+        home=home, now=lambda: NOW, claude_probe=_claude, codex_probe=_codex
+    )
+    day = UsageDashboardProxy(url="", local_provider=service.dashboard).get()["providers"]["codex"][
+        "history"
+    ]["daily"][0]
+
+    assert day["total_tokens"] == 42
+    assert day["model_breakdowns"] == [
+        {
+            "key": day["model_breakdowns"][0]["key"],
+            "label": "Unknown model",
+            "total_tokens": 42,
+            "input_tokens": 30,
+            "output_tokens": 7,
+            "cache_read_tokens": 5,
+            "cache_create_5m_tokens": 0,
+            "cache_create_1h_tokens": 0,
+            "cache_create_other_tokens": 0,
+            "provider_native_cost_nanos": None,
+            "api_rate_estimate_nanos": None,
+        }
+    ]
+
+
+def _install_cost_cache_fixtures(home: Path) -> None:
+    cache_root = home / "Library" / "Caches" / "CodexBar" / "cost-usage"
+    cache_root.mkdir(parents=True)
+    for provider in ("claude", "codex"):
+        source = FIXTURES / f"{provider}_cost_cache.json"
+        (cache_root / f"{provider}-v1.json").write_bytes(source.read_bytes())
+
+
+def test_local_cost_caches_add_today_cost_without_replacing_history(tmp_path: Path) -> None:
+    home = _home(tmp_path)
+    _install_cost_cache_fixtures(home)
+    service = LocalUsageService(
+        home=home, now=lambda: NOW, claude_probe=_claude, codex_probe=_codex
+    )
+    document = UsageDashboardProxy(url="", local_provider=service.dashboard).get()
+
+    expected = {"claude": (37, 1_250_000_000), "codex": (42, 2_500_000_000)}
+    for provider, (tokens, cost) in expected.items():
+        provider_doc = document["providers"][provider]
+        day = provider_doc["history"]["daily"][0]
+        assert day["total_tokens"] == tokens
+        assert day["api_rate_estimate_nanos"] == cost
+        assert day["model_breakdowns"][0]["total_tokens"] == tokens
+        assert day["model_breakdowns"][0]["api_rate_estimate_nanos"] == cost
+        assert provider_doc["costs"]["api_rate_estimate"] == {
+            "amount_nanos": cost,
+            "currency": "USD",
+            "semantics": "local_cost_usage_cache_projection_noncanonical",
+            "source": {
+                "kind": "local_cost_usage_cache",
+                "canonical": False,
+                "label": "Local API-rate estimate cache",
+                "warning": (
+                    "Read-only local cache estimate matched to local history; not provider billing"
+                ),
+            },
+            "observed_at": "2026-08-28T12:00:00Z",
+            "coverage_start": "2026-08-28",
+            "coverage_end": "2026-08-28",
+        }
+
+    serialized = json.dumps(document)
+    assert "must-not-cross" not in serialized
+    assert "canonicalProjectPath" not in serialized
+
+
 def test_no_upstream_dashboard_uses_only_local_state_and_honest_quota(tmp_path: Path) -> None:
     home = _home(tmp_path)
     service = LocalUsageService(
@@ -163,6 +326,16 @@ def test_no_upstream_dashboard_uses_only_local_state_and_honest_quota(tmp_path: 
     assert claude_day["model_breakdowns"][0]["total_tokens"] == 37
     assert codex_day["model_breakdowns"][0]["label"] == "gpt-test"
     assert codex_day["model_breakdowns"][0]["total_tokens"] == 42
+    assert claude_day["api_rate_estimate_nanos"] is None
+    assert codex_day["api_rate_estimate_nanos"] is None
+    assert document["providers"]["claude"]["costs"]["api_rate_estimate"] == {
+        "amount_nanos": None,
+        "semantics": "unknown",
+    }
+    assert document["providers"]["codex"]["costs"]["api_rate_estimate"] == {
+        "amount_nanos": None,
+        "semantics": "unknown",
+    }
     serialized = json.dumps(document)
     for private in (str(home), "/private/project", "private prompt", "private answer", "secret"):
         assert private not in serialized
