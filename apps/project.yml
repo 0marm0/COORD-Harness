@@ -68,6 +68,7 @@ targets:
       - path: menubar/Sources/App/LocalPowerControls.swift
       - path: menubar/Sources/App/DesignTokens.swift
       - path: menubar/Sources/UI/ModeSlider.swift
+      - path: menubar/Sources/Data/RowSectionPolicy.swift
       - path: Shared/Sources/SystemTelemetry.swift
       - path: Fixtures
         buildPhase: resources
