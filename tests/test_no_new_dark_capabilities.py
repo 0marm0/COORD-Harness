@@ -109,3 +109,26 @@ def test_build_metadata_is_not_mistaken_for_a_caller(tmp_path: Path):
     (fake / "src" / "pkg.egg-info" / "SOURCES.txt").write_text("src/pkg/orphan.py\n")
 
     assert "orphan" in {name for name, _ in check.dark_modules(fake)}
+
+
+def test_packaging_output_is_not_mistaken_for_a_caller(tmp_path: Path):
+    """A wheel build leaves build/lib/<pkg>/ holding a copy of every module. On
+    2026-09-01 that copy carried the only import of a freshly wired lint, so an
+    ablation that removed the real driver stayed green and named one module
+    where it should have named two."""
+    check = _check()
+    fake = tmp_path / "repo"
+    (fake / "src" / "pkg").mkdir(parents=True)
+    (fake / "src" / "pkg" / "__init__.py").write_text("")
+    (fake / "src" / "pkg" / "orphan.py").write_text("def g():\n    return 2\n")
+    for out in ("build/lib/pkg", "dist/pkg"):
+        (fake / out).mkdir(parents=True)
+        (fake / out / "driver.py").write_text("from pkg import orphan\n")
+
+    assert "orphan" in {name for name, _ in check.dark_modules(fake)}
+    # And the exclusion is by top-level prefix, so a real package directory
+    # that happens to be called build/ is still a caller.
+    (fake / "src" / "pkg" / "build").mkdir()
+    (fake / "src" / "pkg" / "build" / "__init__.py").write_text("")
+    (fake / "src" / "pkg" / "build" / "wire.py").write_text("from pkg import orphan\n")
+    assert "orphan" not in {name for name, _ in check.dark_modules(fake)}

@@ -40,10 +40,16 @@ _NOT_WIRED = re.compile(r"\bNOT[\s_-]WIRED\b", re.I)
 # Counting them made two genuinely unwired lint modules look reachable on the
 # first run of this check.
 _NOT_A_CALLER = ("egg-info", "tools/extract/", ".venv", "__pycache__")
+# Top-level packaging output. A wheel build leaves build/lib/<pkg>/... holding a
+# COPY of every module, so a driver that exists only in that copy read as a live
+# caller and an ablation that removed the real driver stayed green.
+_NOT_A_CALLER_PREFIXES = ("build/", "dist/")
 
 
 def _is_caller_file(path: Path, repo: Path) -> bool:
     rel = path.relative_to(repo).as_posix()
+    if rel.startswith(_NOT_A_CALLER_PREFIXES):
+        return False
     return not any(marker in rel for marker in _NOT_A_CALLER)
 
 
@@ -76,7 +82,7 @@ def _importers_by_module(repo: Path) -> dict[str, set[Path]]:
     index: dict[str, set[Path]] = {}
     for path in sorted(repo.rglob("*.py")):
         rel = path.relative_to(repo).as_posix()
-        if any(marker in rel for marker in _NOT_A_CALLER) or "tests" in Path(rel).parts:
+        if not _is_caller_file(path, repo) or "tests" in Path(rel).parts:
             continue
         for name in _imported_module_names(path):
             index.setdefault(name, set()).add(path)
