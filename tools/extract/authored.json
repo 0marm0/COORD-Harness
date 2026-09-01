@@ -633,22 +633,32 @@
     },
     "apps/menubar/Sources/Data/HarnessClient.swift": {
       "origin": "ported from a pinned private status client, then substantially adapted for the standalone harness",
-      "reason": "The client now uses the public endpoint policy, bounded timeouts, generic routes, and no private source-tree assumptions. Re-reviewed (agent self-review, not independent human review) after setMode and pauseAll gained an optional completion callback (HarnessControlOutcome) reported via a new postOutcome helper, so a caller can show verified success or failure instead of a fire-and-forget POST; same endpoints, same query parameters.",
-      "reviewed_sha256": "61a15ad3e9fdd6e6942e23d91d036c4b2672f6ba101af193b5555918af7d6148"
+      "reason": "The client now uses the public endpoint policy, bounded timeouts, generic routes, and no private source-tree assumptions. Re-reviewed (agent self-review, not independent human review) after setMode and pauseAll gained an optional completion callback (HarnessControlOutcome) reported via a new postOutcome helper, so a caller can show verified success or failure instead of a fire-and-forget POST; same endpoints, same query parameters.\n\nRe-pinned: Row(cockpit:) carries the resolved session group key/label across; section stays the epic (agent self-review) (tool-assisted: the hash was updated to the staged bytes by tools/extract/repin.py --apply. This records acceptance of the new content, not an independent re-review of it.)",
+      "reviewed_sha256": "277544a7aa9d50c38d80ce590253b5503d199294010311fb0ac44997ea43b752",
+      "repin": {
+        "reason": "Row(cockpit:) carries the resolved session group key/label across; section stays the epic (agent self-review)",
+        "method": "tool-assisted: the hash was updated to the staged bytes by tools/extract/repin.py --apply. This records acceptance of the new content, not an independent re-review of it.",
+        "previous_sha256": "61a15ad3e9fdd6e6942e23d91d036c4b2672f6ba101af193b5555918af7d6148"
+      }
     },
     "apps/menubar/Sources/Data/Models.swift": {
       "origin": "ported from pinned private menu-bar models, then substantially adapted for the standalone harness",
-      "reason": "The public models now carry standalone usage, telemetry, status, task, and configuration state without private product data.",
-      "reviewed_sha256": "ef9be2a004dcfbf15788c07c66fe3d395ac2ced622031db71c63d106a97f57d6"
+      "reason": "The public models now carry standalone usage, telemetry, status, task, and configuration state without private product data.\n\nRe-pinned: Row gains optional sessionGroupKey/sessionGroupLabel carried from the projection; implicit nil keeps Codable and memberwise init compatible with older projections (agent self-review) (tool-assisted: the hash was updated to the staged bytes by tools/extract/repin.py --apply. This records acceptance of the new content, not an independent re-review of it.)",
+      "reviewed_sha256": "81c68594384182fd69c5a3a3de3dbf1e6961ad16badd3827fc02456071301bc6",
+      "repin": {
+        "reason": "Row gains optional sessionGroupKey/sessionGroupLabel carried from the projection; implicit nil keeps Codable and memberwise init compatible with older projections (agent self-review)",
+        "method": "tool-assisted: the hash was updated to the staged bytes by tools/extract/repin.py --apply. This records acceptance of the new content, not an independent re-review of it.",
+        "previous_sha256": "ef9be2a004dcfbf15788c07c66fe3d395ac2ced622031db71c63d106a97f57d6"
+      }
     },
     "apps/menubar/Sources/UI/ContentStackAndRows.swift": {
       "origin": "ported from pinned private menu-bar row composition, then substantially adapted for the standalone harness",
-      "reason": "The panel composition now integrates compact usage, telemetry disclosure, task rows, neutral marks, and the standalone navigation hierarchy. Re-reviewed (agent self-review, not independent human review) after PanelAction gained toggleCaffeine/openBatteryDetails/toggleChargeLimit cases and a CockpitWordmarkButton control was added binding the wordmark image to a press closure with an explicit accessibility label and help string.\n\nRe-pinned: Read the pace-marker diff for this file: the peek row now takes a paceMarkersVisible flag instead of a precomputed warning percent and draws each marker from that quota's own timing, red for a deficit and green otherwise. Layout and colour only; no new input reaches the panel. (tool-assisted: the hash was updated to the staged bytes by tools/extract/repin.py --apply. This records acceptance of the new content, not an independent re-review of it.)",
-      "reviewed_sha256": "9897b132969e74e15e989dde158adabcdf9f0f61eff8ced38b5bf36f041c29e4",
+      "reason": "The panel composition now integrates compact usage, telemetry disclosure, task rows, neutral marks, and the standalone navigation hierarchy. Re-reviewed (agent self-review, not independent human review) after PanelAction gained toggleCaffeine/openBatteryDetails/toggleChargeLimit cases and a CockpitWordmarkButton control was added binding the wordmark image to a press closure with an explicit accessibility label and help string.\n\nRe-pinned: Read the pace-marker diff for this file: the peek row now takes a paceMarkersVisible flag instead of a precomputed warning percent and draws each marker from that quota's own timing, red for a deficit and green otherwise. Layout and colour only; no new input reaches the panel. (tool-assisted: the hash was updated to the staged bytes by tools/extract/repin.py --apply. This records acceptance of the new content, not an independent re-review of it.)\n\nRe-pinned: agentSessionKey prefers the projection's resolved chat key and falls through to the full previous derivation on an older projection (agent self-review) (tool-assisted: the hash was updated to the staged bytes by tools/extract/repin.py --apply. This records acceptance of the new content, not an independent re-review of it.)",
+      "reviewed_sha256": "491b5cfc4cb67a78075e87f256462cb993ed9764ff181ba0f9340106b5523ee8",
       "repin": {
-        "reason": "Read the pace-marker diff for this file: the peek row now takes a paceMarkersVisible flag instead of a precomputed warning percent and draws each marker from that quota's own timing, red for a deficit and green otherwise. Layout and colour only; no new input reaches the panel.",
+        "reason": "agentSessionKey prefers the projection's resolved chat key and falls through to the full previous derivation on an older projection (agent self-review)",
         "method": "tool-assisted: the hash was updated to the staged bytes by tools/extract/repin.py --apply. This records acceptance of the new content, not an independent re-review of it.",
-        "previous_sha256": "f265ffc6a0d49e571d4747cb578e3afb90a461313a8386e98dda03deef01dda7"
+        "previous_sha256": "9897b132969e74e15e989dde158adabcdf9f0f61eff8ced38b5bf36f041c29e4"
       }
     },
     "apps/menubar/Sources/UI/RingRenderer.swift": {
@@ -708,8 +718,13 @@
     },
     "src/coordharness/coord/ingest.py": {
       "origin": "ported, then extended in this repository",
-      "reason": "import closure of the coordination control plane (coordharness.coord.ingest). Re-reviewed after resolve_identity's runner_type fallback was generalized from a hardcoded {'claude','codex','local'} membership test to config.lane_set() | {'local'}, so an identity whose actor names a lane added via COORD_LANES still reports that lane as its runner_type instead of falling back to the generic 'agent' label.",
-      "reviewed_sha256": "24a2c17327235b377958b26ab97ca97c686b7cc4055c36fd49bc75ff28c9d4b4"
+      "reason": "import closure of the coordination control plane (coordharness.coord.ingest). Re-reviewed after resolve_identity's runner_type fallback was generalized from a hardcoded {'claude','codex','local'} membership test to config.lane_set() | {'local'}, so an identity whose actor names a lane added via COORD_LANES still reports that lane as its runner_type instead of falling back to the generic 'agent' label.\n\nRe-pinned: Claude registration derives worktree_id from git only for a LINKED worktree (primary worktree, missing git, unexpected shapes all yield NULL) - never from cwd, since a shared worktree_id forms a claim-authority family (agent self-review) (tool-assisted: the hash was updated to the staged bytes by tools/extract/repin.py --apply. This records acceptance of the new content, not an independent re-review of it.)",
+      "reviewed_sha256": "5619266ab167de3e5068b0e214fc7e117e8e6407fc409be456cff09de044634b",
+      "repin": {
+        "reason": "Claude registration derives worktree_id from git only for a LINKED worktree (primary worktree, missing git, unexpected shapes all yield NULL) - never from cwd, since a shared worktree_id forms a claim-authority family (agent self-review)",
+        "method": "tool-assisted: the hash was updated to the staged bytes by tools/extract/repin.py --apply. This records acceptance of the new content, not an independent re-review of it.",
+        "previous_sha256": "24a2c17327235b377958b26ab97ca97c686b7cc4055c36fd49bc75ff28c9d4b4"
+      }
     },
     "src/coordharness/coord/locked_paths.py": {
       "origin": "ported, then substantially adapted for standalone publication",
