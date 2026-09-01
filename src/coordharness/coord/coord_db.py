@@ -10908,10 +10908,26 @@ def board_rows(
         scan_chunk = _BOARD_SCAN_CHUNK
     else:
         scan_chunk = want_limit
-    pid_rows = conn.execute(
-        "SELECT work_id, pid, pid_started_at, host_id FROM runs"
-        " WHERE state='live' AND work_id IS NOT NULL AND pid IS NOT NULL"
-    ).fetchall()
+    try:
+        pid_rows = conn.execute(
+            "SELECT work_id, pid, pid_started_at, host_id FROM runs"
+            " WHERE state='live' AND work_id IS NOT NULL AND pid IS NOT NULL"
+        ).fetchall()
+    except sqlite3.OperationalError as exc:
+        if "host_id" not in str(exc):
+            raise
+        # A database written before runs.host_id existed. The docstring on
+        # ``pid_liveness_is_meaningful`` already defines this exact case: NULL
+        # is the pre-migration single-machine state and reads as local. A
+        # reader that refuses every database its own older writers produced
+        # is a reader that breaks on upgrade day.
+        pid_rows = [
+            {**dict(row), "host_id": None}
+            for row in conn.execute(
+                "SELECT work_id, pid, pid_started_at FROM runs"
+                " WHERE state='live' AND work_id IS NOT NULL AND pid IS NOT NULL"
+            )
+        ]
     live_pid_by_work: dict[str, int] = {}
     seen_pid_work: set[str] = set()
     foreign_host_work: set[str] = set()

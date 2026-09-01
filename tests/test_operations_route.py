@@ -187,7 +187,7 @@ def test_operations_bundle_cannot_straddle_a_refresh_boundary(
             server.pulse(),
             server.operations(),
         )
-    )
+    ) + (dict(server._status_census),)
 
     def _delayed_build(_db_path):
         built.set()
