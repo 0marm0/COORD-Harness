@@ -174,7 +174,9 @@ def _safe_date(value: Any) -> str:
     return value
 
 
-def _optional_number(source: dict[str, Any], target: dict[str, Any], field: str, *, maximum: float) -> None:
+def _optional_number(
+    source: dict[str, Any], target: dict[str, Any], field: str, *, maximum: float
+) -> None:
     if field in source:
         target[field] = (
             None if source[field] is None else _safe_number(source[field], maximum=maximum)
@@ -335,9 +337,7 @@ def _sanitize_reset_credits(value: Any) -> list[dict[str, Any]]:
     for row in rows:
         if not isinstance(row, dict):
             raise UsageDashboardError("invalid_contract")
-        item: dict[str, Any] = {
-            "status": _safe_string(row.get("status"), pattern=_SAFE_TOKEN)
-        }
+        item: dict[str, Any] = {"status": _safe_string(row.get("status"), pattern=_SAFE_TOKEN)}
         _optional_int(row, item, "count")
         _optional_timestamp(row, item, "expires_at")
         if "semantics" in row:
@@ -382,9 +382,7 @@ def _sanitize_daily(value: Any) -> list[dict[str, Any]]:
                 field="history.daily.model_breakdowns",
                 limit=MAX_BREAKDOWN_ITEMS,
             )
-            item["model_breakdowns"] = [
-                _sanitize_daily_model_breakdown(model) for model in models
-            ]
+            item["model_breakdowns"] = [_sanitize_daily_model_breakdown(model) for model in models]
         clean.append(item)
     return clean
 
@@ -415,9 +413,7 @@ def _sanitize_history(value: Any, *, allow_extensions: bool = True) -> dict[str,
         envelope = value["ever_observed_envelope"]
         if not isinstance(envelope, dict):
             raise UsageDashboardError("invalid_contract")
-        clean["ever_observed_envelope"] = {
-            "total_tokens": _safe_int(envelope.get("total_tokens"))
-        }
+        clean["ever_observed_envelope"] = {"total_tokens": _safe_int(envelope.get("total_tokens"))}
     if allow_extensions and value.get("provider_reported_account") is not None:
         clean["provider_reported_account"] = _sanitize_history(
             value["provider_reported_account"], allow_extensions=False
@@ -438,6 +434,12 @@ def _sanitize_cost_component(value: Any) -> dict[str, Any]:
         )
     if value.get("semantics") is not None:
         clean["semantics"] = _safe_string(value["semantics"], pattern=_SAFE_TOKEN)
+    if value.get("source") is not None:
+        clean["source"] = _sanitize_source(value["source"])
+    _optional_timestamp(value, clean, "observed_at")
+    for field in ("coverage_start", "coverage_end"):
+        if value.get(field) is not None:
+            clean[field] = _safe_date(value[field])
     if value.get("by_currency") is not None:
         currencies = value["by_currency"]
         if not isinstance(currencies, dict) or len(currencies) > 16:
@@ -480,9 +482,7 @@ def _sanitize_breakdown_item(value: Any) -> dict[str, Any]:
         _optional_int(value, clean, field)
     if "top_model" in value:
         clean["top_model"] = (
-            None
-            if value["top_model"] is None
-            else _safe_text(value["top_model"], maximum=80)
+            None if value["top_model"] is None else _safe_text(value["top_model"], maximum=80)
         )
     return clean
 
@@ -534,7 +534,9 @@ def _sanitize_active_sessions(value: Any) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise UsageDashboardError("invalid_contract")
     providers = _bounded_list(value.get("providers"), field="active_sessions.providers", limit=2)
-    if any(provider not in _PROVIDERS for provider in providers) or len(set(providers)) != len(providers):
+    if any(provider not in _PROVIDERS for provider in providers) or len(set(providers)) != len(
+        providers
+    ):
         raise UsageDashboardError("invalid_contract")
     clean: dict[str, Any] = {
         "status": _safe_string(value.get("status"), pattern=_SAFE_TOKEN),
@@ -546,7 +548,9 @@ def _sanitize_active_sessions(value: Any) -> dict[str, Any]:
         "providers": list(providers),
     }
     if "items" in value:
-        items = _bounded_list(value["items"], field="active_sessions.items", limit=MAX_ACTIVE_SESSIONS)
+        items = _bounded_list(
+            value["items"], field="active_sessions.items", limit=MAX_ACTIVE_SESSIONS
+        )
         safe_items: list[dict[str, Any]] = []
         for item in items:
             if not isinstance(item, dict) or item.get("provider") not in _PROVIDERS:
@@ -594,9 +598,7 @@ def _sanitize_provider(value: Any) -> dict[str, Any]:
             value["live_snapshot_source"], pattern=_SAFE_TOKEN
         )
     if value.get("live_observation_state") is not None:
-        observation_state = _safe_string(
-            value["live_observation_state"], pattern=_SAFE_TOKEN
-        )
+        observation_state = _safe_string(value["live_observation_state"], pattern=_SAFE_TOKEN)
         if observation_state not in _LIVE_OBSERVATION_STATES:
             raise UsageDashboardError("invalid_contract")
         clean["live_observation_state"] = observation_state
@@ -662,7 +664,11 @@ def validate_usage_dashboard(
             None if payload.get("stale_after") is None else _safe_timestamp(payload["stale_after"])
         ),
         "refresh": _sanitize_refresh(payload.get("refresh")),
-        **({"calendar": _sanitize_calendar(payload["calendar"])} if payload.get("calendar") is not None else {}),
+        **(
+            {"calendar": _sanitize_calendar(payload["calendar"])}
+            if payload.get("calendar") is not None
+            else {}
+        ),
         "providers": {
             provider_key: _sanitize_provider(provider)
             for provider_key, provider in providers.items()
@@ -691,11 +697,7 @@ class UsageDashboardProxy:
         local_provider: Callable[[], Any] | None = None,
         allow_non_loopback: bool = False,
     ):
-        configured = (
-            url
-            if url is not None
-            else os.environ.get(USAGE_DASHBOARD_URL_ENV)
-        )
+        configured = url if url is not None else os.environ.get(USAGE_DASHBOARD_URL_ENV)
         upstream_contract = os.environ.get(UPSTREAM_CONTRACT_ENV, USAGE_CONTRACT)
         if not _SAFE_TOKEN.fullmatch(upstream_contract):
             raise ValueError("invalid usage upstream schema")
@@ -716,6 +718,7 @@ class UsageDashboardProxy:
         self._now = now
         if local_provider is None:
             from coordharness.usage.local_service import LocalUsageService
+
             local_provider = LocalUsageService().dashboard
         self._local_provider = local_provider
         self._lock = threading.Lock()
