@@ -65,6 +65,7 @@ ROW_COLUMNS = (
     "active_claim_ids", "claim_status", "claim_live", "live_run_count",
     "native_operator_writes_enabled", "native_operator_writes_reason",
     "effective_epic", "parent_id", "sublane", "tier", "group_key", "group_label",
+    "session_group_key", "session_group_label", "session_group_source",
 )
 
 
@@ -182,6 +183,9 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
           tier TEXT,
           group_key TEXT,
           group_label TEXT,
+          session_group_key TEXT,
+          session_group_label TEXT,
+          session_group_source TEXT,
           PRIMARY KEY (writer_seq, dedup_key)
         );
         CREATE INDEX IF NOT EXISTS ix_native_rows_bucket
@@ -238,6 +242,15 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
           sort_order INTEGER NOT NULL,
           PRIMARY KEY (writer_seq, group_key)
         );
+        CREATE TABLE IF NOT EXISTS native_cockpit_session_group_model (
+          writer_seq INTEGER NOT NULL,
+          group_key TEXT NOT NULL,
+          label TEXT NOT NULL,
+          actor TEXT,
+          count INTEGER NOT NULL,
+          sort_order INTEGER NOT NULL,
+          PRIMARY KEY (writer_seq, group_key)
+        );
         CREATE TABLE IF NOT EXISTS native_cockpit_sessions (
           writer_seq INTEGER NOT NULL,
           session_id TEXT NOT NULL,
@@ -288,6 +301,9 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
         "tier": "TEXT",
         "group_key": "TEXT",
         "group_label": "TEXT",
+        "session_group_key": "TEXT",
+        "session_group_label": "TEXT",
+        "session_group_source": "TEXT",
     }
     for col, declaration in additive_columns.items():
         if col not in existing_cols:
@@ -581,6 +597,217 @@ def _humanize_epic_label(key: str) -> str:
     return text.title() if text else "Unassigned"
 
 
+# ---------------------------------------------------------------------------
+# Agent-session grouping.
+#
+# ``group_key`` is the work hierarchy (epic) and the native app already renders
+# it, so the orchestrator axis is published as a SEPARATE dimension rather than
+# as a redefinition of that field. One group == one orchestrating chat: the
+# chat's own claims plus every claim made by a subagent session it spawned.
+#
+# One chat can be registered more than once -- a hook can register the raw host
+# id while a later claim uses a lane-namespaced id. ``external_thread_id`` and
+# ``worktree_id`` are the bridge that keeps those identities in one group. Both
+# columns are nullable, and only some registration paths populate them, so the
+# resolution degrades to the session id alone rather than falling back to the
+# lane (falling back to the lane is exactly the collapse this replaces).
+# ---------------------------------------------------------------------------
+
+_SESSION_GROUP_PREFIX = "agent-session:"
+_SESSION_GROUP_UNOWNED = _SESSION_GROUP_PREFIX + "unowned"
+_SESSION_GROUP_UNOWNED_LABEL = "Unowned"
+
+# (row payload field, agent_sessions field) pairs naming the same identity.
+_SESSION_IDENTITY_FIELDS = (
+    ("owner_session_id", "session_id"),
+    ("owner_external_thread_id", "external_thread_id"),
+    ("owner_worktree_id", "worktree_id"),
+)
+
+
+def _session_identity(actor: Any, value: Any) -> tuple[str, str]:
+    """Normalize one identity to ``(lane, bare_id)``.
+
+    A lane-namespaced id and its bare form name the same chat; the same bare id
+    under two different lanes does not.
+    """
+    lane = str(actor or "").strip().lower()
+    ident = str(value or "").strip()
+    if lane and ident.lower().startswith(f"{lane}:"):
+        ident = ident[len(lane) + 1 :].strip()
+    return lane, ident
+
+
+def _session_identities(actor: Any, record: dict[str, Any]) -> list[tuple[str, str]]:
+    """Every identity in ``record`` that may name the same external chat."""
+    out: list[tuple[str, str]] = []
+    for fields in _SESSION_IDENTITY_FIELDS:
+        for field in fields:
+            ident = _session_identity(actor, record.get(field))
+            if ident[1] and ident not in out:
+                out.append(ident)
+    return out
+
+
+class _IdentityUnion:
+    """Minimal union-find over ``(lane, id)`` identities."""
+
+    def __init__(self) -> None:
+        self._parent: dict[tuple[str, str], tuple[str, str]] = {}
+
+    def add(self, key: tuple[str, str]) -> None:
+        self._parent.setdefault(key, key)
+
+    def find(self, key: tuple[str, str]) -> tuple[str, str]:
+        self.add(key)
+        root = key
+        while self._parent[root] != root:
+            root = self._parent[root]
+        while self._parent[key] != root:
+            self._parent[key], key = root, self._parent[key]
+        return root
+
+    def union(self, left: tuple[str, str], right: tuple[str, str]) -> None:
+        left_root, right_root = self.find(left), self.find(right)
+        if left_root == right_root:
+            return
+        # Deterministic merge so group keys do not depend on input order.
+        low, high = sorted((left_root, right_root))
+        self._parent[high] = low
+
+    def families(self) -> dict[tuple[str, str], list[tuple[str, str]]]:
+        out: dict[tuple[str, str], list[tuple[str, str]]] = {}
+        for key in list(self._parent):
+            out.setdefault(self.find(key), []).append(key)
+        return {root: sorted(members) for root, members in out.items()}
+
+
+def _session_group_key(identity: tuple[str, str]) -> str:
+    lane, ident = identity
+    return _SESSION_GROUP_PREFIX + (f"{lane}:{ident}" if lane else ident)
+
+
+def _session_group_label(identity: tuple[str, str], record: dict[str, Any] | None) -> str:
+    if record:
+        for field in ("human_label", "conversation_title"):
+            text = str(record.get(field) or "").strip()
+            if text:
+                return text[:96]
+    lane, ident = identity
+    return f"{lane}:{ident}" if lane else ident
+
+
+def _apply_session_grouping(
+    payloads: list[dict[str, Any]],
+    session_records: list[dict[str, Any]],
+) -> None:
+    """Stamp ``session_group_*`` on every payload. Mutates in place."""
+    union = _IdentityUnion()
+    registered: dict[tuple[str, str], dict[str, Any]] = {}
+    orchestrators: set[tuple[str, str]] = set()
+    has_parent: set[tuple[str, str]] = set()
+
+    for record in session_records or []:
+        actor = record.get("actor")
+        primary = _session_identity(actor, record.get("session_id"))
+        if not primary[1]:
+            continue
+        union.add(primary)
+        for ident in _session_identities(actor, record):
+            union.union(primary, ident)
+        parent_sid = str(record.get("parent_session_id") or "").strip()
+        if parent_sid:
+            # A subagent session is not its own orchestrator: fold it into the
+            # session that spawned it so it can never mint a top-level row.
+            union.union(primary, _session_identity(actor, parent_sid))
+            has_parent.add(primary)
+        else:
+            orchestrators.add(primary)
+        registered[primary] = record
+
+    row_identities: list[list[tuple[str, str]]] = []
+    for payload in payloads:
+        actor = payload.get("owner_session_actor") or payload.get("owner") or ""
+        idents = _session_identities(actor, payload)
+        row_identities.append(idents)
+        for ident in idents[1:]:
+            union.union(idents[0], ident)
+
+    families = union.families()
+
+    def _canonical(root: tuple[str, str]) -> tuple[str, str]:
+        members = families.get(root) or [root]
+        roots = [m for m in members if m in orchestrators]
+        if roots:
+            return min(roots)
+        known = [m for m in members if m in registered]
+        if known:
+            return min(known)
+        return min(members)
+
+    resolved: dict[tuple[str, str], tuple[str, str]] = {}
+    for payload, idents in zip(payloads, row_identities):
+        if not idents:
+            payload["session_group_key"] = _SESSION_GROUP_UNOWNED
+            payload["session_group_label"] = _SESSION_GROUP_UNOWNED_LABEL
+            payload["session_group_source"] = "unowned"
+            continue
+        root = union.find(idents[0])
+        canonical = resolved.get(root)
+        if canonical is None:
+            canonical = _canonical(root)
+            resolved[root] = canonical
+        own = idents[0]
+        if own == canonical:
+            source = "session"
+        elif own in has_parent:
+            source = "parent_session"
+        else:
+            source = "bridged_identity"
+        payload["session_group_key"] = _session_group_key(canonical)
+        payload["session_group_label"] = _session_group_label(
+            canonical, registered.get(canonical)
+        )
+        payload["session_group_source"] = source
+
+
+def _session_group_model(payloads: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """One entry per orchestrating chat, ordered by size then key."""
+    counts: dict[str, dict[str, Any]] = {}
+    for payload in payloads:
+        key = str(payload.get("session_group_key") or _SESSION_GROUP_UNOWNED)
+        entry = counts.setdefault(
+            key,
+            {
+                "group_key": key,
+                "label": str(payload.get("session_group_label") or key),
+                "actor": str(payload.get("owner_session_actor") or ""),
+                "count": 0,
+            },
+        )
+        entry["count"] += 1
+    ranked = sorted(counts.values(), key=lambda e: (-int(e["count"]), str(e["group_key"])))
+    for order, entry in enumerate(ranked):
+        entry["sort_order"] = order
+    return ranked
+
+
+def _agent_session_records(conn: sqlite3.Connection) -> list[dict[str, Any]]:
+    """Registry rows for session grouping, subagent sessions included.
+
+    ``v_session_rollup`` deliberately hides child sessions, so the parent chain
+    has to be read from the base table or subagent claims would look orphaned.
+    """
+    try:
+        cursor = conn.execute(
+            "SELECT session_id, actor, parent_session_id, external_thread_id,"
+            " worktree_id, human_label, conversation_title FROM agent_sessions"
+        )
+    except sqlite3.Error:  # pragma: no cover - schema older than this projection
+        return []
+    return [dict(row) for row in cursor.fetchall()]
+
+
 def _priority_rank(value: Any) -> int:
     if value in (None, ""):
         return 9
@@ -841,6 +1068,11 @@ def _row_payload(row: dict[str, Any], *, writer_seq: int, display_order: int) ->
         "tier": row.get("effective_tier") or "",
         "group_key": effective_epic,
         "group_label": group_label,
+        # Resolved across the whole row set by _apply_session_grouping(); the
+        # per-row pass cannot see the other identities of the same chat.
+        "session_group_key": _SESSION_GROUP_UNOWNED,
+        "session_group_label": _SESSION_GROUP_UNOWNED_LABEL,
+        "session_group_source": "unowned",
     }
     sidecar = row.get("_job_progress_sidecar")
     if isinstance(sidecar, dict):
@@ -930,6 +1162,8 @@ def refresh(
         for i, row in enumerate(rows)
         if row.get("work_id")
     ])
+    _apply_session_grouping(row_payloads, _agent_session_records(conn))
+    session_group_payloads = _session_group_model(row_payloads)
     action_payloads: list[dict[str, Any]] = []
     for row in row_payloads:
         general_reason = (
@@ -989,6 +1223,7 @@ def refresh(
             "native_cockpit_filter_options",
             "native_cockpit_column_model",
             "native_cockpit_group_model",
+            "native_cockpit_session_group_model",
             "native_cockpit_sessions",
             "native_cockpit_diagnostics",
         ):
@@ -1049,6 +1284,19 @@ def refresh(
                 "INSERT INTO native_cockpit_group_model(writer_seq, group_key, label, count, sort_order)"
                 " VALUES(?,?,?,?,?)",
                 (writer_seq, key, info["label"], info["count"], order),
+            )
+        for entry in session_group_payloads:
+            conn.execute(
+                "INSERT INTO native_cockpit_session_group_model(writer_seq, group_key,"
+                " label, actor, count, sort_order) VALUES(?,?,?,?,?,?)",
+                (
+                    writer_seq,
+                    entry["group_key"],
+                    entry["label"],
+                    entry["actor"],
+                    int(entry["count"]),
+                    int(entry["sort_order"]),
+                ),
             )
         for order, session in enumerate(sessions):
             sid = str(session.get("session_id") or "")

@@ -224,7 +224,9 @@ final class CockpitReadModelSource: CockpitReadModelLoading {
                 claimLive: row.bool("claim_live") ?? false,
                 liveRunCount: row.int("live_run_count") ?? 0,
                 nativeOperatorWritesEnabled: row.bool("native_operator_writes_enabled") ?? false,
-                nativeOperatorWritesReason: row.string("native_operator_writes_reason")
+                nativeOperatorWritesReason: row.string("native_operator_writes_reason"),
+                sessionGroupKey: row.string("session_group_key"),
+                sessionGroupLabel: row.string("session_group_label")
             )
         }
     }
