@@ -336,6 +336,12 @@ struct Row: Codable {
     var ownerExternalThreadId: String?
     var ownerConversationTitle: String?
     var ownerWorktreeId: String?
+    // The projection's resolved orchestrating-chat key. Only the server can
+    // bridge one chat's several identities and roll a subagent up under the
+    // chat that spawned it, so the agent view prefers this over anything it
+    // could derive locally. Absent on a projection older than this field.
+    var sessionGroupKey: String?
+    var sessionGroupLabel: String?
     var crossAgentHandoff: Bool?
     var handoffFrom: String?
     var handoffTo: String?

@@ -219,6 +219,8 @@ extension Row {
         self.ownerExternalThreadId = row.ownerExternalThreadID
         self.ownerConversationTitle = row.ownerConversationTitle
         self.ownerWorktreeId = row.ownerWorktreeID
+        self.sessionGroupKey = row.sessionGroupKey
+        self.sessionGroupLabel = row.sessionGroupLabel
         self.crossAgentHandoff = nil
         self.handoffFrom = nil
         self.handoffTo = nil

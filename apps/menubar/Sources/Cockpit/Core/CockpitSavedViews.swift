@@ -110,8 +110,14 @@ enum CockpitSavedViews {
         CockpitSavedView(name: "Now", snapshot: CockpitViewSnapshot(scope: .now, groupMode: .smart, sortMode: .smart, owner: "", module: "", status: "", query: "")),
         CockpitSavedView(name: "Local", snapshot: CockpitViewSnapshot(scope: .now, groupMode: .status, sortMode: .progress, owner: "", module: "", status: "running", query: "local")),
         CockpitSavedView(name: "Nested", snapshot: CockpitViewSnapshot(scope: .now, groupMode: .nested, sortMode: .smart, owner: "", module: "", status: "", query: "")),
-        CockpitSavedView(name: "Claude", snapshot: CockpitViewSnapshot(scope: .now, groupMode: .smart, sortMode: .smart, owner: "claude", module: "", status: "", query: "")),
-        CockpitSavedView(name: "Codex", snapshot: CockpitViewSnapshot(scope: .now, groupMode: .smart, sortMode: .smart, owner: "codex", module: "", status: "", query: "")),
+        // The per-lane views are the agent-oriented ones, so they open on the
+        // orchestrating-chat axis rather than on the work hierarchy: a lane
+        // grouped by epic shows every chat's work under one heading, which is
+        // the collapse the session dimension exists to undo. The epic axis
+        // stays one click away in the group control, and remains the default
+        // for the work-oriented views above and below.
+        CockpitSavedView(name: "Claude", snapshot: CockpitViewSnapshot(scope: .now, groupMode: .agentSession, sortMode: .smart, owner: "claude", module: "", status: "", query: "")),
+        CockpitSavedView(name: "Codex", snapshot: CockpitViewSnapshot(scope: .now, groupMode: .agentSession, sortMode: .smart, owner: "codex", module: "", status: "", query: "")),
         CockpitSavedView(name: "Backlog", snapshot: CockpitViewSnapshot(scope: .next, groupMode: .domain, sortMode: .eta, owner: "", module: "", status: "", query: "")),
     ]
 

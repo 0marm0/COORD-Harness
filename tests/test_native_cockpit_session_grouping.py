@@ -10,13 +10,16 @@ quietly move it.
 from __future__ import annotations
 
 import json
+import os
+import shutil
+import subprocess
 from pathlib import Path
 from typing import Any
 
 import pytest
 
 from coordharness.bootstrap import bootstrap_database
-from coordharness.coord import coord_db, native_cockpit
+from coordharness.coord import cli, coord_db, ingest, native_cockpit
 from coordharness.coord.config import connect
 
 
@@ -391,3 +394,256 @@ def test_grouping_is_stable_regardless_of_row_order() -> None:
     native_cockpit._apply_session_grouping(reverse, list(reversed(sessions)))
 
     assert set(_keys(forward)) == set(_keys(reverse))
+
+
+# --------------------------------------------------------------------------
+# The default axis of the agent-oriented surfaces.
+#
+# The projection can resolve one group per orchestrating chat, but a stranger
+# only benefits if the surfaces that are ABOUT agents open on that axis. These
+# assertions read the shipped sources: the native app has no runnable test
+# target in this repository (generating one writes untracked build state), so
+# the alternative to a source assertion is no coverage at all.
+# --------------------------------------------------------------------------
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+MENUBAR_SOURCES = REPO_ROOT / "apps" / "menubar" / "Sources"
+
+
+def _swift_source(*parts: str) -> str:
+    return MENUBAR_SOURCES.joinpath(*parts).read_text(encoding="utf-8")
+
+
+def _agent_session_key_body() -> str:
+    text = _swift_source("UI", "ContentStackAndRows.swift")
+    assert "func agentSessionKey" in text, "the agent grouping key was renamed"
+    after = text.split("func agentSessionKey", 1)[1]
+    return after.split("func placeAgentSessionGroups", 1)[0]
+
+
+def test_menubar_agent_view_groups_by_the_resolved_chat_first() -> None:
+    """The running-agents block keys on the projection's chat, by default."""
+    body = _agent_session_key_body()
+    assert "sessionGroupKey" in body, (
+        "the agent view still derives its own key; only the projection can "
+        "bridge a chat's identities and roll a subagent up under its parent"
+    )
+    assert body.index("sessionGroupKey") < body.index("ownerSessionId"), (
+        "the locally derived key is consulted before the resolved one"
+    )
+
+
+def test_menubar_agent_view_degrades_when_the_projection_is_older() -> None:
+    """An older projection has no session_group_key: fall back, never blank."""
+    body = _agent_session_key_body()
+    resolved_at = body.index("sessionGroupKey")
+    for legacy in ("ownerSessionId", "ownerExternalThreadId", "ownerWorktreeId"):
+        assert body.index(legacy) > resolved_at, f"{legacy} fallback was dropped"
+    assert ":owner\"" in body, "the last-resort group key was dropped"
+
+
+def test_menubar_row_carries_the_resolved_chat_from_the_projection() -> None:
+    assert "var sessionGroupKey: String?" in _swift_source("Data", "Models.swift")
+    client = _swift_source("Data", "HarnessClient.swift")
+    assert "self.sessionGroupKey = row.sessionGroupKey" in client
+
+
+def _saved_view_line(name: str) -> str:
+    text = _swift_source("Cockpit", "Core", "CockpitSavedViews.swift")
+    return next(line for line in text.splitlines() if f'name: "{name}"' in line)
+
+
+def test_agent_saved_views_open_on_the_chat_axis() -> None:
+    for name in ("Claude", "Codex"):
+        assert "groupMode: .agentSession" in _saved_view_line(name), (
+            f"the {name} view still opens grouped by the work hierarchy"
+        )
+
+
+def test_epic_grouping_stays_reachable_after_the_default_change() -> None:
+    """The epic axis is a default elsewhere and a click away everywhere."""
+    presentation = _swift_source(
+        "Cockpit", "Presentation", "CockpitPresentationModel.swift"
+    )
+    assert "case smart" in presentation
+    assert "var groupMode: CockpitGroupMode = .smart" in presentation
+    root = _swift_source("Cockpit", "UI", "CockpitRootView.swift")
+    assert "CockpitGroupMode.allCases" in root, "the group control lost its modes"
+    for work_view in ("Now", "Nested", "Backlog"):
+        assert "groupMode: .agentSession" not in _saved_view_line(work_view)
+    assert "groupMode: .smart" in _saved_view_line("Now")
+    # The menu bar's own section is still the work hierarchy.
+    assert "self.section = row.groupKey" in _swift_source("Data", "HarnessClient.swift")
+
+
+def test_every_projected_row_can_be_grouped_by_chat(seeded_db: Path) -> None:
+    """The default axis never renders a row with no group to sit in."""
+    conn = connect(seeded_db)
+    try:
+        native_cockpit.refresh(conn, source_version="session-grouping-default")
+        rows = conn.execute(
+            "SELECT session_group_key FROM native_cockpit_rows"
+        ).fetchall()
+    finally:
+        conn.close()
+
+    assert rows
+    assert all(str(row["session_group_key"]).strip() for row in rows)
+
+
+# --------------------------------------------------------------------------
+# The worktree half of the bridge, on this harness's own registration path.
+# --------------------------------------------------------------------------
+
+
+def _claude_env(**extra: str) -> dict[str, str]:
+    return {"CLAUDE_CODE_SESSION_ID": "host-uuid-1", **extra}
+
+
+def test_a_linked_worktree_becomes_the_claude_bridge(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    ingest._linked_worktree_id.cache_clear()
+    monkeypatch.setattr(
+        ingest,
+        "_git_worktree_dirs",
+        lambda cwd: (os.path.join(cwd, ".git", "worktrees", "agent-a"),
+                     os.path.join(cwd, ".git")),
+    )
+
+    ident = ingest.resolve_identity(_claude_env())
+
+    assert str(ident["worktree_id"]).startswith("worktree:agent-a:")
+
+
+def test_the_primary_worktree_leaves_the_bridge_null(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Every chat in a checkout shares it, so it names a place, not a chat."""
+    monkeypatch.chdir(tmp_path)
+    ingest._linked_worktree_id.cache_clear()
+    monkeypatch.setattr(
+        ingest, "_git_worktree_dirs", lambda cwd: (os.path.join(cwd, ".git"), ".git")
+    )
+
+    assert ingest.resolve_identity(_claude_env())["worktree_id"] is None
+
+
+def test_the_bridge_is_never_the_working_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    ingest._linked_worktree_id.cache_clear()
+    monkeypatch.setattr(
+        ingest,
+        "_git_worktree_dirs",
+        lambda cwd: (os.path.join(cwd, ".git", "worktrees", "agent-a"),
+                     os.path.join(cwd, ".git")),
+    )
+
+    worktree_id = str(ingest.resolve_identity(_claude_env())["worktree_id"])
+
+    assert os.getcwd() not in worktree_id
+    assert str(tmp_path) not in worktree_id
+    assert os.sep not in worktree_id
+
+
+def test_two_chats_in_one_checkout_do_not_share_a_bridge(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The collapse this refuses to build: one cwd, two chats, one group."""
+    monkeypatch.chdir(tmp_path)
+    ingest._linked_worktree_id.cache_clear()
+    monkeypatch.setattr(
+        ingest, "_git_worktree_dirs", lambda cwd: (os.path.join(cwd, ".git"), ".git")
+    )
+
+    first = ingest.resolve_identity(_claude_env(COORD_SESSION_ID="claude:one"))
+    second = ingest.resolve_identity(_claude_env(COORD_SESSION_ID="claude:two"))
+    payloads = [
+        _payload("W-1", session_id=first["session_id"],
+                 worktree_id=first["worktree_id"] or ""),
+        _payload("W-2", session_id=second["session_id"],
+                 worktree_id=second["worktree_id"] or ""),
+    ]
+
+    native_cockpit._apply_session_grouping(payloads, [])
+
+    assert len(set(_keys(payloads))) == 2
+
+
+def test_no_git_leaves_the_bridge_null(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    ingest._linked_worktree_id.cache_clear()
+    monkeypatch.setattr(ingest, "_git_worktree_dirs", lambda cwd: None)
+
+    assert ingest.resolve_identity(_claude_env())["worktree_id"] is None
+
+
+def test_an_explicit_worktree_id_wins_over_the_derived_one(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    ingest._linked_worktree_id.cache_clear()
+    monkeypatch.setattr(ingest, "_git_worktree_dirs", lambda cwd: None)
+
+    ident = ingest.resolve_identity(_claude_env(COORD_WORKTREE_ID="wt-9"))
+
+    assert ident["worktree_id"] == "wt-9"
+
+
+def test_registration_writes_the_claude_worktree_bridge(
+    seeded_db: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The gap this closes: the column was NULL on every Claude registration."""
+    ingest._linked_worktree_id.cache_clear()
+    monkeypatch.setattr(ingest, "_git_worktree_dirs", lambda cwd: None)
+    ident = ingest.resolve_identity(_claude_env(COORD_WORKTREE_ID="wt-registered"))
+    conn = connect(seeded_db)
+    try:
+        cli._register_identity_session(conn, ident)
+        row = conn.execute(
+            "SELECT worktree_id, external_thread_id FROM agent_sessions"
+            " WHERE session_id=?",
+            (str(ident["session_id"]),),
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert row["worktree_id"] == "wt-registered"
+    assert row["external_thread_id"] == "host-uuid-1"
+
+
+@pytest.mark.skipif(shutil.which("git") is None, reason="git is not installed")
+def test_real_git_tells_a_linked_worktree_from_the_primary_one(
+    tmp_path: Path,
+) -> None:
+    """Proven against git itself, not against a stubbed answer."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    env = {
+        **os.environ,
+        "HOME": str(tmp_path),
+        "GIT_CONFIG_NOSYSTEM": "1",
+        "GIT_TERMINAL_PROMPT": "0",
+    }
+
+    def _git(*args: str, cwd: Path) -> None:
+        subprocess.run(
+            ["git", "-c", "user.name=coord", "-c", "user.email=coord@example.invalid",
+             *args],
+            cwd=str(cwd), env=env, check=True, capture_output=True, timeout=60,
+        )
+
+    _git("init", "-q", cwd=repo)
+    _git("commit", "-q", "--allow-empty", "-m", "seed", cwd=repo)
+    _git("worktree", "add", "-q", str(tmp_path / "agent-a"), "-b", "agent-a", cwd=repo)
+
+    ingest._linked_worktree_id.cache_clear()
+    assert ingest._linked_worktree_id(str(repo)) is None
+    linked = ingest._linked_worktree_id(str(tmp_path / "agent-a"))
+    assert linked is not None and linked.startswith("worktree:agent-a:")
+    assert str(tmp_path) not in linked

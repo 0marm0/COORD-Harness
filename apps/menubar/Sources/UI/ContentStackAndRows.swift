@@ -254,7 +254,18 @@ final class AppKitContentStack: ContentStack {
             for (i, r) in rows.enumerated() { placeRow(RunningAgentRow(r, showIcon: i == 0), r) }
             placedGroup = true
         }
+        // One group per orchestrating CHAT is the default here, and the
+        // projection's resolved key is what makes that correct: it is the only
+        // place that can fold a chat's several registered identities together
+        // and roll a subagent's claim up under the chat that spawned it.
+        // Deriving the key locally cannot do either, so it is kept only as the
+        // fallback for a projection that predates session_group_key -- which
+        // degrades to the previous behaviour rather than to an empty view.
         func agentSessionKey(_ r: Row) -> String {
+            let resolved = r.sessionGroupKey?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if !resolved.isEmpty {
+                return resolved.lowercased()
+            }
             let candidates = [
                 r.ownerSessionId,
                 r.ownerExternalThreadId,

@@ -6,6 +6,8 @@ import logging
 import os
 import re
 import sqlite3
+import subprocess
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -131,6 +133,78 @@ def _has_codex_identity(env: dict) -> bool:
     return any(str(env.get(key) or "").strip() for key in _CODEX_IDENTITY_KEYS)
 
 
+def _git_worktree_dirs(cwd: str) -> tuple[str, str] | None:
+    """``(this worktree's git dir, the repository's common git dir)`` or None.
+
+    ``cwd`` is used only to ASK git which worktree the process is in; the
+    directory itself never becomes part of the answer.
+    """
+    try:
+        completed = subprocess.run(
+            ["git", "rev-parse", "--absolute-git-dir", "--git-common-dir"],
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if completed.returncode != 0:
+        return None
+    lines = [line.strip() for line in completed.stdout.splitlines() if line.strip()]
+    if len(lines) != 2:
+        return None
+    return lines[0], lines[1]
+
+
+@lru_cache(maxsize=8)
+def _linked_worktree_id(cwd: str) -> str | None:
+    """Git's own identity for a LINKED worktree, or ``None``.
+
+    ``worktree_id`` is a BRIDGE: the projection folds two session ids that
+    carry the same worktree id into one orchestrating chat, and
+    ``related_session_ids`` treats them as one session family for claim
+    authority. So the value has to name something that belongs to ONE chat.
+
+    Two things follow, and both are deliberate:
+
+    * It is NEVER derived from the working directory. Every chat opened in a
+      repository shares a cwd, so a cwd-derived id would fold an entire lane
+      into a single group and let one chat inherit another's claim family.
+    * In the PRIMARY worktree it stays ``None``. Git's identity for the primary
+      worktree is the repository itself, which is shared exactly the way cwd is.
+      A linked worktree is different in kind: the harness creates one per
+      isolated agent, so it does name a single chat. A missing bridge only
+      costs a session its alias; a wrong one merges two strangers' work.
+    """
+    dirs = _git_worktree_dirs(cwd)
+    if dirs is None:
+        return None
+    git_dir, common_dir = dirs
+    git_dir = os.path.realpath(git_dir)
+    common_dir = os.path.realpath(os.path.join(cwd, common_dir))
+    if git_dir == common_dir:
+        return None  # primary worktree: shared by every chat in the checkout
+    parent = Path(git_dir).parent
+    if parent.name != "worktrees" or os.path.realpath(parent.parent) != common_dir:
+        return None  # not a shape git produced for a linked worktree
+    name = _SAFE_SESSION_COMPONENT_RE.sub("-", Path(git_dir).name).strip("-")
+    digest = hashlib.sha256(git_dir.encode("utf-8")).hexdigest()[:12]
+    return f"worktree:{name}:{digest}" if name else f"worktree:{digest}"
+
+
+def _resolve_worktree_id(env: Mapping[str, str]) -> str | None:
+    """The worktree bridge for a Claude session: explicit env, else git, else None."""
+    explicit = str(env.get("COORD_WORKTREE_ID") or "").strip()
+    if explicit:
+        return explicit
+    try:
+        return _linked_worktree_id(os.getcwd())
+    except OSError:  # pragma: no cover - cwd deleted underneath the process
+        return None
+
+
 def resolve_identity(env: dict | None = None) -> dict:
     env = dict(os.environ if env is None else env)
     explicit_actor = str(env.get("COORD_ACTOR") or "").strip()
@@ -163,6 +237,10 @@ def resolve_identity(env: dict | None = None) -> dict:
             "human_label": label or _fallback_human_label("claude", sid),
             "conversation_title": title,
             "external_thread_id": raw_sid or explicit_sid,
+            # The second bridge key. Claude registers the same chat twice --
+            # a hook under the raw host id, a later claim under a semantic one
+            # -- and only these two columns can join them back together.
+            "worktree_id": _resolve_worktree_id(env),
             "label_source": "env" if (label or title) else "inferred",
         }
     if actor is None:
