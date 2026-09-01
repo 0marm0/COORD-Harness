@@ -44,6 +44,16 @@ _DONE = {
     "superseded",
     "success",
 }
+# Which statuses reach the operator's screen, and for how long. Work that is
+# under way, or that is asking a question, is shown whatever its age. Work that
+# is stuck keeps its place for a fortnight -- past that nobody has touched it
+# and it is backlog wearing an urgent colour. Work that finished stays up for a
+# day, long enough for the person who caused it to see it land.
+_SURFACE_ALWAYS = {"running", "paused", "needs_verification"}
+_SURFACE_WHILE_RECENT = {"attention", "blocked", "failed"}
+_SURFACE_QUEUED = {"queued", "planned"}
+_STUCK_MAX_AGE_S = 14 * 24 * 60 * 60
+_RECENT_DONE_MAX_AGE_S = 24 * 60 * 60
 
 
 def _file_stamp(path: Path) -> tuple[int, int, int, int, int] | None:
@@ -368,6 +378,51 @@ def _session_row(row: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _serves_operator_surface(
+    row: dict[str, Any], updated_at: float | None, now: float
+) -> bool:
+    """Whether one work row belongs on the operator's screen right now.
+
+    The snapshot used to ship every work row the database held. On a board that
+    has been running a while that is thousands of rows -- the archived, the
+    superseded, the closed, the long tail of finished work, and the unranked
+    backlog -- re-sent to the menu bar every twenty seconds, where NEXT UP
+    drowned in it. The handful of rows a person could act on were all present
+    and none of them were findable.
+
+    So `rows` is a surface rather than a dump, and four things earn a place on
+    it. Work that is under way -- running or paused -- is always shown, as is a
+    row asking to be verified, because that is a question pointed at the
+    operator. Work that is stuck -- attention, blocked, failed -- is shown
+    while it is recent, since a blocked row nobody has touched in a fortnight
+    has stopped being a live problem. Work that is queued or planned is shown
+    only where somebody ranked it: in this schema priority 0 or absent means
+    nobody has, and >= 1 is a deliberate position in the queue. And work that
+    just finished stays up for a day.
+
+    Everything else -- archived, superseded, closed, the older done tail, the
+    unranked backlog -- is still counted in `summary`. It is not dropped from
+    the snapshot's account of the board, only from its picture of it.
+
+    `updated_at` is the coord row's own stamp, passed in because the rendered
+    row deliberately does not carry one. Where it is missing the two age tests
+    answer differently, on purpose: a stuck row is shown, because nothing here
+    proves it went quiet, and a finished row is not, because nothing proves it
+    just landed. Guessing the other way would either hide a live problem or
+    let the flood back in.
+    """
+    status = _string(row.get("status"), "planned").lower()
+    if status in _SURFACE_ALWAYS:
+        return True
+    if status in _SURFACE_WHILE_RECENT:
+        return updated_at is None or now - updated_at <= _STUCK_MAX_AGE_S
+    if status in _SURFACE_QUEUED:
+        return _integer(row.get("priority")) > 0
+    if status == "done":
+        return updated_at is not None and now - updated_at <= _RECENT_DONE_MAX_AGE_S
+    return False
+
+
 def _summary(rows: list[dict[str, Any]]) -> dict[str, int]:
     counts = {"running": 0, "attention": 0, "next": 0, "done": 0}
     for row in rows:
@@ -434,6 +489,15 @@ def build_snapshot(
         for row in (_work_row(item) for item in work)
         if row["id"]
     }
+    # The coord row's own stamp, kept beside the rendered rows rather than on
+    # them: `_serves_operator_surface` needs it to age a stuck or finished row,
+    # and the row schema `validate_snapshot` enforces has no field for it.
+    work_updated_at = {
+        _string(item.get("work_id")): parse_updated_at(item.get("updated_at"))
+        for item in work
+        if _string(item.get("work_id"))
+    }
+    job_row_ids: set[str] = set()
     work_signals = _work_signals(work)
     artifact_root = config.project_root()
     jobs = sorted(
@@ -494,20 +558,60 @@ def build_snapshot(
             "current_step": "",
         }
         rows_by_id[row_id] = row
+        job_row_ids.add(row_id)
         _apply_job(row, job, now, work_signals=work_signals, root=artifact_root)
 
-    rows = [rows_by_id[key] for key in sorted(rows_by_id)]
+    # Rows are the surface; summary is the census. The counts are taken over
+    # every row, including the ones the filter is about to drop, so a panel
+    # drawing eleven rows can still say how many exist -- a truncation the
+    # reader cannot see is the failure this repo keeps writing down. A local
+    # job is never filtered: it is running on this machine now, and its row is
+    # the only place that fact is reported.
+    every_row = [rows_by_id[key] for key in sorted(rows_by_id)]
+    summary = _summary(every_row)
+    rows = [
+        row
+        for row in every_row
+        if row["id"] in job_row_ids
+        or _serves_operator_surface(row, work_updated_at.get(row["id"]), now)
+    ]
     snapshot: dict[str, Any] = {
         "schema_version": NATIVE_SNAPSHOT_SCHEMA,
         "generated_at": _iso8601(now),
         "source": "coord.db+job_progress" if jobs else "coord.db",
         "stale": False,
-        "summary": _summary(rows),
+        "summary": summary,
         "rows": rows,
         "sessions": sessions,
     }
     validate_snapshot(snapshot)
     return snapshot
+
+
+def build_status_census(db_path: str | Path | None = None) -> dict[str, dict[str, str]]:
+    """Every work row's derived status and owner, however old or archived.
+
+    The snapshot's row list is a display surface; resolution paths must not
+    read it as the board. The concrete failure this exists for: the action
+    registry answered ``dependencies_satisfied`` from surface rows, so a
+    dependency that was archived -- or done long enough ago to age off the
+    surface -- read as *unsatisfied*, and a genuinely unblocked row lost its
+    affordances. Server-private, never served: the wire keeps the surface,
+    the server keeps the census.
+    """
+    db = Path(db_path) if db_path is not None else config.coord_db_path()
+    with _materialized_connection(db) as conn:
+        now = config.source_date_epoch(coord_db.db_now(conn))
+        return {
+            work_id: {
+                "status": _string(
+                    row.get("status") or row.get("intent_state"), "planned"
+                ).lower(),
+                "owner": _string(row.get("assignee") or row.get("owner_session_actor")),
+            }
+            for row in coord_db.board_rows(conn, at=now)
+            if (work_id := _string(row.get("work_id")))
+        }
 
 
 def _json_list(value: Any) -> list[str]:
@@ -749,9 +853,18 @@ def validate_snapshot(snapshot: Any, schema: dict[str, Any] | None = None) -> No
         if not isinstance(row.get("stale"), bool):
             raise ValueError(f"{path}.stale must be a boolean")
 
-    if summary["total"] != len(rows):
-        raise ValueError("NativeSnapshotV1 summary.total must equal row count")
-    if sum(summary[key] for key in ("running", "attention", "next", "done")) != len(rows):
+    # This asked for equality, which was true only while `rows` was the whole
+    # table. It is the census that has to be complete, not the picture: the
+    # graph envelope already trims rows and keeps the totals (`server.py`
+    # `_project_bundle`, `static/app.js` `emptyWorkCopy`), and
+    # `_serves_operator_surface` now does the same for the operator's screen.
+    # An equality check here would have forced the counts down to whatever
+    # survived the filter -- which is precisely the silent truncation a summary
+    # exists to prevent. So the counts may exceed the rows and may never fall
+    # short of them, and the buckets must still account for every counted row.
+    if summary["total"] < len(rows):
+        raise ValueError("NativeSnapshotV1 summary.total must count at least every row")
+    if sum(summary[key] for key in ("running", "attention", "next", "done")) != summary["total"]:
         raise ValueError("NativeSnapshotV1 summary buckets must account for every row")
 
     sessions = snapshot.get("sessions")
