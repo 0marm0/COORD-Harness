@@ -26,6 +26,25 @@ grants rights that the maintainer has not already authorized.
    It reports only digests and object labels. A missing official vocabulary is
    a release blocker even when the public CI baseline passes.
 
+5. Confirm the extraction manifest still describes the tree being released:
+
+   ```bash
+   python tools/extract/repin.py --check
+   ```
+
+   Every staged file must be declared and every `derived` pin must equal the
+   staged content. This runs on every pull request as its own CI step, so a
+   candidate should reach a release with it already green; running it here is
+   what makes that an observation rather than an assumption. The check reads
+   Git's index, matching `tools/extract/gate.py`, and prints the fixing command
+   under each finding.
+
+   Read what it reports before acting on it. A stale pin on a file another
+   contributor adapted is theirs to re-pin: `--apply` records `repin.method`
+   stating that the hash was re-computed and not re-reviewed, precisely so a
+   release-time convenience cannot enter the record as a review the releaser
+   did not perform.
+
 Generate a frozen manifest and a portable receipt template into a dedicated
 maintainer directory:
 
