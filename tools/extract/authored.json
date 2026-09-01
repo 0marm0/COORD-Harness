@@ -563,12 +563,12 @@
     },
     "apps/Shared/Sources/UsageDashboardContent.swift": {
       "origin": "split from a pinned private provider-usage dashboard, then substantially adapted for the standalone harness",
-      "reason": "Compact and expanded usage presentation was modularized and generalized around the public provider-separated usage schema. Re-reviewed (agent self-review, not independent human review) after adding a per-provider visual style helper (asset name/tint), a totalTokensCost roll-up label, and an onExpandedChange callback replacing the prior @AppStorage-backed expansion state; no new endpoint or schema.\n\nRe-pinned: UsageWindowGeometry moved here from PopoverController and dashboard carries model breakdowns per plotted point (cross-lane review by claude post-merge) (tool-assisted: the hash was updated to the staged bytes by tools/extract/repin.py --apply. This records acceptance of the new content, not an independent re-review of it.)",
-      "reviewed_sha256": "5e8eb31f674931bb4c07f79c4279b86f608650c2bd5fa2032aa4385e22cea217",
+      "reason": "Compact and expanded usage presentation was modularized and generalized around the public provider-separated usage schema. Re-reviewed (agent self-review, not independent human review) after adding a per-provider visual style helper (asset name/tint), a totalTokensCost roll-up label, and an onExpandedChange callback replacing the prior @AppStorage-backed expansion state; no new endpoint or schema.\n\nRe-pinned: UsageWindowGeometry moved here from PopoverController and dashboard carries model breakdowns per plotted point (cross-lane review by claude post-merge) (tool-assisted: the hash was updated to the staged bytes by tools/extract/repin.py --apply. This records acceptance of the new content, not an independent re-review of it.)\n\nRe-pinned: Reviewed responsive usage route prevents narrow-panel overflow, starts at the top, and clamps to the visible screen. (tool-assisted: the hash was updated to the staged bytes by tools/extract/repin.py --apply. This records acceptance of the new content, not an independent re-review of it.)",
+      "reviewed_sha256": "ad9da5065d9e4d4ed92fd8cb78c3ce64430105bf8aa15dd4a368b6809d07145c",
       "repin": {
-        "reason": "UsageWindowGeometry moved here from PopoverController and dashboard carries model breakdowns per plotted point (cross-lane review by claude post-merge)",
+        "reason": "Reviewed responsive usage route prevents narrow-panel overflow, starts at the top, and clamps to the visible screen.",
         "method": "tool-assisted: the hash was updated to the staged bytes by tools/extract/repin.py --apply. This records acceptance of the new content, not an independent re-review of it.",
-        "previous_sha256": "551015dc7592a9991406e15b5ed887e66986cf28c728002bbe16149621aeff06"
+        "previous_sha256": "5e8eb31f674931bb4c07f79c4279b86f608650c2bd5fa2032aa4385e22cea217"
       }
     },
     "apps/Shared/Sources/UsageIntelligence.swift": {
@@ -593,12 +593,12 @@
     },
     "apps/menubar/Sources/App/PopoverController.swift": {
       "origin": "ported from a pinned private popover controller, then substantially adapted for the standalone harness",
-      "reason": "Re-reviewed after consolidating main, settings, provider-account, usage, and telemetry navigation into one state machine reset by every close and attach transition. Re-reviewed again (agent self-review, not independent human review) after a battery navigation destination and a UsageWindowGeometry sizing helper were added, and the controller began taking a LocalPowerController to track and push local battery/caffeine state into the content stack; local machine state only.\n\nRe-pinned: Usage window sizes host window and glass together from shared UsageWindowGeometry on the real anchor screen (cross-lane review by claude post-merge) (tool-assisted: the hash was updated to the staged bytes by tools/extract/repin.py --apply. This records acceptance of the new content, not an independent re-review of it.)",
-      "reviewed_sha256": "532ddf65584bb25bb76f932e7cd4542f7b9e240a3d302262e03c2123f96565ba",
+      "reason": "Re-reviewed after consolidating main, settings, provider-account, usage, and telemetry navigation into one state machine reset by every close and attach transition. Re-reviewed again (agent self-review, not independent human review) after a battery navigation destination and a UsageWindowGeometry sizing helper were added, and the controller began taking a LocalPowerController to track and push local battery/caffeine state into the content stack; local machine state only.\n\nRe-pinned: Usage window sizes host window and glass together from shared UsageWindowGeometry on the real anchor screen (cross-lane review by claude post-merge) (tool-assisted: the hash was updated to the staged bytes by tools/extract/repin.py --apply. This records acceptance of the new content, not an independent re-review of it.)\n\nRe-pinned: Reviewed host-first edge-pinned installation prevents AppKit from double-applying panel resize deltas. (tool-assisted: the hash was updated to the staged bytes by tools/extract/repin.py --apply. This records acceptance of the new content, not an independent re-review of it.)",
+      "reviewed_sha256": "5242df02cd4adfdb118b2082e063a1c5b260f24339bfffabb5af69272d599dfd",
       "repin": {
-        "reason": "Usage window sizes host window and glass together from shared UsageWindowGeometry on the real anchor screen (cross-lane review by claude post-merge)",
+        "reason": "Reviewed host-first edge-pinned installation prevents AppKit from double-applying panel resize deltas.",
         "method": "tool-assisted: the hash was updated to the staged bytes by tools/extract/repin.py --apply. This records acceptance of the new content, not an independent re-review of it.",
-        "previous_sha256": "9f1820cc9400f41efb2cb59005c5e5c1d02a07b791bf8b6441b0dbba9e2d35d6"
+        "previous_sha256": "532ddf65584bb25bb76f932e7cd4542f7b9e240a3d302262e03c2123f96565ba"
       }
     },
     "apps/menubar/Sources/App/StatusItemController.swift": {
