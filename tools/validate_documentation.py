@@ -46,15 +46,27 @@ HEADING_TOKEN_RE = re.compile(r"^ {0,3}#{1,6}\s+(?P<token>[0-9]+[a-z]?)(?=[.:)\s
 
 @dataclass
 class Report:
-    """A token-bounded report that still counts every discovered issue."""
+    """A token-bounded report that still counts every discovered issue.
+
+    ``notes`` is a second, non-fatal channel. Everything this validator checked
+    before was pass/fail, so a finding and a failure were the same thing. The
+    documentation-custody check is not: a protected document that MOVED still
+    exists, and refusing a rename would make this tool something a maintainer
+    routes around. Notes are printed either way and change no exit code.
+    """
 
     total: int = 0
     messages: list[str] = field(default_factory=list)
+    notes: list[str] = field(default_factory=list)
 
     def add(self, message: str) -> None:
         self.total += 1
         if len(self.messages) < MAX_MESSAGES:
             self.messages.append(message)
+
+    def note(self, message: str) -> None:
+        if len(self.notes) < MAX_MESSAGES:
+            self.notes.append(message)
 
 
 class _HTMLLinkParser(HTMLParser):
@@ -510,12 +522,91 @@ def _check_asset_provenance(
         report.add(f"{rel}: provenance entry does not name a tracked visual asset")
 
 
+def _has_commit(root: Path) -> bool:
+    """Whether ``root`` has a HEAD commit to compare the worktree against."""
+    result = subprocess.run(
+        ["git", "rev-parse", "--verify", "--quiet", "HEAD"],
+        cwd=root,
+        capture_output=True,
+        check=False,
+    )
+    return result.returncode == 0
+
+
+def _load_doc_deletion_guard(root: Path):
+    """The custody guard module, importable from a source checkout too.
+
+    The guard lives in the package. CI installs the package before running this
+    tool, but a maintainer running ``python tools/validate_documentation.py`` in
+    a fresh clone has not, and a validator that only works after ``pip install``
+    is a validator nobody runs first. The module rather than one function,
+    because the archive prefix it classifies against is configurable and the
+    remediation sentence must name the prefix actually in force.
+    """
+    try:
+        from coordharness.lints import doc_deletion_guard
+    except ImportError:
+        source_root = str(root / "src")
+        if source_root not in sys.path:
+            sys.path.insert(0, source_root)
+        from coordharness.lints import doc_deletion_guard
+    return doc_deletion_guard
+
+
+def _check_doc_custody(root: Path, report: Report) -> None:
+    """A protected document must not leave the tree without a surviving copy.
+
+    Deletion is the one documentation defect the checks above cannot see: they
+    validate what is present, and a document that is gone is absent from every
+    link, index and manifest they read. The guard diffs the worktree against
+    HEAD and classifies each removed ``docs/*.md``.
+
+    Only ``unpreserved_deletion`` -- removed with no copy surviving anywhere in
+    the tree, by digest or by an 0.85 line-similarity match on the same file
+    name -- is an error, because that is the case where content was actually
+    lost. A document that moved to a non-archive path is reported as a note: the
+    content still exists, and failing a rename would teach maintainers to skip
+    this tool rather than to preserve their documents.
+    """
+    if not _has_commit(root):
+        # Nothing can have been deleted from a history that does not exist yet.
+        return
+    try:
+        guard = _load_doc_deletion_guard(root)
+    except ImportError as exc:
+        report.add(f"repository: documentation custody guard is not importable: {exc}")
+        return
+    try:
+        audit = guard.build_audit(root)
+    except Exception as exc:  # noqa: BLE001 - a guard that cannot run must not read as clean
+        report.add(
+            f"repository: documentation custody guard failed to run: {type(exc).__name__}: {exc}"
+        )
+        return
+    for finding in audit.get("findings") or []:
+        source = str(finding.get("source") or "unknown")
+        recovery = str(finding.get("recovery_commit") or "unknown")
+        if finding.get("disposition") == "unpreserved_deletion":
+            report.add(
+                f"{source}: protected documentation was deleted and no copy survives; "
+                f"restore it from {recovery} and move it under "
+                f"{guard.ARCHIVE_PREFIX} instead of hard-deleting it"
+            )
+            continue
+        surviving = ", ".join(str(path) for path in finding.get("surviving_paths") or [])
+        report.note(
+            f"{source}: protected documentation left its path; content survives at "
+            f"{surviving or 'an unrecorded path'} (recover the original from {recovery})"
+        )
+
+
 def validate(root: Path) -> Report:
     root = root.resolve()
     report = Report()
     tracked = _tracked_paths(root, report)
     if tracked is None:
         return report
+    _check_doc_custody(root, report)
     _check_links(root, tracked, report)
     _check_prose_citations(root, tracked, report)
     values = _load_json(root, tracked, report)
@@ -529,6 +620,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("root", nargs="?", default=".", help="repository root (default: current directory)")
     args = parser.parse_args(argv)
     report = validate(Path(args.root))
+    for note in report.notes:
+        print(f"NOTE {note}", file=sys.stderr)
     if not report.total:
         print(SUCCESS)
         return 0

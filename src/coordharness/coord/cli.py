@@ -518,6 +518,19 @@ def main(argv=None) -> int:
     p.add_argument("--include-expired", action="store_true",
                    help="also scan claims whose lease has already expired")
     p = _add_subparser(sub,
+        "lint-work-items",
+        help="report open work items missing required metadata, and near-duplicate titles",
+    )
+    # Advisory by default, like `conflicts`. The fields it checks are the ones
+    # `create` already requires, so a malformed row is one that predates the
+    # requirement or was written by another surface -- a backlog to work off,
+    # not a reason to refuse the next command an agent types. `--strict` is for
+    # the caller who wants a gate exit code, and is opt-in for that reason.
+    p.add_argument("--strict", action="store_true",
+                   help="exit 1 when any open work item is malformed")
+    p.add_argument("--limit", type=int, default=40,
+                   help="how many findings to list; the counts are always complete")
+    p = _add_subparser(sub,
         "create",
         help="create the first or next proof-gated work item in this coord database",
     )
@@ -859,6 +872,45 @@ def main(argv=None) -> int:
         # code says the question was answered, not that the board is clean; the
         # answer is in `count`.
         return 0
+
+    if args.cmd == "lint-work-items":
+        from ..lints import work_item_lint
+
+        db_path = Path(args.db) if args.db is not None else harness_config.coord_db_path()
+        if not database_current(db_path):
+            bootstrap_database(db_path)
+        # `_load` opens its own read-only connection (`mode=ro`) and is the
+        # module's whole read path; its `main` calls exactly these three. Asking
+        # which rows are under-specified must not be able to change them.
+        rows = work_item_lint._load(str(db_path))
+        findings = work_item_lint.lint(rows)
+        duplicates = work_item_lint.dups(rows)
+        limit = max(0, int(args.limit))
+        _emit({
+            "ok": True,
+            "open_items": len(rows),
+            "malformed": len(findings),
+            "well_formed": len(rows) - len(findings),
+            "possible_duplicates": len(duplicates),
+            "shown": min(limit, len(findings)),
+            "findings": [
+                {
+                    "work_id": finding.work_id,
+                    "surface": finding.surface,
+                    "assignee": finding.assignee,
+                    "missing": list(finding.missing),
+                }
+                for finding in findings[:limit]
+            ],
+            "duplicates": [
+                {"work_id": left, "other_work_id": right, "title_similarity": ratio}
+                for left, right, ratio in duplicates[:limit]
+            ],
+            "strict": bool(args.strict),
+        })
+        # The counts above are complete whatever `--limit` shows, so a truncated
+        # listing never turns a malformed board into a clean-looking one.
+        return 1 if args.strict and findings else 0
 
     bootstrap_database(args.db)
     ident = resolve_identity()

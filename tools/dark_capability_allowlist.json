@@ -13,7 +13,6 @@
     "apfs_cow_cleanroom": "Test-infrastructure module with no importer outside the tests it serves. UNTRIAGED baseline 2026-09-01.",
     "console_release_retention": "Runtime policy module with no importer. UNTRIAGED baseline 2026-09-01 - check whether a driver was dropped in extraction before assuming it is deliberate.",
     "cwd_relative_paths": "Extraction residue: the port carried the module and dropped its driver. No conftest, plugin entry point or workflow references it. UNTRIAGED baseline 2026-09-01 - wiring it may go red immediately against a baseline nobody has measured.",
-    "doc_deletion_guard": "Extraction residue: the port carried the module and dropped its driver. No conftest, plugin entry point or workflow references it. UNTRIAGED baseline 2026-09-01 - wiring it may go red immediately against a baseline nobody has measured.",
     "docs_findability_index": "Extraction residue: the port carried the module and dropped its driver. No conftest, plugin entry point or workflow references it. UNTRIAGED baseline 2026-09-01 - wiring it may go red immediately against a baseline nobody has measured.",
     "fail_loud_patterns": "Extraction residue: the port carried the module and dropped its driver. No conftest, plugin entry point or workflow references it. UNTRIAGED baseline 2026-09-01 - wiring it may go red immediately against a baseline nobody has measured.",
     "fingerprint": "Usage-pipeline module with no importer. UNTRIAGED baseline 2026-09-01.",
@@ -26,7 +25,6 @@
     "replica": "Usage-pipeline module with no importer. UNTRIAGED baseline 2026-09-01.",
     "served_build_identity": "Runtime policy module with no importer. UNTRIAGED baseline 2026-09-01 - check whether a driver was dropped in extraction before assuming it is deliberate.",
     "stall_detector": "Extraction residue: the port carried the module and dropped its driver. No conftest, plugin entry point or workflow references it. UNTRIAGED baseline 2026-09-01 - wiring it may go red immediately against a baseline nobody has measured.",
-    "verified_artifact_skip": "Test-infrastructure module with no importer outside the tests it serves. UNTRIAGED baseline 2026-09-01.",
-    "work_item_lint": "Extraction residue: the port carried the module and dropped its driver. No conftest, plugin entry point or workflow references it. UNTRIAGED baseline 2026-09-01 - wiring it may go red immediately against a baseline nobody has measured."
+    "verified_artifact_skip": "Test-infrastructure module with no importer outside the tests it serves. UNTRIAGED baseline 2026-09-01."
   }
 }
