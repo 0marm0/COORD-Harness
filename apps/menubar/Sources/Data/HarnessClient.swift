@@ -166,14 +166,23 @@ final class NativeCockpitDBSource: SnapshotSource {
         return section == "all" || lane == "all"
     }
 
+    /// Section for a row. The rule itself lives in `RowSectionPolicy` so it can
+    /// be tested without building the app; `lane` is the server's bucket and
+    /// `section` is the group key, which is why the bucket is passed first.
     private static func bucket(for row: Row) -> Bucket {
-        let scope = (row.section ?? row.lane ?? "").lowercased()
-        let status = (row.status ?? "").uppercased()
-        if scope.contains("follow") { return .followup }
-        if scope.contains("attention") || ["BLOCKED", "FAILED", "STALLED"].contains(status) { return .attention }
-        if scope.contains("running") || scope == "now" || status == "RUNNING" || row.live == true { return .running }
-        if ["DONE", "KILLED", "CANCELLED", "CANCELED"].contains(status) { return .status }
-        return .next
+        switch rowSection(
+            bucket: row.lane,
+            groupKey: row.section,
+            status: row.status,
+            paused: row.paused,
+            live: row.live
+        ) {
+        case .running: return .running
+        case .attention: return .attention
+        case .followup: return .followup
+        case .status: return .status
+        case .next: return .next
+        }
     }
 }
 
