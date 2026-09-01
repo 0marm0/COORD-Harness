@@ -41,9 +41,12 @@ called fail-closed: ``completion_review_state`` is a read model the board calls,
 so a panel that cannot be evaluated is reported ``panel_uncomputable`` and still
 gates, rather than raising into a caller that only wanted to draw a row.
 
-This paragraph is load-bearing. It said NOT WIRED for as long as that was true,
-which is how the gap was found at all; leaving it saying so after the wiring
-would hand the next reader a false map of what this harness enforces.
+This paragraph is load-bearing. It carried the unwired marker for as long as
+that was true, which is how the gap was found at all; leaving the marker in
+place after the wiring would hand the next reader a false map of what this
+harness enforces. The marker phrase itself is deliberately not repeated here --
+``tools/dark_capability_check.py`` reads it, and a module that discusses the
+phrase reports itself.
 """
 
 from __future__ import annotations
