@@ -459,18 +459,25 @@ final class PopoverController {
                 visibleFrame: screen?.visibleFrame
             )
         } else {
-            targetSize = NSSize(
-                width: UsageWindowGeometry.preferredWidth,
-                height: UsageWindowGeometry.attachedHeight(
-                    visibleFrame: screen?.visibleFrame,
-                    anchorFrame: anchorScreenFrame
-                )
+            targetSize = UsageWindowGeometry.attachedContentSize(
+                visibleFrame: screen?.visibleFrame,
+                anchorFrame: anchorScreenFrame
             )
         }
-        let width = targetSize.width
-        let height = targetSize.height
-        let newContent = FlippedView(frame: NSRect(x: 0, y: 0, width: width, height: height))
-        newContent.autoresizingMask = [.width, .height]
+        // Resize the host first. Adding an already-target-sized autoresizing child to
+        // the previous panel bounds double-applies the old-to-new size delta.
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        if detachedVisible, let window = detachedWindow {
+            window.setContentSize(targetSize)
+            if let screen {
+                let constrainedFrame = window.constrainFrameRect(window.frame, to: screen)
+                window.setFrame(constrainedFrame, display: true)
+            }
+            glass.frame = window.contentView?.bounds ?? NSRect(origin: .zero, size: targetSize)
+        } else {
+            popover.contentSize = targetSize
+        }
+        let newContent = FlippedView(frame: glass.bounds)
         let hosting = NSHostingView(
             rootView: InstalledUsageDashboardView(
                 compact: !detachedVisible,
@@ -482,25 +489,15 @@ final class PopoverController {
         )
         hosting.wantsLayer = true
         hosting.layer?.backgroundColor = NSColor.clear.cgColor
-        hosting.frame = newContent.bounds
-        hosting.autoresizingMask = [.width, .height]
-        newContent.addSubview(hosting)
+        hosting.sizingOptions = []
+        UsageRouteContainerLayout.pin(hosting, in: newContent)
 
-        CATransaction.begin(); CATransaction.setDisableActions(true)
-        glass.addSubview(newContent)
         boardScrollView?.removeFromSuperview(); boardScrollView = nil
         pinnedFooter?.removeFromSuperview(); pinnedFooter = nil
-        content.removeFromSuperview(); content = newContent
-        if detachedVisible, let window = detachedWindow {
-            window.setContentSize(targetSize)
-            if let screen {
-                let constrainedFrame = window.constrainFrameRect(window.frame, to: screen)
-                window.setFrame(constrainedFrame, display: true)
-            }
-            glass.frame = window.contentView?.bounds ?? NSRect(origin: .zero, size: targetSize)
-        } else {
-            popover.contentSize = targetSize
-        }
+        content.removeFromSuperview()
+        UsageRouteContainerLayout.pin(newContent, in: glass)
+        content = newContent
+        glass.layoutSubtreeIfNeeded()
         CATransaction.commit()
     }
 
