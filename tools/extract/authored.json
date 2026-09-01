@@ -229,6 +229,7 @@
     "docs/swarm-mesh.md": "source-bound Swarm Mesh rendering, motion, interaction, accessibility, and truth contract written fresh",
     "docs/third-party-notices.md": "written fresh for this repository",
     "docs/threat-model.md": "the untrusted-actor guard audit: which of today's guards would still do work, become redundant, or prove decorative under real authentication",
+    "docs/usage-interface-parity.md": "Parity contract between the public usage surface and the private companion app - synthetic-fixture and no-private-data rules included (cross-lane review by claude post-merge)",
     "docs/visual-atlas.md": "index of the diagram assets",
     "docs/web-board.md": "written fresh for this repository",
     "examples/fleet-fan-out/README.md": "worked example: a fanned-out subagent history is recorded under one held claim, and refused when the claim is not held",
@@ -344,6 +345,7 @@
     "src/coordharness/safety/writers.py": "standalone guarded writer primitives, written fresh",
     "src/coordharness/usage/local_account_actions.py": "local provider-account actions with bounded schemas and no external companion application dependency",
     "src/coordharness/usage/local_cache.py": "atomic clone-local last-good usage cache",
+    "src/coordharness/usage/local_cost_cache.py": "Bounded read-only projection of local cost caches: symlink/size refusals, 20s jq subprocess with output cap and kill, strict JSON, per-row validation, fail-closed empty import (cross-lane review by claude post-merge)",
     "src/coordharness/usage/local_history.py": "bounded read-only import of current-user Claude and Codex CLI histories",
     "src/coordharness/usage/local_profiles.py": "local multi-account profile store with redacted public projections",
     "src/coordharness/usage/local_provider_management.py": "standalone provider account management over current-user CLI authentication",
@@ -506,6 +508,9 @@
     "tests/test_usage_routing.py": "tests for the usage routing advisor",
     "tests/test_workflow_action_pins.py": "Tests that every workflow action is pinned to a commit, especially in the publish job that holds id-token: write.",
     "tests/test_write_set_declaration.py": "declared write-set reachability, schema bootstrap, read-only conflict query, and ungrantable-scope refusal regressions written fresh",
+    "tests/usage/fixtures/claude_cost_cache.json": "Synthetic claude cost-cache fixture with a /private/must-not-cross sentinel proving per-project rows never cross (reviewed: no real values)",
+    "tests/usage/fixtures/codex_cost_cache.json": "Synthetic codex cost-cache fixture, same must-not-cross sentinel (reviewed: no real values)",
+    "tests/usage/fixtures/codex_model_attribution.jsonl": "Synthetic codex session log alternating model-alpha/model-beta turn contexts for attribution tests (reviewed: no real values)",
     "tests/usage/test_account_actions.py": "account-action forwarding, validation, and secret-redaction regressions written fresh",
     "tests/usage/test_dashboard_proxy.py": "bounded provider usage proxy validation, cache, and redaction regressions written fresh",
     "tests/usage/test_local_cache.py": "atomic local usage cache regression tests",
@@ -558,17 +563,22 @@
     },
     "apps/Shared/Sources/UsageDashboardContent.swift": {
       "origin": "split from a pinned private provider-usage dashboard, then substantially adapted for the standalone harness",
-      "reason": "Compact and expanded usage presentation was modularized and generalized around the public provider-separated usage schema. Re-reviewed (agent self-review, not independent human review) after adding a per-provider visual style helper (asset name/tint), a totalTokensCost roll-up label, and an onExpandedChange callback replacing the prior @AppStorage-backed expansion state; no new endpoint or schema.",
-      "reviewed_sha256": "551015dc7592a9991406e15b5ed887e66986cf28c728002bbe16149621aeff06"
+      "reason": "Compact and expanded usage presentation was modularized and generalized around the public provider-separated usage schema. Re-reviewed (agent self-review, not independent human review) after adding a per-provider visual style helper (asset name/tint), a totalTokensCost roll-up label, and an onExpandedChange callback replacing the prior @AppStorage-backed expansion state; no new endpoint or schema.\n\nRe-pinned: UsageWindowGeometry moved here from PopoverController and dashboard carries model breakdowns per plotted point (cross-lane review by claude post-merge) (tool-assisted: the hash was updated to the staged bytes by tools/extract/repin.py --apply. This records acceptance of the new content, not an independent re-review of it.)",
+      "reviewed_sha256": "5e8eb31f674931bb4c07f79c4279b86f608650c2bd5fa2032aa4385e22cea217",
+      "repin": {
+        "reason": "UsageWindowGeometry moved here from PopoverController and dashboard carries model breakdowns per plotted point (cross-lane review by claude post-merge)",
+        "method": "tool-assisted: the hash was updated to the staged bytes by tools/extract/repin.py --apply. This records acceptance of the new content, not an independent re-review of it.",
+        "previous_sha256": "551015dc7592a9991406e15b5ed887e66986cf28c728002bbe16149621aeff06"
+      }
     },
     "apps/Shared/Sources/UsageIntelligence.swift": {
       "origin": "combined from pinned private provider-usage model and client mechanisms, then substantially adapted for the standalone harness",
-      "reason": "Provider quota, history, cost, retention, and forecast models were consolidated behind a neutral public schema with bounded decoding and no private ledger bytes. Re-reviewed (agent self-review, not independent human review) after UsageDaily gained an optional modelBreakdowns array (UsageDailyModelBreakdown: per-model token and cost fields) and Auto mode's session/weekly selection was reworked to compare each window's own remaining percent instead of a fixed threshold order; decode-only additions, no new transport.\n\nRe-pinned: Read the pace-marker diff for this file: UsageQuotaPace gained two optional decode-only fields (marker_remaining_percent, marker_kind) and the status presentation replaced a fixed warning-threshold marker with a pace marker derived from those fields and clamped to 0-100. Decoding and presentation only; no new data source and no private ledger bytes. (tool-assisted: the hash was updated to the staged bytes by tools/extract/repin.py --apply. This records acceptance of the new content, not an independent re-review of it.)",
-      "reviewed_sha256": "6193ad25d9c3ddc32b2093c153ff21bed91134fd6dbb4abe0d2fb8bf3314c88d",
+      "reason": "Provider quota, history, cost, retention, and forecast models were consolidated behind a neutral public schema with bounded decoding and no private ledger bytes. Re-reviewed (agent self-review, not independent human review) after UsageDaily gained an optional modelBreakdowns array (UsageDailyModelBreakdown: per-model token and cost fields) and Auto mode's session/weekly selection was reworked to compare each window's own remaining percent instead of a fixed threshold order; decode-only additions, no new transport.\n\nRe-pinned: Read the pace-marker diff for this file: UsageQuotaPace gained two optional decode-only fields (marker_remaining_percent, marker_kind) and the status presentation replaced a fixed warning-threshold marker with a pace marker derived from those fields and clamped to 0-100. Decoding and presentation only; no new data source and no private ledger bytes. (tool-assisted: the hash was updated to the staged bytes by tools/extract/repin.py --apply. This records acceptance of the new content, not an independent re-review of it.)\n\nRe-pinned: Trend points carry tokens+model breakdowns; currentDayPoint checks local then UTC day, matching the history writer's astimezone attribution (cross-lane review by claude post-merge) (tool-assisted: the hash was updated to the staged bytes by tools/extract/repin.py --apply. This records acceptance of the new content, not an independent re-review of it.)",
+      "reviewed_sha256": "a2c1aa36921111e1b31a2696da659c0cc20e97a5775561601701f37092e3c52a",
       "repin": {
-        "reason": "Read the pace-marker diff for this file: UsageQuotaPace gained two optional decode-only fields (marker_remaining_percent, marker_kind) and the status presentation replaced a fixed warning-threshold marker with a pace marker derived from those fields and clamped to 0-100. Decoding and presentation only; no new data source and no private ledger bytes.",
+        "reason": "Trend points carry tokens+model breakdowns; currentDayPoint checks local then UTC day, matching the history writer's astimezone attribution (cross-lane review by claude post-merge)",
         "method": "tool-assisted: the hash was updated to the staged bytes by tools/extract/repin.py --apply. This records acceptance of the new content, not an independent re-review of it.",
-        "previous_sha256": "eda946e254d57fdd28b800a24e3a27edb035616bc09684aa9303f4ca26c8d0bb"
+        "previous_sha256": "6193ad25d9c3ddc32b2093c153ff21bed91134fd6dbb4abe0d2fb8bf3314c88d"
       }
     },
     "apps/menubar/Sources/App/AppDelegate.swift": {
@@ -583,8 +593,13 @@
     },
     "apps/menubar/Sources/App/PopoverController.swift": {
       "origin": "ported from a pinned private popover controller, then substantially adapted for the standalone harness",
-      "reason": "Re-reviewed after consolidating main, settings, provider-account, usage, and telemetry navigation into one state machine reset by every close and attach transition. Re-reviewed again (agent self-review, not independent human review) after a battery navigation destination and a UsageWindowGeometry sizing helper were added, and the controller began taking a LocalPowerController to track and push local battery/caffeine state into the content stack; local machine state only.",
-      "reviewed_sha256": "9f1820cc9400f41efb2cb59005c5e5c1d02a07b791bf8b6441b0dbba9e2d35d6"
+      "reason": "Re-reviewed after consolidating main, settings, provider-account, usage, and telemetry navigation into one state machine reset by every close and attach transition. Re-reviewed again (agent self-review, not independent human review) after a battery navigation destination and a UsageWindowGeometry sizing helper were added, and the controller began taking a LocalPowerController to track and push local battery/caffeine state into the content stack; local machine state only.\n\nRe-pinned: Usage window sizes host window and glass together from shared UsageWindowGeometry on the real anchor screen (cross-lane review by claude post-merge) (tool-assisted: the hash was updated to the staged bytes by tools/extract/repin.py --apply. This records acceptance of the new content, not an independent re-review of it.)",
+      "reviewed_sha256": "532ddf65584bb25bb76f932e7cd4542f7b9e240a3d302262e03c2123f96565ba",
+      "repin": {
+        "reason": "Usage window sizes host window and glass together from shared UsageWindowGeometry on the real anchor screen (cross-lane review by claude post-merge)",
+        "method": "tool-assisted: the hash was updated to the staged bytes by tools/extract/repin.py --apply. This records acceptance of the new content, not an independent re-review of it.",
+        "previous_sha256": "9f1820cc9400f41efb2cb59005c5e5c1d02a07b791bf8b6441b0dbba9e2d35d6"
+      }
     },
     "apps/menubar/Sources/App/StatusItemController.swift": {
       "origin": "ported from a pinned private status-item controller, then substantially adapted for the standalone harness",
@@ -808,12 +823,12 @@
     },
     "src/coordharness/usage/dashboard_proxy.py": {
       "origin": "adapted from a pinned private provider-usage producer into a standalone read-only proxy boundary",
-      "reason": "Re-reviewed after binding the standalone local usage producer, last-good behavior, and neutral endpoint contract; no private ledger or companion-app dependency remains. Re-reviewed again (agent self-review, not independent human review) after daily sanitization gained cache_create_5m_tokens/cache_create_1h_tokens integer fields and an optional model_breakdowns list (bounded, sanitized per-model through the same integer-field and safe-string helpers as the parent row); no relaxation of the existing invalid_contract refusals.\n\nRe-pinned: Read the pace-marker diff for this file: pace sanitisation now passes marker_remaining_percent through the numeric helper bounded at 100 and marker_kind through the safe-token helper against the closed set reserve/on_pace/deficit, raising invalid_contract otherwise. Still read-only, and neither added field escapes the existing bounds. (tool-assisted: the hash was updated to the staged bytes by tools/extract/repin.py --apply. This records acceptance of the new content, not an independent re-review of it.)",
-      "reviewed_sha256": "adc4a71ca98e9c285862998ad0e1f9a0ad820a2c169b42074c0f3195bfa9d092",
+      "reason": "Re-reviewed after binding the standalone local usage producer, last-good behavior, and neutral endpoint contract; no private ledger or companion-app dependency remains. Re-reviewed again (agent self-review, not independent human review) after daily sanitization gained cache_create_5m_tokens/cache_create_1h_tokens integer fields and an optional model_breakdowns list (bounded, sanitized per-model through the same integer-field and safe-string helpers as the parent row); no relaxation of the existing invalid_contract refusals.\n\nRe-pinned: Read the pace-marker diff for this file: pace sanitisation now passes marker_remaining_percent through the numeric helper bounded at 100 and marker_kind through the safe-token helper against the closed set reserve/on_pace/deficit, raising invalid_contract otherwise. Still read-only, and neither added field escapes the existing bounds. (tool-assisted: the hash was updated to the staged bytes by tools/extract/repin.py --apply. This records acceptance of the new content, not an independent re-review of it.)\n\nRe-pinned: Sanitizer admits cost source/observed_at/coverage fields through the same bounded validators; rest is formatting (cross-lane review by claude post-merge) (tool-assisted: the hash was updated to the staged bytes by tools/extract/repin.py --apply. This records acceptance of the new content, not an independent re-review of it.)",
+      "reviewed_sha256": "0db489cd579fddb5b0b5c9e374ee096cda73735595c30fb32cd61a41842ed7b5",
       "repin": {
-        "reason": "Read the pace-marker diff for this file: pace sanitisation now passes marker_remaining_percent through the numeric helper bounded at 100 and marker_kind through the safe-token helper against the closed set reserve/on_pace/deficit, raising invalid_contract otherwise. Still read-only, and neither added field escapes the existing bounds.",
+        "reason": "Sanitizer admits cost source/observed_at/coverage fields through the same bounded validators; rest is formatting (cross-lane review by claude post-merge)",
         "method": "tool-assisted: the hash was updated to the staged bytes by tools/extract/repin.py --apply. This records acceptance of the new content, not an independent re-review of it.",
-        "previous_sha256": "c28399a081712608ddaef5ef66d33c488443723e52f79c454c7df41e1e5b4e93"
+        "previous_sha256": "adc4a71ca98e9c285862998ad0e1f9a0ad820a2c169b42074c0f3195bfa9d092"
       }
     },
     "src/coordharness/usage/provider_management.py": {
