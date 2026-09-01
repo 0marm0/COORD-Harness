@@ -1,9 +1,12 @@
 # COORD-Harness
 
 <p align="center">
-  <strong>One authority. Many workers. Inspectable proof.</strong><br>
-  A local-first control plane for Claude, Codex, MCP clients, shell agents, and local model jobs:
-  claim without colliding, hand off bounded context, supervise long processes, and finish only when the declared proof exists.
+  <strong>Two different AI coding agents. One codebase. One database that keeps them honest.</strong><br>
+  COORD-Harness lets a Claude Code session and a Codex session — plus any other MCP client,
+  shell agent, or local model job — work the same repository at the same time: seeing what the
+  others are doing, taking ownership without colliding, handing work over, reviewing each other,
+  and finishing only when the proof they declared up front actually exists.<br>
+  <em>One authority. Many workers. Inspectable proof.</em>
 </p>
 
 <p align="center">
@@ -13,6 +16,69 @@
   <a href="docs/security-and-privacy.md"><img alt="Local first" src="https://img.shields.io/badge/runtime-local--first-059669.svg"></a>
 </p>
 
+## What this is, in plain words
+
+Two AI coding agents — say a **Claude Code** session and a **Codex** session — are both
+working on your repository. Each is a separate process with its own context window, its own
+idea of what it is doing, and no way to see the other one. Left to themselves they edit the
+same file at the same time, redo work the other already finished, both report the same task
+as complete, and each marks its own output as reviewed.
+
+COORD-Harness is the layer that makes that stop. It is **one SQLite file on your machine**
+that every agent reads and writes through a small typed vocabulary:
+
+- An agent that wants work **claims** a row. The claim carries a **lease**, so if that agent
+  dies the work returns to circulation instead of sitting "in progress" forever.
+- An agent that wants to give work away performs a **handoff**. The row's assignee changes,
+  and the previous owner's next claim attempt **fails with an error** instead of quietly
+  succeeding.
+- An agent that wants to finish must point at the artifact it **declared up front**. The file
+  has to exist, be non-empty, and be tracked in Git's index. Saying "done" is not enough.
+- An agent **cannot pass its own review**. A verdict written by the same lane that authored
+  the work is recorded and then does not count — `classify_verdict_status()` returns
+  `self_verdict` and the row stays unreviewed.
+
+The two agents never talk to each other. There is no chat channel between them, no message
+bus, no sync protocol. Everything either one knows about the other, it learned by reading the
+same database. That sounds austere, and it is the entire trick: a message can be missed,
+contradicted, or quietly ignored, but a row is either claimed or it is not, and the claim
+names who holds it and when the lease expires.
+
+Around that file sit surfaces so a human can watch without joining in — a terminal board, a
+loopback web console, a macOS menu-bar glance, a native Cockpit window, an iOS client. None
+of them can mutate a claim.
+
+<!-- M1 -->
+```mermaid
+flowchart LR
+  subgraph W["Writers — any agent, any vendor"]
+    C["Claude Code session<br/>lane: claude"]
+    X["Codex session<br/>lane: codex"]
+    S["Your own script or CI<br/>Python API"]
+    J["Tracked local jobs<br/>CPU · GPU"]
+  end
+
+  DB[("coord.db<br/>one SQLite file, WAL mode<br/>work · claims · runs · events · artifacts")]
+
+  subgraph R["Readers — projections, never a second authority"]
+    B["coord board<br/>terminal"]
+    WB["coord-board<br/>127.0.0.1:7870"]
+    MB["COORD<br/>macOS menu bar"]
+    CK["COORD Cockpit<br/>macOS · iOS"]
+  end
+
+  C -->|"coord CLI · MCP tools"| DB
+  X -->|"coord CLI · MCP tools"| DB
+  S --> DB
+  J -->|"pid · progress · exit"| DB
+  DB --> B
+  DB --> WB
+  DB --> MB
+  DB --> CK
+```
+
+<p align="center"><sub><b>Note what is missing: there is no edge between the two agents.</b> They are the same kind of writer — neither is the authority — and everything either knows about the other is a read of the same file. Awareness being a read is why it survives an agent crashing, restarting, or being a different agent than it was last time.</sub></p>
+
 <!-- S1 -->
 <p align="center">
   <a href="docs/getting-started.md"><img src="docs/assets/screens/macos-cockpit.png" alt="The native macOS Cockpit: rows grouped by state (Running, Attention, Planned) with a running/blocked/next summary in the title bar, module pills, progress and ETA only where a job reported them, and the row identifier in monospace." width="100%"></a>
@@ -21,11 +87,15 @@
 <p align="center"><sub><b>This is the surface an operator lives in.</b> Grouped, dense, and capped: each group renders a bounded number of rows and then states exactly how many it is withholding. The title is the only element at full contrast, so the list can be scanned by title alone.</sub></p>
 
 <p align="center">
+  <a href="#what-this-is-in-plain-words">What it is</a> ·
+  <a href="#what-you-can-actually-do-with-it">What you can do</a> ·
   <a href="#install">Install</a> ·
   <a href="#two-agents-one-file">How two agents share work</a> ·
+  <a href="#independent-review-why-you-want-your-agents-to-disagree">Independent review</a> ·
   <a href="#five-minute-start">Five-minute start</a> ·
   <a href="#what-an-operator-actually-sees">The product</a> ·
   <a href="#how-work-moves">Mechanism</a> ·
+  <a href="#the-complete-verb-surface">Every verb</a> ·
   <a href="#what-the-harness-remembers">Context and memory</a> ·
   <a href="#troubleshooting">Troubleshooting</a>
 </p>
@@ -45,6 +115,99 @@ user account, and a handful of processes that agree to write through the same
 door.
 
 > **Distribution:** this repository is the public source for COORD-Harness. It does not claim a hosted service, package-index publication, App Store availability, or signed binary distribution.
+
+## What you can actually do with it
+
+Everything below is implemented in this repository. Maturity per capability is in
+[Maturity at a glance](#maturity-at-a-glance) and machine-readable in
+[`docs/feature-status.json`](docs/feature-status.json); nothing here is a roadmap item.
+
+**Run two agents on one repository without them colliding.**
+Each agent takes a `lane` (`claude` and `codex` by default) and a stable session identity.
+`coord claim` gives one agent exclusive ownership of a row; a second lane trying the same row
+is refused by name. Before writing, an agent can declare *which parts of the tree it intends
+to touch* with `coord claim --write-scope` or `coord declare-write-set`, and any agent can ask
+`coord conflicts` which currently-held claims have overlapping scopes — so two agents editing
+the same directory is a question you can answer before the edit, not after the merge.
+
+**Add more than two agents.** The lane vocabulary is configuration, not a fixed pair:
+`COORD_LANES=claude,codex,gemini` makes `gemini` a first-class lane that registers sessions,
+claims rows, receives handoffs, and reviews the others' work. Two invariants hold at any lane
+count: a lane cannot hand work to itself, and a lane cannot pass its own work.
+
+**Keep a backlog agents pull from on their own.** `coord create` adds proof-gated work items;
+rows persist for the life of the project and nothing is deleted on completion, so a board
+accumulates. An agent starting cold does not need to be told what to do — it asks
+(`coord board`, or MCP `preflight` / `next_work`) and picks up the next eligible row itself.
+
+**Survive agents dying.** Claims are leased, not permanent — one hour by default
+(`LEASE_DEFAULT_S = 3600`), renewed by a heartbeat. Status is never stored: it is derived at
+read time from declared intent, lease validity, and whether the recorded pid is still alive,
+so nothing can sit at "running" because a process crashed under it. Claiming or
+conflict-checking a specific row also releases *that row's* expired claim inline. Sweeping the
+whole board is a separate, explicit command — `coord-reaper` releases expired claims, reaps
+zombie sessions, and finalises dead runs; it is **not** wired into any `coord` subcommand and
+is yours to schedule. Run it with `--dry-run` first: the preview executes the real reaper
+logic against a disposable snapshot, so it cannot drift from what a real run would do.
+
+**Move work between agents deliberately.** `coord handoff` is a typed, fenced transfer that
+demands the exact row version, owner, and event heads; `coord reassign` is the one-command
+twin that snapshots those fences for you and still fails closed if another writer changes them
+first. The handoff carries the task, why it matters, evidence refs, acceptance criteria, and
+the artifact path that must exist before the work can be called done.
+
+**Let agents talk mid-run without taking each other's work.** `coord note` posts an
+append-only message to another lane, attached to a row, carrying *no authority at all* — it
+cannot change ownership, status, or verdict. `coord inbox` reads what arrived, newest first,
+and reports what it did not show.
+
+**Make agents review each other, and make the review mean something.** `coord request-audit`
+asks the other lane to look at a row you authored; `coord verdict` records `PASS`, `FLAG`, or
+`BLOCKED` on the *other* lane's work. Reviewedness is computed, never stored — see
+[Independent review](#independent-review-why-you-want-your-agents-to-disagree). `coord sign-off`
+is the human override, recorded as such.
+
+**Refuse completion that has no proof.** Every work item declares a `done_signal` when it is
+created. `coord done` succeeds only when that exact artifact exists, is non-empty, resolves
+under the project root, and is tracked in Git's index — with a narrow exemption for artifact
+kinds that structurally cannot live in Git.
+
+**Supervise long local processes instead of babysitting an LLM loop.** `coord-jobs launch`
+runs a command in its own process group under an RSS cap, re-validating the claim fence inside
+a transaction immediately before it starts, writing a compact JSON progress sidecar
+(`state`, `pct`, `step`, `rate`, `eta_s`, …) and an authoritative `runs` row carrying the real
+pid and pgid. `coord-jobs status` prints the read-only snapshot.
+
+**Run local models under a real lock.** `coord-models list | check | run` drives a declared
+model catalog with a hardware-readiness probe and a bounded generation request; GPU-requiring
+models execute under a process-held `fcntl` lock, because one machine has one GPU.
+
+**Carry context between sessions without dragging a transcript along.** A fresh session boots
+from a small capsule and expands only the source-bound context it needs. Behind that: a
+bitemporal fact ledger with supersession chains, a full-text index over your docs, an
+append-only accepted-memory store with immutable generations, and a federator that fans one
+query across all of them and returns a byte-bounded, deduplicated, provenance-carrying result.
+Agents *propose* memory; proposals are rate-limited, require an evidence pointer, and — like
+verdicts — **cannot be accepted by their own author**.
+
+**Watch the whole fleet.** `coord board` in the terminal, `coord-board` on
+`http://127.0.0.1:7870` with Board / Mesh / Map / Atlas, a macOS menu-bar app with a progress
+ring, a native Cockpit window, and an iOS client. `tools/export_static_board.py` writes a
+self-contained `index.html` you can open from disk with no server at all.
+
+**Route work by measured usage.** A local hash-chained ledger records token and cost metrics;
+`coord route` reports which provider has headroom. It is advice — it reads the ledger and
+writes nothing.
+
+**Check your own install.** `coord doctor` is a read-only health report that opens nothing it
+does not have to, writes nothing at all, and exits 0 only when every finding passes.
+`coord onboard` verifies agent instructions, configs, database, and MCP wiring.
+
+**Drop it into your agents as a package.** This repository ships a Claude Code plugin manifest
+(`.claude-plugin/plugin.json`), one skill (`operating-coordharness`), and five slash commands —
+`coord-start`, `coord-claim`, `coord-close`, `coord-handoff`, `coord-recover` — mirrored
+**byte-identically** under `.claude/` for Claude Code and `.agents/` for Codex, so neither
+vendor gets a better-maintained copy than the other.
 
 <!-- S2 -->
 <p align="center">
@@ -103,7 +266,13 @@ Verify entry points (either path leaves a `.venv` at the repo root):
 .venv/bin/coord --help
 .venv/bin/coord-board --help
 .venv/bin/coord-jobs --help
+.venv/bin/coord-models --help
+.venv/bin/coord-reaper --help
 ```
+
+Installing the package puts six executables on the path — those five plus `coord-mcp`, which
+an MCP client launches rather than a human. See
+[The complete verb surface](#the-complete-verb-surface) for what each one is for.
 
 ### Connect an MCP client
 
@@ -341,6 +510,97 @@ stays legible once several agents are working at once.
 
 ---
 
+## Independent review: why you want your agents to disagree
+
+Two agents on one problem is not redundancy. It is the only cheap way to find the class of
+mistake a single agent cannot find in itself — a plan that is internally consistent and wrong,
+a number carried forward from the wrong denominator, a test that passes because it asserts
+what the code does rather than what the code should do. An agent that wrote something is the
+worst available reviewer of it, and it is worst in a specific way: it will re-derive the same
+error from the same premises and report agreement.
+
+So the harness makes independence **structural rather than procedural**. It is not a
+convention that the other lane reviews your work; it is a property of the row that a same-lane
+verdict cannot satisfy.
+
+<!-- M2 -->
+```mermaid
+sequenceDiagram
+    autonumber
+    participant A as Author lane
+    participant DB as coord.db
+    participant B as Reviewer lane
+
+    A->>DB: claim WORK-1
+    A->>DB: done WORK-1 --artifact docs/report.md
+    Note over DB: refused. The row is T0, so completion<br/>raises until an independent lane has passed it
+    A->>DB: request-audit WORK-1 --task … --why … --ref …
+    DB-->>B: the row surfaces in the reviewer lane's queue
+    A->>DB: verdict WORK-1 --verdict PASS
+    Note over DB: recorded, and it does NOT count.<br/>classify_verdict_status returns self_verdict<br/>and the row stays unreviewed
+    B->>DB: verdict WORK-1 --verdict FLAG --ref …
+    Note over DB: a negative verdict blocks completion<br/>at any review tier, not just T0
+    A->>DB: fix the work, re-stage the artifact
+    B->>DB: verdict WORK-1 --verdict PASS --ref …
+    Note over DB: reviewed — the verdict came from<br/>a lane other than the author's
+    A->>DB: done WORK-1 --artifact docs/report.md
+    Note over DB: accepted. The declared artifact exists,<br/>is non-empty, and git's index tracks it
+```
+
+**Reviewedness is computed, not stored.** There is no boolean anyone can flip. Whether a row
+counts as reviewed is derived at read time by `classify_verdict_status()`, and its two
+load-bearing rejections are the two ways a fleet fakes a review by accident:
+
+- **`self_verdict`** — the most recent verdict was written by the same lane that authored the
+  work. The verdict exists in the event log; it simply does not make the row reviewed.
+- **`cross_row_verdict`** — a verdict recorded on some *other* row that merely mentions this
+  one in its refs or body. That is the shape a hurried fleet produces on its own: one
+  subagent's review pointed at as if it covered a sibling's output. Rejected the same way.
+
+**Independence is lane-level, not call-level.** This is the part that catches people. An
+orchestrator that spawns the subagent doing the work *and* the subagent grading it has not
+produced independent review, however the two calls are labelled — the schema's notion of
+independence is which actor authored the claim, not which prompt issued the verdict. Getting a
+real second opinion means routing the review through a different lane's claim.
+
+Because the lane set is configuration, "who may review whom" is a deployment decision:
+
+```bash
+export COORD_LANES=claude,codex,gemini
+```
+
+Name only agents you would accept as independent eyes on the others' work. Two invariants hold
+at any lane count: a lane cannot hand work to itself, and a lane's verdict on its own work
+never counts — independence is defined as *inequality with the author*, never membership in a
+privileged pair.
+
+### How much review a row needs
+
+Review is tiered, so routine work is not blocked behind ceremony it does not need. Tiers are
+declared, but a declared tier is **escalated automatically** when the row's title, acceptance
+criteria, or paths match a T0 predicate — irreversible, externally published, ground-truth,
+verified-output. You cannot quietly self-certify a dangerous row as routine.
+
+| Tier | What it is for | What the completion gate does |
+|---|---|---|
+| **T2** | declared docs, analysis, reversible tooling | gates only; no review event required |
+| **T1** | the default for code and data | completes now; review is batched, not blocking |
+| **T0** | irreversible, external-facing, served numbers, ground truth, cross-lane config | **blocking** — `coord done` raises until an independent lane's verdict passes |
+
+Two things bind at every tier. A **negative** verdict (`FLAG` or `BLOCKED`) blocks completion
+regardless of tier, and `coord sign-off` — the human override of the review gate — is recorded
+on the row as exactly that, an override, not a pass.
+
+The same no-self-approval rule governs memory: an agent may *propose* a durable memory entry,
+but `review_proposal()` refuses a reviewer whose identity equals the proposal's source actor.
+Proposals also require an evidence pointer and are rate-limited, so a chatty session cannot
+flood the ledger.
+
+Full treatment: [multi-agent patterns](docs/multi-agent-patterns.md) and
+[review tiers](docs/review-tiers.md).
+
+---
+
 ## Five-minute start
 
 Already installed (see [Install](#install) above)? This is a second, wider demo —
@@ -543,6 +803,17 @@ One SQLite database in WAL mode, `.coordharness/coord.db` (WAL keeps `-wal` and
 readers never block the writer and the writer never blocks readers, so a menu-bar
 app polling four times a minute cannot stall an agent mid-claim.
 
+Two writers sharing one file is the whole premise, so the concurrency contract is worth
+stating rather than assuming. Every connection opens with `journal_mode=WAL`,
+`busy_timeout=5000` and `foreign_keys=ON`; read-only clients additionally get `query_only=ON`.
+Write transactions open `BEGIN IMMEDIATE`, taking the write lock up front instead of
+discovering the conflict on first write — the deferred-transaction upgrade deadlock two
+concurrent writers would otherwise hit. Above that sits application-level compare-and-swap: a
+row carries a `version`, and the typed operations that move ownership update
+`WHERE version = ?`, so a transfer fenced on stale state fails closed instead of overwriting
+whatever the other agent just did. There is no OS-level advisory locking anywhere in the
+coordination path.
+
 Six lifecycle tables carry the operating core:
 
 | Table | What it is |
@@ -640,6 +911,41 @@ core against the same file.
 | Read messages | `coord inbox` | `inbox`, `inbox_recent` | `coord_db.read_inbox(...)` |
 | Complete | `coord done WORK --artifact PATH` | `complete(...)` | `coord_db.complete_claim(...)` |
 | Read board | `coord board --group-by module` | `board(...)` | read-only board queries |
+
+### The complete verb surface
+
+The table above is the common path. This is everything, so nothing useful stays hidden behind
+a `--help` a reader never runs. `coord --help` prints the same list.
+
+**The six installed executables:**
+
+| Executable | What it is for |
+|---|---|
+| `coord` | the lifecycle CLI — the 21 verbs below |
+| `coord-mcp` | the MCP stdio server an agent client launches |
+| `coord-board` | the loopback web console (`127.0.0.1:7870` by default) |
+| `coord-jobs` | `launch` a supervised local process, or print its `status` |
+| `coord-models` | `list`, `check`, or `run` a declared local model under a GPU lock |
+| `coord-reaper` | **writes** — sweep expired claims, zombie sessions and dead runs; `--dry-run` first |
+
+**`coord` verbs, grouped by what you are trying to do:**
+
+| Group | Verbs | Notes |
+|---|---|---|
+| Presence | `session start\|heartbeat\|end` | registers who is here and renews the session lease |
+| Orient | `board`, `work-context`, `inbox` | bounded reads; `work-context` also returns a row's handoff fences |
+| Create work | `create` | refuses a row without a concrete repository-relative `done_signal` |
+| Own work | `claim`, `heartbeat-claim`, `release` | `release --status paused\|blocked` is the CLI form of park/block |
+| Collision control | `declare-write-set`, `conflicts` | declare the scopes a claim intends to write; list overlapping live claims |
+| Move work | `handoff`, `reassign` | `handoff` takes the fences by hand; `reassign` snapshots them for you |
+| Talk | `note` | append-only, addressed to a lane or one live session, carries no authority |
+| Review | `request-audit`, `verdict`, `sign-off` | ask for review · record the other lane's verdict · human override |
+| Finish | `done` | proof-gated; refuses without the declared, staged artifact |
+| Operate | `doctor`, `onboard`, `route`, `demo` | read-only health · setup verification · usage-based routing advice · seed a fictional board |
+
+`park` and `block` are **MCP-only** tool names; on the CLI they are
+`coord release --status paused|blocked`. A park additionally requires a non-empty `next_step`
+and `resume_when`, so a paused row always carries the contract for resuming it.
 
 ### What MCP is doing here
 
@@ -761,6 +1067,13 @@ The board server binds loopback only and serves read-only projections of the sam
 lifecycle authority. The Content-Security-Policy admits no inline script or style.
 **This is not safe to expose to a LAN or the internet.**
 
+Precisely: no HTTP route can create, claim, complete, or review work. Three `POST` endpoints
+exist and none of them touch lifecycle state — two manage local usage/provider settings and are
+gated on a loopback bind plus a matching `Origin`, and the third is the opt-in native
+reassignment endpoint described above, disabled unless `COORD_NATIVE_OPERATOR_WRITES=1` and
+additionally guarded by a bearer token compared in constant time. `GET` reads are
+unauthenticated, which is the other reason loopback is not a formality.
+
 ---
 
 ## Maturity at a glance
@@ -872,11 +1185,14 @@ Contributing guidance is in [CONTRIBUTING.md](.github/CONTRIBUTING.md); COORD-Ha
 <summary><b>Visual index</b> &mdash; every figure on this page, numbered</summary>
 
 Reference a figure by its number to cut it, move it, or swap it. Diagrams are `D#`,
-screenshots are `S#`, and each number appears as an HTML comment directly above its
-figure in the source, so `grep -n "S7" README.md` finds it instantly.
+screenshots are `S#`, inline Mermaid sources are `M#`, and each number appears as an HTML
+comment directly above its figure in the source, so `grep -n "S7" README.md` finds it
+instantly.
 
 | # | File | Section | What it is for |
 |---|---|---|---|
+| **M1** | inline Mermaid | What this is | Two agent lanes writing one authority; surfaces reading it; no channel between agents |
+| **M2** | inline Mermaid | Independent review | The review loop, including the self-verdict that is recorded and does not count |
 | **S1** | `screens/macos-cockpit.png` | Hero | The work table, native — the surface an operator lives in — before any prose |
 | **S2** | `screens/swarm-mesh-context.png` | Intro | The fleet as one coherent spatial read, shortly below the primary Cockpit hero |
 | **D1** | `birdseye.svg` | Intro | One authority, many read-only projections |
