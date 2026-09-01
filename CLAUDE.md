@@ -47,3 +47,9 @@ Read the focused document that answers the current gap; do not load the document
 set or a full board dump by default. Run focused tests for changed surfaces and report
 exact files, commands, uncertainty, and remaining risk. Do not commit or push unless the
 user explicitly asks.
+
+## Cross-repo provider-usage parity
+
+COORD and its private companion app provider usage are one compatibility surface. Any payload, chart,
+hover, or window-geometry change must follow `docs/usage-interface-parity.md`;
+repo-local source assertions cannot close the work.
