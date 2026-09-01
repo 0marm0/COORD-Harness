@@ -33,9 +33,17 @@ Design notes, and the reasons, in one place:
   ``review_tier.VALID_REVIEW_TIERS`` would ripple through every site that
   branches on tier; a quorum predicate ripples through one.
 
-NOT WIRED: nothing here is called by the close gate. The review state this would
-have to join is built in ``coord_db.py`` around line 5090 and consumed at lines
-5191 and 6489. That insertion belongs to the owner of coord_db.py.
+WIRED 2026-09-01. ``coord_db.completion_review_state`` reads a declared quorum
+from the row's ``acceptance_json`` and holds ``needs_review`` true until the
+panel passes. It is opt-in by construction -- a panel is declared, never
+inferred -- so a row that declares no quorum is unaffected. The adapter is
+called fail-closed: ``completion_review_state`` is a read model the board calls,
+so a panel that cannot be evaluated is reported ``panel_uncomputable`` and still
+gates, rather than raising into a caller that only wanted to draw a row.
+
+This paragraph is load-bearing. It said NOT WIRED for as long as that was true,
+which is how the gap was found at all; leaving it saying so after the wiring
+would hand the next reader a false map of what this harness enforces.
 """
 
 from __future__ import annotations
