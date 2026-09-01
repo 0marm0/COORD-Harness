@@ -9,30 +9,35 @@ describe what the public source contains, not a hosted or packaged product.
 
 ## Unreleased
 
-### Changed
-
-- **Behavior change — completion custody now covers every artifact type.**
-  `done_signal_custodied()` previously required a declared proof to be in
-  git's index only when its suffix was `.md`; every other suffix completed on
-  existence alone, so the headline promise held for one file extension. It now
-  holds for all of them. A `.json`, `.txt`, `.html`, `.csv` or extensionless
-  proof that exists but was never `git add`ed is **refused** where it
-  previously succeeded, and the refusal names the artifact, the `git add`
-  command, and the way out. Exempt are the kinds that structurally cannot live
-  in a git index — `.parquet`, `.duckdb`, `.db`, `.joblib`, `.bz2`, `.backup`
-  — which must still exist; the exemption is about custody, not about proof. A
-  directory proof is custodied by the tracked files inside it. Set
-  `COORD_COMPLETION_CUSTODY_EXEMPT` to a comma-separated suffix list to rebind
-  the exemption for an unusual artifact kind, or to `*` to turn the custody
-  requirement off entirely. `path.duckdb::table` proofs are unaffected: they
-  name rows, not a file to stage, and are still answered by reading the table.
-
 ## 0.1.0 - 2026-08-31
 
 First public source release, matching `version = "0.1.0"` in `pyproject.toml`.
 Interfaces marked Preview in [`docs/feature-status.json`](docs/feature-status.json)
 may still change; the shipped core surfaces follow the promises in
 [`docs/compatibility.md`](docs/compatibility.md).
+
+### Behavior change
+
+- **Completion custody now covers every artifact type, not just Markdown.**
+  `done_signal_custodied()` required a declared proof to be in git's index
+  only when its suffix was `.md`; every other suffix completed on existence
+  alone, so the headline promise — "a `done` completion is backed by a
+  tracked file" — held for one file extension out of every kind a claim can
+  declare. It now holds for all of them. A `.json`, `.txt`, `.html`, `.csv`,
+  or extensionless proof that exists but was never `git add`ed is **refused**
+  by `complete_claim`, and the refusal names the artifact, the `git add`
+  command, and the way out. Exempt are the kinds that structurally cannot
+  live in a git index — `.parquet`, `.duckdb`, `.db`, `.joblib`, `.bz2`,
+  `.backup` — which must still exist; the exemption is about custody, not
+  about proof, and a directory proof is custodied by the tracked files
+  inside it. Set `COORD_COMPLETION_CUSTODY_EXEMPT` to a comma-separated
+  suffix list to rebind the exemption for an unusual artifact kind, or to
+  `*` to turn the custody requirement off entirely.
+  `path.duckdb::table` proofs are unaffected: they name rows, not a file to
+  stage, and are still answered by reading the table. **If an existing
+  automation completes claims with a non-Markdown proof it never staged,
+  this release will start refusing those completions** until the proof is
+  `git add`ed or the artifact kind is added to the exemption list.
 
 ### Fixed
 

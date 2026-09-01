@@ -76,7 +76,10 @@ jobs:
         with:
           name: dist
           path: dist/
-      - uses: pypa/gh-action-pypi-publish@release/v1
+      # Pinned to a commit, not to release/v1: this is the only job that holds
+      # id-token: write, so a moving ref here would let whoever can move it run
+      # code with the PyPI OIDC token for this project on the next v* tag.
+      - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
 
   attach-release-assets:
     name: Attach wheel/sdist to the GitHub release
