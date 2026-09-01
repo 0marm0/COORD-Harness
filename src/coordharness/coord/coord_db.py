@@ -5733,6 +5733,16 @@ def _flag_repair_request_event_is_valid_unlocked(
     )
 
 
+def _live_claim_session_id_unlocked(conn, work_id: str) -> str:
+    """The session holding this row, for rows that carry no owner column."""
+    row = conn.execute(
+        "SELECT session_id FROM claims WHERE work_id=? AND status='running'"
+        " ORDER BY acquired_at DESC LIMIT 1",
+        (work_id,),
+    ).fetchone()
+    return str(row["session_id"]) if row else ""
+
+
 def completion_review_state(
     conn: sqlite3.Connection,
     work_id: str,
@@ -5778,6 +5788,55 @@ def completion_review_state(
             " AND kind='audit_request'",
             (int(latest_request_event_id), work_id),
         ).fetchone()
+    # PANEL: N independent assessments that must agree. The module implementing
+    # this was written, documented and fully tested, and NOTHING CALLED IT --
+    # its own docstring said so. The single-verdict contract means no row can
+    # ask for a second opinion, which is the one thing this harness exists to
+    # make possible.
+    #
+    # Wiring it is safe because a panel is DECLARED, never inferred: a row is
+    # only a panel if its own acceptance_json carries a quorum, and no row on
+    # any live board carries one. Nothing changes for work that does not opt in.
+    from .panel_quorum import (
+        PanelContractError,
+        classify_panel_status_for_work,
+        quorum_from_acceptance,
+    )
+
+    panel_status: dict[str, Any] | None = None
+    panel_unmet = False
+    declared_quorum = quorum_from_acceptance(work.get("acceptance_json"))
+    if declared_quorum:
+        author_session = str(
+            work.get("owner_session_id") or _live_claim_session_id_unlocked(conn, work_id)
+        ).strip()
+        try:
+            panel_status = classify_panel_status_for_work(
+                conn,
+                work_id,
+                author_lane=str(work.get("assignee") or "").strip().lower(),
+                quorum=declared_quorum,
+                barrier_event_id=int(latest_review_barrier_event_id or 0),
+                author_session_id=author_session,
+            )
+            # Unanimity: one dissent fails the panel. A panel that discards its
+            # minority has thrown away the signal it was convened to find.
+            panel_unmet = not bool(panel_status.get("passed"))
+        except PanelContractError as exc:
+            # This is a READ model; the board calls it. It must never raise.
+            # And it must fail CLOSED: a panel that cannot be evaluated has not
+            # been satisfied, so the row keeps needing review rather than
+            # sliding through on an error nobody sees.
+            panel_status = {
+                "passed": False,
+                "reason": "panel_uncomputable",
+                "detail": str(exc),
+                "quorum": declared_quorum,
+                "assessor_count": 0,
+                "lane_independent_count": 0,
+            }
+            panel_unmet = True
+
     flag_repair_cycle = bool(
         latest_request_row is not None
         and _flag_repair_request_event_is_valid_unlocked(
@@ -5837,11 +5896,13 @@ def completion_review_state(
         "flag_repair_cycle": flag_repair_cycle,
         "acceptance_repair_is_latest_barrier": acceptance_repair_is_latest_barrier,
         "negative_verdict": negative,
+        "panel": panel_status,
         "needs_review": (
             (tier == "T0" or flag_repair_cycle)
             and effective_rubric != "pass"
             and not operator_satisfies_review
-        ),
+        )
+        or panel_unmet,
         "satisfied": not negative and (
             (tier != "T0" and not flag_repair_cycle)
             or effective_rubric == "pass"
