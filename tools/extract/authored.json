@@ -56,7 +56,7 @@
     "README.md": "front door, written fresh",
     "SECURITY.md": "root security policy, written fresh for this repository -- the single policy of record; .github/SECURITY.md is a pointer to it",
     "apps/.gitignore": "written fresh for this repository",
-    "apps/Fixtures/snapshot-v1.json": "declared metadata",
+    "apps/Fixtures/snapshot-v1.json": "Fixture snapshot of the v1 native board contract, read by the app tests.",
     "apps/Fixtures/usage-dashboard-live-v1.json": "deterministic synthetic fresh-usage fixture for native client refresh tests",
     "apps/Fixtures/usage-dashboard-v1.json": "deterministic synthetic provider-usage fixture for native rendering and decoding tests",
     "apps/README.md": "written fresh for this repository",
@@ -198,9 +198,9 @@
     "docs/design-notes.md": "decisions and their reasoning",
     "docs/diagrams.md": "mermaid diagrams of the mechanisms",
     "docs/extraction.md": "written fresh for this repository",
-    "docs/feature-status.json": "declared metadata",
+    "docs/feature-status.json": "Machine-readable feature status table, with the status vocabulary it uses.",
     "docs/friend-acceptance.md": "clean-room automated and human friend acceptance checklist written fresh",
-    "docs/getting-started.md": "tutorial",
+    "docs/getting-started.md": "Getting-started guide: create a board, claim one proof-gated item, read the result.",
     "docs/governance.md": "written fresh for this repository",
     "docs/graph-and-context.md": "written fresh for this repository",
     "docs/ideas.md": "open problems and directions",
@@ -249,14 +249,14 @@
     "scripts/route_plan_snapshot.py": "CLI wrapper, written fresh, building a non-mutating RoutePlanV1 from an explicit JSON snapshot through the pure assignment_routing planner; no live telemetry adapter, never opens coord.db, never imports a lifecycle writer -- every decision timestamp and evidence value comes from the caller",
     "scripts/setup-macos.sh": "idempotent standalone macOS bootstrap wrapper",
     "scripts/setup.sh": "OS-agnostic one-command clone setup: venv, coord.db, generated client config, and an opt-in native macOS/iOS install lane",
-    "src/coordharness/__init__.py": "package root",
+    "src/coordharness/__init__.py": "Package root; its docstring states what this control plane is and is not.",
     "src/coordharness/board/__init__.py": "written fresh for this repository",
     "src/coordharness/board/action_registry.py": "typed preview-only action declarations and check-by-check availability resolver written fresh",
     "src/coordharness/board/action_registry_v1.schema.json": "declared metadata for the preview-only action registry",
     "src/coordharness/board/graph_envelope.py": "bounded graph accounting and collision quarantine written fresh",
     "src/coordharness/board/graph_envelope_v1.schema.json": "declared metadata for the bounded graph envelope",
     "src/coordharness/board/local_system_telemetry.py": "dependency-free bounded local CPU GPU RAM and disk telemetry collector written for standalone COORD",
-    "src/coordharness/board/native_snapshot_v1.schema.json": "declared metadata",
+    "src/coordharness/board/native_snapshot_v1.schema.json": "JSON Schema for NativeSnapshotV1, the read-only snapshot the web and native surfaces share.",
     "src/coordharness/board/operations.py": "pure operational graph analytics written fresh from public board documents",
     "src/coordharness/board/ops_atlas_bundle_v1.schema.json": "declared metadata for one-generation atlas reads",
     "src/coordharness/board/ops_atlas_bundle_v2.schema.json": "declared metadata for the consolidated read-only communications and topology bundle",
@@ -300,19 +300,19 @@
     "src/coordharness/board/static/timeline.js": "read-only occurrence timeline renderer for the coordination drawer",
     "src/coordharness/board/static/view-ceiling.css": "board view module",
     "src/coordharness/board/static/view-ceiling.js": "board view module",
-    "src/coordharness/board/static/view-chronicle.css": "Order styling",
+    "src/coordharness/board/static/view-chronicle.css": "Served stylesheet for the chronicle board view; tokens only, never injected inline.",
     "src/coordharness/board/static/view-chronicle.js": "Order: recorded moments across rows, and precedence crossed with stage",
-    "src/coordharness/board/static/view-density.css": "Shape styling",
+    "src/coordharness/board/static/view-density.css": "Served stylesheet for the density board view; tokens only, never injected inline.",
     "src/coordharness/board/static/view-density.js": "Shape: work and state distribution across verticals",
-    "src/coordharness/board/static/view-flow.css": "Crossings styling",
+    "src/coordharness/board/static/view-flow.css": "Served stylesheet for the flow board view; tokens only, never injected inline.",
     "src/coordharness/board/static/view-flow.js": "Crossings: dependencies aggregated to vertical level",
     "src/coordharness/board/static/view-flowpath.css": "board view module",
     "src/coordharness/board/static/view-flowpath.js": "board view module",
-    "src/coordharness/board/static/view-orbit.css": "Orbit styling",
+    "src/coordharness/board/static/view-orbit.css": "Served stylesheet for the orbit board view; tokens only, never injected inline.",
     "src/coordharness/board/static/view-orbit.js": "Orbit: one row and everything related to it at increasing distance",
     "src/coordharness/board/static/view-pulse.css": "board view module",
     "src/coordharness/board/static/view-pulse.js": "board view module",
-    "src/coordharness/board/static/view-subjects.css": "Subjects styling",
+    "src/coordharness/board/static/view-subjects.css": "Served stylesheet for the subjects (Territories) board view; tokens only, never injected inline.",
     "src/coordharness/board/static/view-subjects.js": "Subjects: how work distributes and relates across subject areas",
     "src/coordharness/board/static/view-topology.css": "board view module",
     "src/coordharness/board/static/view-topology.js": "board view module",
@@ -326,8 +326,8 @@
     "src/coordharness/coord/model_cli.py": "standalone model control CLI, written fresh",
     "src/coordharness/coord/onboarding.py": "standalone configuration generator and read-only onboarding doctor",
     "src/coordharness/coord/panel_quorum.py": "panel quorum: N independent verdicts that must agree, for irreversible work",
-    "src/coordharness/coord/policy/__init__.py": "package marker",
-    "src/coordharness/coord/runners/__init__.py": "package marker",
+    "src/coordharness/coord/policy/__init__.py": "Package marker for the policy checks applied at every coordination boundary.",
+    "src/coordharness/coord/runners/__init__.py": "Package marker for the runners that execute work outside an agent's own turn.",
     "src/coordharness/demo.py": "synthetic demo board; no real data",
     "src/coordharness/entry.py": "CLI entry point: creates and migrates the database on first use, and delivers declared refusals as one line on stderr instead of a traceback",
     "src/coordharness/jobs/cli.py": "written fresh for this repository",
@@ -353,6 +353,7 @@
     "src/coordharness/util.py": "small shared helpers; replaces one function from an unported package",
     "tests/extract/test_gate.py": "adversarial publication-gate regression tests",
     "tests/extract/test_port.py": "adversarial porter safety and atomicity regression tests",
+    "tests/extract/test_repin.py": "tests for the authored.json completeness check: planted undeclared file, planted stale pin, refusal to invent a description or an unreasoned re-pin",
     "tests/jobs/test_launch_authority.py": "adversarial standalone tracked-launch authority tests",
     "tests/jobs/test_sidecar_writer_runtime.py": "standalone sidecar runtime regression tests",
     "tests/jobs/test_telemetry_redaction.py": "standalone telemetry redaction regression tests",
@@ -404,6 +405,7 @@
     "tests/test_claim_readiness_parity.py": "regressions for the shared MCP/CLI claim-readiness definition and the COORD_CLAIM_STRICT refuse/warn modes",
     "tests/test_cli_db_flag.py": "regressions for --db working after the subcommand name on every subcommand that reads the database, not only before it",
     "tests/test_cli_error_boundary.py": "regressions for the CLI error boundary: refusals as one line on stderr, the unknown-work-id message, --traceback, and unanticipated errors still crashing",
+    "tests/test_cli_first_run.py": "Tests that a newcomer's first refusals name the next command: bare invocation, an empty board, and lifecycle verbs run out of order.",
     "tests/test_cli_review_verbs.py": "coverage for the CLI review surface (request-audit, verdict)",
     "tests/test_comms_mesh_atlas_browser.py": "continuous communications, fleet, pulse, mesh, and atlas integration browser regressions written fresh",
     "tests/test_completion_custody_scope.py": "regressions for done_signal_custodied's git-custody completion gate, scoped to Markdown proofs only",
@@ -446,6 +448,7 @@
     "tests/test_mlx_runner_preflight.py": "local runner preflight regression tests",
     "tests/test_model_catalog_authority.py": "model catalog authority regression tests",
     "tests/test_model_productization.py": "model productization regression tests",
+    "tests/test_native_cockpit_session_grouping.py": "Tests that cockpit rows group by orchestrating session as a dimension separate from the epic axis, which is pinned alongside it.",
     "tests/test_native_operator_writes.py": "regressions for the native-operator HTTP write path written fresh: default-off browser/native writes, an authenticated loopback transfer that is fenced and replay-safe, ambiguous-method and claim-conflict refusals, truthful projected action reasons, and the installer's explicit opt-in default",
     "tests/test_neutral_config_files.py": "neutral configuration publication tests",
     "tests/test_neutral_runtime_defaults.py": "neutral runtime default publication tests",
@@ -501,6 +504,7 @@
     "tests/test_usage_dashboard_browser.py": "provider usage dashboard behavior, responsiveness, and disclosure browser regressions written fresh",
     "tests/test_usage_dashboard_route.py": "provider usage route, cache, and schema-boundary regressions written fresh",
     "tests/test_usage_routing.py": "tests for the usage routing advisor",
+    "tests/test_workflow_action_pins.py": "Tests that every workflow action is pinned to a commit, especially in the publish job that holds id-token: write.",
     "tests/test_write_set_declaration.py": "declared write-set reachability, schema bootstrap, read-only conflict query, and ungrantable-scope refusal regressions written fresh",
     "tests/usage/test_account_actions.py": "account-action forwarding, validation, and secret-redaction regressions written fresh",
     "tests/usage/test_dashboard_proxy.py": "bounded provider usage proxy validation, cache, and redaction regressions written fresh",
@@ -512,6 +516,7 @@
     "tools/capture_board_screens.py": "clean-room dashboard screenshot capture helper, written fresh",
     "tools/export_static_board.py": "exports the seeded demo board as a self-contained static, read-only site (index.html plus its JSON) needing no install or server",
     "tools/extract/merge_proposals.py": "merges agent-proposed port entries into the working manifest",
+    "tools/extract/repin.py": "checks that authored.json declares every staged file and that every derived reviewed_sha256 matches staged content, and applies the mechanical half of the fix",
     "tools/extract/vocabulary.example.json": "generic rename/refusal template; the real one is gitignored",
     "tools/generate_lifecycle_diagram.py": "stdlib AST-based lifecycle SVG generator written fresh for this repository",
     "tools/privacy_hygiene.py": "opaque current-tree and reachable-history privacy gate",
@@ -558,8 +563,13 @@
     },
     "apps/Shared/Sources/UsageIntelligence.swift": {
       "origin": "combined from pinned private provider-usage model and client mechanisms, then substantially adapted for the standalone harness",
-      "reason": "Provider quota, history, cost, retention, and forecast models were consolidated behind a neutral public schema with bounded decoding and no private ledger bytes. Re-reviewed (agent self-review, not independent human review) after UsageDaily gained an optional modelBreakdowns array (UsageDailyModelBreakdown: per-model token and cost fields) and Auto mode's session/weekly selection was reworked to compare each window's own remaining percent instead of a fixed threshold order; decode-only additions, no new transport.",
-      "reviewed_sha256": "eda946e254d57fdd28b800a24e3a27edb035616bc09684aa9303f4ca26c8d0bb"
+      "reason": "Provider quota, history, cost, retention, and forecast models were consolidated behind a neutral public schema with bounded decoding and no private ledger bytes. Re-reviewed (agent self-review, not independent human review) after UsageDaily gained an optional modelBreakdowns array (UsageDailyModelBreakdown: per-model token and cost fields) and Auto mode's session/weekly selection was reworked to compare each window's own remaining percent instead of a fixed threshold order; decode-only additions, no new transport.\n\nRe-pinned: Read the pace-marker diff for this file: UsageQuotaPace gained two optional decode-only fields (marker_remaining_percent, marker_kind) and the status presentation replaced a fixed warning-threshold marker with a pace marker derived from those fields and clamped to 0-100. Decoding and presentation only; no new data source and no private ledger bytes. (tool-assisted: the hash was updated to the staged bytes by tools/extract/repin.py --apply. This records acceptance of the new content, not an independent re-review of it.)",
+      "reviewed_sha256": "6193ad25d9c3ddc32b2093c153ff21bed91134fd6dbb4abe0d2fb8bf3314c88d",
+      "repin": {
+        "reason": "Read the pace-marker diff for this file: UsageQuotaPace gained two optional decode-only fields (marker_remaining_percent, marker_kind) and the status presentation replaced a fixed warning-threshold marker with a pace marker derived from those fields and clamped to 0-100. Decoding and presentation only; no new data source and no private ledger bytes.",
+        "method": "tool-assisted: the hash was updated to the staged bytes by tools/extract/repin.py --apply. This records acceptance of the new content, not an independent re-review of it.",
+        "previous_sha256": "eda946e254d57fdd28b800a24e3a27edb035616bc09684aa9303f4ca26c8d0bb"
+      }
     },
     "apps/menubar/Sources/App/AppDelegate.swift": {
       "origin": "ported from a pinned private application delegate, then substantially adapted for the standalone harness",
@@ -588,8 +598,13 @@
     },
     "apps/menubar/Sources/Cockpit/Data/CockpitHTTPFallbackSource.swift": {
       "origin": "ported from a pinned private cockpit fallback reader, then substantially adapted for the standalone harness",
-      "reason": "Fallback reads now latch declined routes and expose bounded neutral errors instead of repeatedly probing an unavailable integration. Re-reviewed (agent self-review, not independent human review) after row decoding gained workVersion, currentAssignee, assignment/claim identifiers, claim liveness, live run count, and native-operator-writes enablement/reason fields, plus ints()/strings() helpers mirroring the existing typed dictionary accessors; read-path field additions only.",
-      "reviewed_sha256": "a63cdaf148d4047767f543e9ec004d3e45dc5da44e36751e3aed473930cdfde8"
+      "reason": "Fallback reads now latch declined routes and expose bounded neutral errors instead of repeatedly probing an unavailable integration. Re-reviewed (agent self-review, not independent human review) after row decoding gained workVersion, currentAssignee, assignment/claim identifiers, claim liveness, live run count, and native-operator-writes enablement/reason fields, plus ints()/strings() helpers mirroring the existing typed dictionary accessors; read-path field additions only.\n\nRe-pinned: Read the diff: the fallback row decoder passes two further optional string columns (session_group_key, session_group_label) through to the model using the same nullable string accessor as the fields beside them. Decode-only; no new request, endpoint, or parsing path. (tool-assisted: the hash was updated to the staged bytes by tools/extract/repin.py --apply. This records acceptance of the new content, not an independent re-review of it.)",
+      "reviewed_sha256": "1986292c66249f1cea3eef3e1bde1bb7950a2c34153494ffd1738a1c7d4149af",
+      "repin": {
+        "reason": "Read the diff: the fallback row decoder passes two further optional string columns (session_group_key, session_group_label) through to the model using the same nullable string accessor as the fields beside them. Decode-only; no new request, endpoint, or parsing path.",
+        "method": "tool-assisted: the hash was updated to the staged bytes by tools/extract/repin.py --apply. This records acceptance of the new content, not an independent re-review of it.",
+        "previous_sha256": "a63cdaf148d4047767f543e9ec004d3e45dc5da44e36751e3aed473930cdfde8"
+      }
     },
     "apps/menubar/Sources/Cockpit/Data/CockpitProjectionRefresher.swift": {
       "origin": "ported from a pinned private cockpit refresher, then substantially adapted for the standalone harness",
@@ -628,13 +643,23 @@
     },
     "apps/menubar/Sources/UI/ContentStackAndRows.swift": {
       "origin": "ported from pinned private menu-bar row composition, then substantially adapted for the standalone harness",
-      "reason": "The panel composition now integrates compact usage, telemetry disclosure, task rows, neutral marks, and the standalone navigation hierarchy. Re-reviewed (agent self-review, not independent human review) after PanelAction gained toggleCaffeine/openBatteryDetails/toggleChargeLimit cases and a CockpitWordmarkButton control was added binding the wordmark image to a press closure with an explicit accessibility label and help string.",
-      "reviewed_sha256": "f265ffc6a0d49e571d4747cb578e3afb90a461313a8386e98dda03deef01dda7"
+      "reason": "The panel composition now integrates compact usage, telemetry disclosure, task rows, neutral marks, and the standalone navigation hierarchy. Re-reviewed (agent self-review, not independent human review) after PanelAction gained toggleCaffeine/openBatteryDetails/toggleChargeLimit cases and a CockpitWordmarkButton control was added binding the wordmark image to a press closure with an explicit accessibility label and help string.\n\nRe-pinned: Read the pace-marker diff for this file: the peek row now takes a paceMarkersVisible flag instead of a precomputed warning percent and draws each marker from that quota's own timing, red for a deficit and green otherwise. Layout and colour only; no new input reaches the panel. (tool-assisted: the hash was updated to the staged bytes by tools/extract/repin.py --apply. This records acceptance of the new content, not an independent re-review of it.)",
+      "reviewed_sha256": "9897b132969e74e15e989dde158adabcdf9f0f61eff8ced38b5bf36f041c29e4",
+      "repin": {
+        "reason": "Read the pace-marker diff for this file: the peek row now takes a paceMarkersVisible flag instead of a precomputed warning percent and draws each marker from that quota's own timing, red for a deficit and green otherwise. Layout and colour only; no new input reaches the panel.",
+        "method": "tool-assisted: the hash was updated to the staged bytes by tools/extract/repin.py --apply. This records acceptance of the new content, not an independent re-review of it.",
+        "previous_sha256": "f265ffc6a0d49e571d4747cb578e3afb90a461313a8386e98dda03deef01dda7"
+      }
     },
     "apps/menubar/Sources/UI/RingRenderer.swift": {
       "origin": "ported from a pinned private progress renderer, then substantially adapted for the standalone harness",
-      "reason": "The renderer now supports the public compact bar and ring geometry, palette choices, and deterministic status-item rendering. Re-reviewed (agent self-review, not independent human review) after drawTinyBar's warning-marker stroke color became a parameter instead of a hardcoded systemRed, and the warning severity color moved to a shared Tokens.Color.statsWarningOrange token; rendering-only, no new data source.",
-      "reviewed_sha256": "7da5791c2fb85b9b0837f37230204b96e15039c99a8afb2f51d161ff88d7aaa4"
+      "reason": "The renderer now supports the public compact bar and ring geometry, palette choices, and deterministic status-item rendering. Re-reviewed (agent self-review, not independent human review) after drawTinyBar's warning-marker stroke color became a parameter instead of a hardcoded systemRed, and the warning severity color moved to a shared Tokens.Color.statsWarningOrange token; rendering-only, no new data source.\n\nRe-pinned: Read the pace-marker diff for this file: the status-item bar now draws a marker supplied by the presentation instead of one computed here from a threshold, and the palette-dependent warning-colour helper was deleted. Rendering only; the geometry and the 0-100 clamp are unchanged. (tool-assisted: the hash was updated to the staged bytes by tools/extract/repin.py --apply. This records acceptance of the new content, not an independent re-review of it.)",
+      "reviewed_sha256": "0f633884eeeb76d5dddda5bd1afae000aef934af11fa23c01316993f99821434",
+      "repin": {
+        "reason": "Read the pace-marker diff for this file: the status-item bar now draws a marker supplied by the presentation instead of one computed here from a threshold, and the palette-dependent warning-colour helper was deleted. Rendering only; the geometry and the 0-100 clamp are unchanged.",
+        "method": "tool-assisted: the hash was updated to the staged bytes by tools/extract/repin.py --apply. This records acceptance of the new content, not an independent re-review of it.",
+        "previous_sha256": "7da5791c2fb85b9b0837f37230204b96e15039c99a8afb2f51d161ff88d7aaa4"
+      }
     },
     "apps/menubar/Sources/UI/SettingsView.swift": {
       "origin": "ported from pinned private menu-bar settings, then substantially adapted for the standalone harness",
@@ -663,8 +688,13 @@
     },
     "src/coordharness/coord/cli.py": {
       "origin": "ported, then extended in this repository",
-      "reason": "Re-reviewed after adding standalone onboarding, generated client configuration, exact work-context reads, and typed fenced handoff commands; lifecycle writes remain explicit and database-scoped. Re-reviewed again after the CLI error-boundary pass: `--traceback` is declared for help text only, a claim collision is translated to a sentence naming the holder that the code reads back rather than infers, `work-context` now takes the not-found branch that `_work_row`'s empty-dict return had made unreachable, and `route` refuses a `--usage-db` path that is absent. No new write path and no change to any domain message. Re-reviewed after four client-surface additions: --write-scope on claim plus declare-write-set and conflicts, so the write-set overlap query the agent system prompt already instructs agents to use is reachable; owner session fields emitted beside the unchanged assignee; --to-session on note; and inbox binding to the reading session so a session-addressed note is visible from the shell. Existing output shapes gained fields and lost none. Re-reviewed after closing the claim-ownership hole: a claim_id was sufficient authority to mutate a claim held by another session, and the resulting row still attributed the action to the true holder. coord heartbeat-claim, release and done now pass this shell's resolved session identity to the coord_db mutators, so the CLI is covered by the same refusal as the MCP surface. No new command, no changed output shape. Re-reviewed after `coord create` stopped being an upsert: its existence check ran outside the write transaction and the write itself merged into whatever row it found, so two sessions choosing the same work id both reported \"created\": true and one silently overwrote the other. The verb now calls coord_db.create_work, which refuses a taken id from inside the transaction that inserts, and the emitted `created` is that call's measured result. No new command and no other changed output shape. Re-reviewed after `coord sign-off` and `coord release --reason` were added. sign-off is the only writer of operator_ok in the product and the one this file's `post_event` refusal has always named; it is deliberately absent from the MCP surface and gated on the invoking process's controlling terminal, read through /dev/tty rather than stdin, so a piped or scripted answer is never consulted. It resolves no lane identity and runs no lifecycle policy, because both read the ambient actor and an operator decision must not carry an agent's name. `release` gained `--reason`, the flag that reaches the `release_claim(reason=...)` parameter a blocked release has always required and this surface could not supply. No other command changed shape. Re-reviewed again after the durable-id generalization: the only change to this file is the work_id help example, which previously showed the extraction source's dated house convention and now shows the same generic shape the documentation teaches. Re-reviewed again (agent self-review, not independent human review) after `coord board` gained a human-readable table renderer (board_format.render_board_table) for a real terminal, subcommands began accepting `--db` after the verb via a shared `_add_subparser` helper reconciled in `_resolve_db_path`, `coord demo` was added to seed a disposable fictional board, and cross-lane verbs began requiring a configured counterpart lane via `_require_counterpart` (refusing rather than silently defaulting when only one lane is configured) instead of a hardcoded claude/codex pair; also fixes a sign-off terminal-confirmation bug that had refused every real terminal, by opening /dev/tty as two one-directional handles instead of one seek-required handle.",
-      "reviewed_sha256": "2eaef6e127878b16c54658df4b9cd5c6affbd1c453c8a0a58917aeed833009dd"
+      "reason": "Re-reviewed after adding standalone onboarding, generated client configuration, exact work-context reads, and typed fenced handoff commands; lifecycle writes remain explicit and database-scoped. Re-reviewed again after the CLI error-boundary pass: `--traceback` is declared for help text only, a claim collision is translated to a sentence naming the holder that the code reads back rather than infers, `work-context` now takes the not-found branch that `_work_row`'s empty-dict return had made unreachable, and `route` refuses a `--usage-db` path that is absent. No new write path and no change to any domain message. Re-reviewed after four client-surface additions: --write-scope on claim plus declare-write-set and conflicts, so the write-set overlap query the agent system prompt already instructs agents to use is reachable; owner session fields emitted beside the unchanged assignee; --to-session on note; and inbox binding to the reading session so a session-addressed note is visible from the shell. Existing output shapes gained fields and lost none. Re-reviewed after closing the claim-ownership hole: a claim_id was sufficient authority to mutate a claim held by another session, and the resulting row still attributed the action to the true holder. coord heartbeat-claim, release and done now pass this shell's resolved session identity to the coord_db mutators, so the CLI is covered by the same refusal as the MCP surface. No new command, no changed output shape. Re-reviewed after `coord create` stopped being an upsert: its existence check ran outside the write transaction and the write itself merged into whatever row it found, so two sessions choosing the same work id both reported \"created\": true and one silently overwrote the other. The verb now calls coord_db.create_work, which refuses a taken id from inside the transaction that inserts, and the emitted `created` is that call's measured result. No new command and no other changed output shape. Re-reviewed after `coord sign-off` and `coord release --reason` were added. sign-off is the only writer of operator_ok in the product and the one this file's `post_event` refusal has always named; it is deliberately absent from the MCP surface and gated on the invoking process's controlling terminal, read through /dev/tty rather than stdin, so a piped or scripted answer is never consulted. It resolves no lane identity and runs no lifecycle policy, because both read the ambient actor and an operator decision must not carry an agent's name. `release` gained `--reason`, the flag that reaches the `release_claim(reason=...)` parameter a blocked release has always required and this surface could not supply. No other command changed shape. Re-reviewed again after the durable-id generalization: the only change to this file is the work_id help example, which previously showed the extraction source's dated house convention and now shows the same generic shape the documentation teaches. Re-reviewed again (agent self-review, not independent human review) after `coord board` gained a human-readable table renderer (board_format.render_board_table) for a real terminal, subcommands began accepting `--db` after the verb via a shared `_add_subparser` helper reconciled in `_resolve_db_path`, `coord demo` was added to seed a disposable fictional board, and cross-lane verbs began requiring a configured counterpart lane via `_require_counterpart` (refusing rather than silently defaulting when only one lane is configured) instead of a hardcoded claude/codex pair; also fixes a sign-off terminal-confirmation bug that had refused every real terminal, by opening /dev/tty as two one-directional handles instead of one seek-required handle.\n\nRe-pinned: Read the diff: a bare invocation now prints a curated three-command pointer and returns the same exit code 2 argparse's own required=True produced, and the claim-id lookup distinguishes a work id passed where a claim id belongs from an unknown claim id. Message and control flow only; no query, schema, or lifecycle behaviour changed. (tool-assisted: the hash was updated to the staged bytes by tools/extract/repin.py --apply. This records acceptance of the new content, not an independent re-review of it.)",
+      "reviewed_sha256": "6725b0c0f21f75b358ba906aa83504a577370f1f8a82bfcaa5571044dc358a95",
+      "repin": {
+        "reason": "Read the diff: a bare invocation now prints a curated three-command pointer and returns the same exit code 2 argparse's own required=True produced, and the claim-id lookup distinguishes a work id passed where a claim id belongs from an unknown claim id. Message and control flow only; no query, schema, or lifecycle behaviour changed.",
+        "method": "tool-assisted: the hash was updated to the staged bytes by tools/extract/repin.py --apply. This records acceptance of the new content, not an independent re-review of it.",
+        "previous_sha256": "2eaef6e127878b16c54658df4b9cd5c6affbd1c453c8a0a58917aeed833009dd"
+      }
     },
     "src/coordharness/coord/coord_db.py": {
       "origin": "ported, then extended in this repository",
@@ -763,8 +793,13 @@
     },
     "src/coordharness/usage/dashboard_proxy.py": {
       "origin": "adapted from a pinned private provider-usage producer into a standalone read-only proxy boundary",
-      "reason": "Re-reviewed after binding the standalone local usage producer, last-good behavior, and neutral endpoint contract; no private ledger or companion-app dependency remains. Re-reviewed again (agent self-review, not independent human review) after daily sanitization gained cache_create_5m_tokens/cache_create_1h_tokens integer fields and an optional model_breakdowns list (bounded, sanitized per-model through the same integer-field and safe-string helpers as the parent row); no relaxation of the existing invalid_contract refusals.",
-      "reviewed_sha256": "c28399a081712608ddaef5ef66d33c488443723e52f79c454c7df41e1e5b4e93"
+      "reason": "Re-reviewed after binding the standalone local usage producer, last-good behavior, and neutral endpoint contract; no private ledger or companion-app dependency remains. Re-reviewed again (agent self-review, not independent human review) after daily sanitization gained cache_create_5m_tokens/cache_create_1h_tokens integer fields and an optional model_breakdowns list (bounded, sanitized per-model through the same integer-field and safe-string helpers as the parent row); no relaxation of the existing invalid_contract refusals.\n\nRe-pinned: Read the pace-marker diff for this file: pace sanitisation now passes marker_remaining_percent through the numeric helper bounded at 100 and marker_kind through the safe-token helper against the closed set reserve/on_pace/deficit, raising invalid_contract otherwise. Still read-only, and neither added field escapes the existing bounds. (tool-assisted: the hash was updated to the staged bytes by tools/extract/repin.py --apply. This records acceptance of the new content, not an independent re-review of it.)",
+      "reviewed_sha256": "adc4a71ca98e9c285862998ad0e1f9a0ad820a2c169b42074c0f3195bfa9d092",
+      "repin": {
+        "reason": "Read the pace-marker diff for this file: pace sanitisation now passes marker_remaining_percent through the numeric helper bounded at 100 and marker_kind through the safe-token helper against the closed set reserve/on_pace/deficit, raising invalid_contract otherwise. Still read-only, and neither added field escapes the existing bounds.",
+        "method": "tool-assisted: the hash was updated to the staged bytes by tools/extract/repin.py --apply. This records acceptance of the new content, not an independent re-review of it.",
+        "previous_sha256": "c28399a081712608ddaef5ef66d33c488443723e52f79c454c7df41e1e5b4e93"
+      }
     },
     "src/coordharness/usage/provider_management.py": {
       "origin": "ported from a pinned private provider-management mechanism, then substantially adapted for the standalone harness",
