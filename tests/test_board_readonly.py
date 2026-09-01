@@ -31,6 +31,7 @@ import pytest
 
 from coordharness import demo
 from coordharness.board import server as board_server
+from coordharness.board import snapshot as snapshot_module
 from coordharness.board.server import make_server
 from coordharness.coord import coord_db
 from coordharness.coord.config import connect, connect_ro
@@ -382,12 +383,30 @@ def test_menubar_projection_carries_only_snapshot_facts(board) -> None:
         for key in ("running", "attention", "next", "done", "total")
     }
 
-    # The counts and the buckets come from one classifier, so they agree. If
-    # they ever disagree the menubar shows a running count above a list that is
-    # a different length, and neither number explains the other.
-    assert len(work_model["running_rows"]) == snapshot["summary"]["running"]
-    assert len(work_model["attention_rows"]) == snapshot["summary"]["attention"]
-    assert len(work_model["next_rows"]) == snapshot["summary"]["next"]
+    # The counts and the buckets come from one classifier, so they agree about
+    # every row the snapshot carries. They are no longer the same number: the
+    # counts are the census of the whole board while the rows are the operator
+    # surface `_serves_operator_surface` selected, so a count may stand above a
+    # shorter list -- that is how the menubar says what it is not showing. What
+    # must never happen is the reverse. A list longer than its own count is a
+    # bucket and a count that disagree, and then neither number explains the
+    # other.
+    carried = {"running": 0, "attention": 0, "next": 0}
+    for row in snapshot["rows"]:
+        status = (str(row.get("status") or "").strip().lower()) or "planned"
+        if status in snapshot_module._RUNNING:
+            carried["running"] += 1
+        elif status in snapshot_module._ATTENTION:
+            carried["attention"] += 1
+        elif status not in snapshot_module._DONE:
+            carried["next"] += 1
+    for bucket, key in (
+        ("running_rows", "running"),
+        ("attention_rows", "attention"),
+        ("next_rows", "next"),
+    ):
+        assert len(work_model[bucket]) == carried[key], bucket
+        assert len(work_model[bucket]) <= snapshot["summary"][key], bucket
     assert work_model["running_rows"], "the seeded board has running work"
 
     rows_by_id = {row["id"]: row for row in snapshot["rows"]}

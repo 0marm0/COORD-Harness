@@ -44,6 +44,7 @@ from coordharness.board.snapshot import (
     build_context,
     build_graph,
     build_pulse,
+    build_status_census,
     build_snapshot,
     build_timeline,
     load_schema,
@@ -371,7 +372,8 @@ def _native_operator_conflict(error: ValueError) -> tuple[int, str, str]:
 
 
 def build_documents(db_path: str | None) -> tuple[dict[str, Any], ...]:
-    """The six served documents, all read from one copy of the database.
+    """The six served documents plus the server-private status census, all
+    read from one copy of the database.
 
     Swapping them under one lock is necessary and not sufficient. Each source
     builder materializes its own private copy, so five source calls would read
@@ -408,6 +410,12 @@ def build_documents(db_path: str | None) -> tuple[dict[str, Any], ...]:
             timeline,
             pulse,
             build_operations(snapshot, graph, context, timeline),
+            # Server-private, never served: the snapshot's rows are a display
+            # surface, and the action registry must resolve dependencies
+            # against the whole board or a satisfied-but-archived dependency
+            # inverts to unsatisfied. Built from the same frozen bytes so the
+            # census and the surface describe the same instant.
+            build_status_census(path),
         )
 
 
@@ -635,6 +643,7 @@ class BoardServer(ThreadingHTTPServer):
             self._timeline,
             self._pulse,
             self._operations,
+            self._status_census,
         ) = build_documents(db_path)
         started_at = _utc_now()
         self._last_refresh_attempt = started_at
@@ -691,32 +700,42 @@ class BoardServer(ThreadingHTTPServer):
             )
 
     def action_registry(self, target_id: str = "") -> dict[str, Any] | None:
-        """Resolve row affordances without exposing a lifecycle writer."""
+        """Resolve row affordances without exposing a lifecycle writer.
+
+        Resolution reads the status CENSUS, not the snapshot's row list: the
+        row list is a display surface, and answering "does this row exist" or
+        "are its dependencies done" from a surface makes an archived-or-aged
+        dependency invert to unsatisfied and an off-surface target 404.
+        """
         with self._snapshot_lock:
             rows = [row for row in self._snapshot.get("rows", []) if isinstance(row, dict)]
             row_by_id = {str(row.get("id")): row for row in rows if row.get("id") is not None}
+            census = dict(self._status_census or {})
             context_by_id = {
                 str(item.get("id")): item
                 for item in self._context.get("items", [])
                 if isinstance(item, dict) and item.get("id") is not None
             }
-            if target_id and target_id not in row_by_id:
+            if target_id and target_id not in row_by_id and target_id not in census:
                 return None
-            row = row_by_id.get(target_id, {})
+            row = row_by_id.get(target_id) or census.get(target_id) or {}
             structural = dict(context_by_id.get(target_id, {}))
             if row:
                 dependencies = structural.get("depends_on")
                 statuses = {
                     identity: str(item.get("status") or "").lower()
-                    for identity, item in row_by_id.items()
+                    for identity, item in census.items()
                 }
+                # Job rows live only on the surface; their statuses still count.
+                for identity, item in row_by_id.items():
+                    statuses.setdefault(identity, str(item.get("status") or "").lower())
                 structural["dependencies_satisfied"] = isinstance(dependencies, list) and all(
                     statuses.get(str(item), "") in _DONE for item in dependencies
                 )
                 target = {
-                    "work_id": str(row.get("id") or ""),
+                    "work_id": str(row.get("id") or target_id),
                     "target_kind": (
-                        "job" if str(row.get("id") or "").startswith("job:") else "work"
+                        "job" if str(row.get("id") or target_id).startswith("job:") else "work"
                     ),
                     "intent_state": str(row.get("status") or ""),
                     "assignee": str(row.get("owner") or ""),
@@ -1011,6 +1030,7 @@ class BoardServer(ThreadingHTTPServer):
                 refreshed_timeline,
                 refreshed_pulse,
                 refreshed_operations,
+                refreshed_census,
             ) = build_documents(self.db_path)
         except Exception as exc:
             with self._snapshot_lock:
@@ -1060,6 +1080,7 @@ class BoardServer(ThreadingHTTPServer):
             self._timeline = refreshed_timeline
             self._pulse = refreshed_pulse
             self._operations = refreshed_operations
+            self._status_census = refreshed_census
             self._last_refresh_attempt = attempted_at
             self._last_successful_refresh = _utc_now()
             self._last_refresh_failure_class = ""
