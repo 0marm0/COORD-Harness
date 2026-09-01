@@ -118,8 +118,8 @@ class _Response:
     [
         "https://127.0.0.1:7870/api/usage/v1",
         "http://example.com/api/usage/v1",
-        "http://10." "0.0.1/api/usage/v1",
-        "http://user:" "synthetic-password@127.0.0.1/api/usage/v1",
+        "http://10.0.0.1/api/usage/v1",
+        "http://user:synthetic-password@127.0.0.1/api/usage/v1",
         "http://127.0.0.1:99999/api/usage/v1",
         "http://127.0.0.1/api/usage/v1#secret",
     ],
@@ -243,10 +243,38 @@ def test_malformed_or_wrong_contract_is_fail_soft(raw: bytes, code: str) -> None
 
 def test_daily_model_breakdowns_cross_proxy_as_bounded_safe_fields() -> None:
     payload = _payload()
-    payload["providers"]["claude"]["history"]["daily"][0].update({
-        "cache_create_5m_tokens": 3,
-        "cache_create_1h_tokens": 4,
-        "model_breakdowns": [{
+    payload["providers"]["claude"]["history"]["daily"][0].update(
+        {
+            "cache_create_5m_tokens": 3,
+            "cache_create_1h_tokens": 4,
+            "model_breakdowns": [
+                {
+                    "key": "model-a1",
+                    "label": "claude-test-model",
+                    "total_tokens": 123,
+                    "input_tokens": 5,
+                    "output_tokens": 6,
+                    "cache_read_tokens": 7,
+                    "cache_create_5m_tokens": 8,
+                    "cache_create_1h_tokens": 9,
+                    "cache_create_other_tokens": 10,
+                    "provider_native_cost_nanos": None,
+                    "api_rate_estimate_nanos": 1_250_000_000,
+                    "private_debug": "must-not-cross",
+                }
+            ],
+        }
+    )
+    proxy = UsageDashboardProxy(
+        url=LOOPBACK_URL,
+        opener=lambda _request, _timeout: _Response(json.dumps(payload).encode("utf-8")),
+    )
+
+    day = proxy.get()["providers"]["claude"]["history"]["daily"][0]
+    assert day["cache_create_5m_tokens"] == 3
+    assert day["cache_create_1h_tokens"] == 4
+    assert day["model_breakdowns"] == [
+        {
             "key": "model-a1",
             "label": "claude-test-model",
             "total_tokens": 123,
@@ -258,30 +286,50 @@ def test_daily_model_breakdowns_cross_proxy_as_bounded_safe_fields() -> None:
             "cache_create_other_tokens": 10,
             "provider_native_cost_nanos": None,
             "api_rate_estimate_nanos": 1_250_000_000,
-            "private_debug": "must-not-cross",
-        }],
-    })
-    proxy = UsageDashboardProxy(
-        url=LOOPBACK_URL,
-        opener=lambda _request, _timeout: _Response(json.dumps(payload).encode("utf-8")),
+        }
+    ]
+
+
+def test_cost_cache_provenance_crosses_proxy_without_private_metadata() -> None:
+    payload = _payload()
+    payload["providers"]["claude"]["costs"]["api_rate_estimate"].update(
+        {
+            "currency": "USD",
+            "semantics": "local_cost_usage_cache_projection_noncanonical",
+            "source": {
+                "kind": "local_cost_usage_cache",
+                "canonical": False,
+                "label": "Local API-rate estimate cache",
+                "warning": "Read-only local cache estimate; not provider billing",
+                "private_path": "must-not-cross",
+            },
+            "observed_at": "2026-08-26T11:59:00Z",
+            "coverage_start": "2026-08-01",
+            "coverage_end": "2026-08-26",
+            "private_cache_key": "must-not-cross",
+        }
     )
 
-    day = proxy.get()["providers"]["claude"]["history"]["daily"][0]
-    assert day["cache_create_5m_tokens"] == 3
-    assert day["cache_create_1h_tokens"] == 4
-    assert day["model_breakdowns"] == [{
-        "key": "model-a1",
-        "label": "claude-test-model",
-        "total_tokens": 123,
-        "input_tokens": 5,
-        "output_tokens": 6,
-        "cache_read_tokens": 7,
-        "cache_create_5m_tokens": 8,
-        "cache_create_1h_tokens": 9,
-        "cache_create_other_tokens": 10,
-        "provider_native_cost_nanos": None,
-        "api_rate_estimate_nanos": 1_250_000_000,
-    }]
+    actual = UsageDashboardProxy(
+        url=LOOPBACK_URL,
+        opener=lambda _request, _timeout: _Response(json.dumps(payload).encode("utf-8")),
+    ).get()["providers"]["claude"]["costs"]["api_rate_estimate"]
+
+    assert actual == {
+        "amount_nanos": 1000,
+        "currency": "USD",
+        "semantics": "local_cost_usage_cache_projection_noncanonical",
+        "source": {
+            "kind": "local_cost_usage_cache",
+            "canonical": False,
+            "label": "Local API-rate estimate cache",
+            "warning": "Read-only local cache estimate; not provider billing",
+        },
+        "observed_at": "2026-08-26T11:59:00Z",
+        "coverage_start": "2026-08-01",
+        "coverage_end": "2026-08-26",
+    }
+    assert "must-not-cross" not in json.dumps(actual)
 
 
 @pytest.mark.parametrize(
@@ -659,12 +707,7 @@ def test_invalid_timestamp_and_deep_json_fail_soft_without_handler_abort() -> No
 
     base = json.dumps(_payload())
     deeply_nested = (
-        base[:-1].encode("utf-8")
-        + b',"unknown":'
-        + (b"[" * 2_000)
-        + b"0"
-        + (b"]" * 2_000)
-        + b"}"
+        base[:-1].encode("utf-8") + b',"unknown":' + (b"[" * 2_000) + b"0" + (b"]" * 2_000) + b"}"
     )
     deep_result = UsageDashboardProxy(
         url=LOOPBACK_URL,
