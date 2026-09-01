@@ -34,6 +34,15 @@ jobs:
           pytest -q tests/test_documentation_validation.py tests/test_public_generalization.py
       - name: Run publication and extraction gate tests
         run: pytest -q tests/publication tests/extract
+      - name: Check the publication manifest is complete and current
+        # Deliberately its own step, ahead of the gate. The gate reports this
+        # drift too, but as coverage failures mixed in with everything else it
+        # checks, so a pull request that merely forgot to declare a new file
+        # looks like a publication-safety failure. This step fails on its own
+        # account and prints, for each finding, the exact command that fixes
+        # it. Same inventory as the gate -- Git's index -- so the two cannot
+        # disagree about what is checked in.
+        run: python tools/extract/repin.py --check
       - name: Scan exact candidate and complete local history
         run: |
           python tools/privacy_hygiene.py --history
