@@ -16,11 +16,13 @@ import subprocess
 import time
 from typing import Any
 
+from .local_cost_cache import LocalCostCacheImport, read_local_cost_cache
 from .local_history import LocalHistoryImport, discover_local_cli_history
 
 
 JsonlRunner = Callable[[Sequence[str], Sequence[Mapping[str, Any]], float], list[Mapping[str, Any]]]
 AccountProbe = Callable[[], "ProviderProbe"]
+CostCacheLoader = Callable[..., LocalCostCacheImport]
 _SENSITIVE_MODEL_LABEL = re.compile(
     r"(?:bearer|password|credential|cookie|keychain|api[ _-]?key|token=|secret|private)",
     re.IGNORECASE,
@@ -48,7 +50,11 @@ def _public_model_label(value: str) -> str:
         for character in value
     )
     cleaned = " ".join(cleaned.split())[:80]
-    if not cleaned or _SENSITIVE_MODEL_LABEL.search(cleaned):
+    if (
+        not cleaned
+        or cleaned.casefold() in {"unknown", "unknown model"}
+        or _SENSITIVE_MODEL_LABEL.search(cleaned)
+    ):
         return "Unknown model"
     return cleaned
 
@@ -309,9 +315,7 @@ def _quota_pace(
     }
 
 
-def _with_local_pace(
-    windows: Sequence[Mapping[str, Any]], now: datetime
-) -> list[dict[str, Any]]:
+def _with_local_pace(windows: Sequence[Mapping[str, Any]], now: datetime) -> list[dict[str, Any]]:
     """Attach advisory pace only where a live window provides complete timing."""
 
     result: list[dict[str, Any]] = []
@@ -326,9 +330,7 @@ def _with_local_pace(
             and isinstance(minutes, (int, float))
             and not isinstance(minutes, bool)
         ):
-            pace = _quota_pace(
-                max(0.0, min(100.0, float(used))), int(minutes), reset, now
-            )
+            pace = _quota_pace(max(0.0, min(100.0, float(used))), int(minutes), reset, now)
             if pace is not None:
                 item["pace"] = pace
         result.append(item)
@@ -503,10 +505,18 @@ def probe_codex_account(
     )
 
 
-def _history(imported: LocalHistoryImport, now: datetime) -> dict[str, Any]:
-    by_day: dict[str, dict[str, int]] = {}
-    models_by_day: dict[str, dict[str, dict[str, int]]] = {}
+def _history(
+    imported: LocalHistoryImport,
+    now: datetime,
+    api_costs: Mapping[tuple[str, str], int] | None = None,
+) -> dict[str, Any]:
+    api_costs = api_costs or {}
+    by_day: dict[str, dict[str, Any]] = {}
+    models_by_day: dict[str, dict[str, dict[str, Any]]] = {}
     for row in imported.rows:
+        cost_key = (row.usage_date, row.model)
+        cost_observed = cost_key in api_costs or row.api_rate_estimate_nanos is not None
+        api_cost = api_costs.get(cost_key, row.api_rate_estimate_nanos or 0)
         bucket = by_day.setdefault(
             row.usage_date,
             {
@@ -515,6 +525,8 @@ def _history(imported: LocalHistoryImport, now: datetime) -> dict[str, Any]:
                 "output_tokens": 0,
                 "cache_read_tokens": 0,
                 "cache_create_other_tokens": 0,
+                "api_rate_estimate_nanos": 0,
+                "_api_cost_observed": False,
             },
         )
         bucket["input_tokens"] += row.input_tokens
@@ -523,6 +535,9 @@ def _history(imported: LocalHistoryImport, now: datetime) -> dict[str, Any]:
         bucket["cache_create_other_tokens"] += (
             row.cache_create_other_tokens + row.cache_create_5m_tokens + row.cache_create_1h_tokens
         )
+        if cost_observed:
+            bucket["api_rate_estimate_nanos"] += api_cost
+            bucket["_api_cost_observed"] = True
         bucket["total_tokens"] += sum(
             (
                 row.input_tokens,
@@ -545,6 +560,7 @@ def _history(imported: LocalHistoryImport, now: datetime) -> dict[str, Any]:
                 "cache_create_other_tokens": 0,
                 "provider_native_cost_nanos": 0,
                 "api_rate_estimate_nanos": 0,
+                "_api_cost_observed": False,
             },
         )
         model_bucket["input_tokens"] += row.input_tokens
@@ -554,7 +570,9 @@ def _history(imported: LocalHistoryImport, now: datetime) -> dict[str, Any]:
         model_bucket["cache_create_1h_tokens"] += row.cache_create_1h_tokens
         model_bucket["cache_create_other_tokens"] += row.cache_create_other_tokens
         model_bucket["provider_native_cost_nanos"] += row.provider_native_cost_nanos or 0
-        model_bucket["api_rate_estimate_nanos"] += row.api_rate_estimate_nanos or 0
+        if cost_observed:
+            model_bucket["api_rate_estimate_nanos"] += api_cost
+            model_bucket["_api_cost_observed"] = True
         model_bucket["total_tokens"] += sum(
             (
                 row.input_tokens,
@@ -568,22 +586,28 @@ def _history(imported: LocalHistoryImport, now: datetime) -> dict[str, Any]:
 
     daily = []
     for day, values in sorted(by_day.items()):
+        day_values = dict(values)
+        api_cost_observed = bool(day_values.pop("_api_cost_observed"))
+        if not api_cost_observed:
+            day_values["api_rate_estimate_nanos"] = None
         model_rows = []
         for model, metrics in sorted(
             models_by_day.get(day, {}).items(),
             key=lambda item: (-item[1]["total_tokens"], item[0].casefold()),
         )[:50]:
+            model_metrics = dict(metrics)
+            model_cost_observed = bool(model_metrics.pop("_api_cost_observed"))
             item: dict[str, Any] = {
                 "key": f"model-{hashlib.sha256(model.encode('utf-8')).hexdigest()[:16]}",
                 "label": _public_model_label(model),
-                **metrics,
+                **model_metrics,
             }
             if item["provider_native_cost_nanos"] == 0:
                 item["provider_native_cost_nanos"] = None
-            if item["api_rate_estimate_nanos"] == 0:
+            if not model_cost_observed:
                 item["api_rate_estimate_nanos"] = None
             model_rows.append(item)
-        daily.append({"date": day, **values, "model_breakdowns": model_rows})
+        daily.append({"date": day, **day_values, "model_breakdowns": model_rows})
     today = now.date()
     week = today - timedelta(days=today.weekday())
     seven = today - timedelta(days=6)
@@ -618,12 +642,20 @@ class _UncachedLocalUsageService:
         claude_probe: AccountProbe | None = None,
         codex_probe: AccountProbe | None = None,
         history_loader: Callable[..., LocalHistoryImport] | None = None,
+        cost_cache_root: Path | str | None = None,
+        cost_cache_loader: CostCacheLoader | None = None,
     ) -> None:
         self.home = Path(home) if home is not None else Path.home()
         self._now = now or (lambda: datetime.now(timezone.utc))
         self._claude_probe = claude_probe or (lambda: probe_claude_account(self.home))
         self._codex_probe = codex_probe or (lambda: probe_codex_account(self.home))
         self._history_loader = history_loader or discover_local_cli_history
+        self._cost_cache_root = (
+            Path(cost_cache_root)
+            if cost_cache_root is not None
+            else self.home / "Library" / "Caches" / "CodexBar" / "cost-usage"
+        )
+        self._cost_cache_loader = cost_cache_loader or read_local_cost_cache
 
     def _probe_account_status(self) -> dict[str, ProviderProbe]:
         return {"claude": self._claude_probe(), "codex": self._codex_probe()}
@@ -637,6 +669,11 @@ class _UncachedLocalUsageService:
         for provider in ("claude", "codex"):
             root = self.home / (".claude" if provider == "claude" else ".codex")
             imported = self._history_loader(root, provider=provider)
+            cost_import = self._cost_cache_loader(
+                self._cost_cache_root,
+                provider=provider,
+                wanted=((row.usage_date, row.model) for row in imported.rows),
+            )
             probe = probes[provider]
             errors = list(probe.errors)
             if imported.parse_error_count:
@@ -660,7 +697,7 @@ class _UncachedLocalUsageService:
                 "windows": windows,
                 "reset_credits": [],
                 "runout": runout,
-                "history": _history(imported, local),
+                "history": _history(imported, local, cost_import.costs),
                 "costs": {
                     "provider_billed": {
                         "amount_nanos": None,
@@ -668,7 +705,7 @@ class _UncachedLocalUsageService:
                         "semantics": "unknown",
                     },
                     "provider_native": {"amount_nanos": None, "semantics": "unknown"},
-                    "api_rate_estimate": {"amount_nanos": None, "semantics": "unknown"},
+                    "api_rate_estimate": cost_import.cost_component(),
                 },
                 "active_sessions": {"status": "unavailable", "count": None, "providers": []},
                 "live_observation_state": "fresh" if windows else "quota_observation_unavailable",
