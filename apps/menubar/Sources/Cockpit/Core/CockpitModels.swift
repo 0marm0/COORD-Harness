@@ -127,6 +127,12 @@ struct CockpitRow: Equatable {
     var liveRunCount: Int = 0
     var nativeOperatorWritesEnabled: Bool = false
     var nativeOperatorWritesReason: String? = nil
+    /// Orchestrating chat this row belongs to, resolved by the projection.
+    /// A chat registered under two identities resolves to one key here, and a
+    /// subagent's row carries its parent chat's key -- neither of which the
+    /// client can work out from `ownerSessionID` alone.
+    var sessionGroupKey: String? = nil
+    var sessionGroupLabel: String? = nil
 
     var effectivePct: Double? {
         guard let pct else { return nil }

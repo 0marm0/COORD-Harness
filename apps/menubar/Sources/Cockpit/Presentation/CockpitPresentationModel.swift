@@ -823,6 +823,16 @@ struct CockpitPresentationModel: Equatable {
                 nonEmpty(row.groupLabel, row.scope.capitalized, "Ungrouped")
             )
         case .agentSession:
+            // Prefer the projection's resolved key: only the server can bridge
+            // one chat's two identities and roll a subagent up under the chat
+            // that spawned it. The client-side derivation below is the fallback
+            // for a projection that predates session_group_key.
+            if let resolved = row.sessionGroupKey, !resolved.isEmpty {
+                return (
+                    normalizeGroupKey(resolved, fallback: "unowned"),
+                    nonEmpty(row.sessionGroupLabel, row.ownerSessionLabel, row.ownerConversationTitle, row.ownerGroup, row.owner, "Unowned")
+                )
+            }
             let sessionKey = nonEmpty(row.ownerSessionID, row.ownerExternalThreadID, row.ownerWorktreeID, row.ownerGroup, row.owner, "unowned")
             return (
                 "agent-session:\(normalizeGroupKey(sessionKey, fallback: "unowned"))",
