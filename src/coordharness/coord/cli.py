@@ -45,7 +45,26 @@ def _raise_if_policy_blocked(policy: dict, *, action: str, work_id: str) -> None
 def _claim_work_id(conn, claim_id: str) -> str:
     row = conn.execute("SELECT work_id FROM claims WHERE claim_id=?", (claim_id,)).fetchone()
     if row is None:
-        raise ValueError(f"unknown claim_id {claim_id!r}")
+        # The two ways a newcomer lands here are different mistakes and get
+        # different guidance: passing a work id where a claim id belongs (an
+        # easy mix-up -- `coord claim` takes one, `coord release` /
+        # `coord heartbeat-claim` take the other), versus a claim id that is
+        # simply wrong or already gone. Checking work_items first answers
+        # "what do I run instead" rather than only "this id is unknown".
+        work_row = conn.execute(
+            "SELECT 1 FROM work_items WHERE work_id=?", (claim_id,)
+        ).fetchone()
+        if work_row is not None:
+            raise ValueError(
+                f"{claim_id!r} is a work id, not a claim id; run "
+                f"'coord claim {claim_id}' first -- it hands back the claim_id "
+                "this command needs"
+            )
+        raise ValueError(
+            f"unknown claim_id {claim_id!r}; claim ids come from 'coord claim "
+            "WORK_ID', not from the board -- run 'coord claim' before this "
+            "command"
+        )
     return str(row["work_id"])
 
 
@@ -452,7 +471,17 @@ def main(argv=None) -> int:
     ap.add_argument("--traceback", action="store_true",
                     help="show the full Python traceback instead of a one-line "
                          "refusal")
-    sub = ap.add_subparsers(dest="cmd", required=True)
+    # Not `required=True`: argparse's own enforcement of that answers a bare
+    # `coord` with a full usage line naming all ~19 subcommands and "the
+    # following arguments are required: cmd" -- true, but it makes a
+    # newcomer's very first invocation the least helpful message this CLI
+    # prints. `args.cmd is None` is handled explicitly below instead, with a
+    # curated pointer at the two or three commands that actually matter to
+    # someone who has typed nothing yet. An unknown subcommand keeps
+    # argparse's own "invalid choice: ... (choose from ...)" unchanged -- that
+    # message already names every real command, which is exactly the answer
+    # to "what do I run instead".
+    sub = ap.add_subparsers(dest="cmd", required=False)
 
     p = _add_subparser(sub,"session")
     p.add_argument("action", choices=["start", "heartbeat", "end"])
@@ -690,6 +719,25 @@ def main(argv=None) -> int:
                    help="suppress the per-row seed counts and any refusals printed")
 
     args = ap.parse_args(argv)
+    if args.cmd is None:
+        # Same exit code argparse's own `required=True` enforcement used to
+        # produce for this exact case (a bare `coord`, or `coord --db PATH`
+        # with nothing after it) -- a script that only branches on the exit
+        # code sees no change. `-h`/`--help` never reach here; argparse
+        # answers those itself before returning.
+        print(
+            "coord: no subcommand given\n"
+            "\n"
+            "First time on this board? Start with:\n"
+            "  coord demo    seed a disposable demo board to look around in\n"
+            "  coord board   see what's on it\n"
+            "  coord claim WORK_ID   take a row, then 'coord done WORK_ID "
+            "--artifact PATH'\n"
+            "\n"
+            "Run 'coord --help' for the full command list.",
+            file=sys.stderr,
+        )
+        return 2
     _resolve_db_path(args)
     from coordharness.bootstrap import bootstrap_database, database_current
 
