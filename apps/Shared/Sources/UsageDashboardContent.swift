@@ -1,4 +1,7 @@
 import SwiftUI
+#if os(macOS)
+import AppKit
+#endif
 
 enum UsageWindowGeometry {
     static let preferredWidth: CGFloat = 460
@@ -6,6 +9,13 @@ enum UsageWindowGeometry {
     static let screenInset: CGFloat = 40
     static let anchorGap: CGFloat = 12
     static let minimumHeight: CGFloat = 360
+
+    static func attachedContentSize(visibleFrame: CGRect?, anchorFrame: CGRect?) -> CGSize {
+        let width = visibleFrame.map {
+            min(preferredWidth, max(1, $0.width - screenInset))
+        } ?? preferredWidth
+        return CGSize(width: width, height: attachedHeight(visibleFrame: visibleFrame, anchorFrame: anchorFrame))
+    }
 
     static func attachedHeight(visibleFrame: CGRect?, anchorFrame: CGRect?) -> CGFloat {
         guard let visibleFrame else { return preferredHeight }
@@ -22,17 +32,38 @@ enum UsageWindowGeometry {
     ) -> CGSize {
         let desiredHeight = max(preferredHeight, currentSize.height)
         let height: CGFloat
+        let desiredWidth = max(preferredWidth, currentSize.width)
+        let width: CGFloat
         if let visibleFrame {
             height = min(desiredHeight, max(minimumHeight, visibleFrame.height - screenInset))
+            width = min(desiredWidth, max(1, visibleFrame.width - screenInset))
         } else {
             height = desiredHeight
+            width = desiredWidth
         }
         return CGSize(
-            width: max(preferredWidth, currentSize.width),
+            width: width,
             height: height
         )
     }
 }
+
+#if os(macOS)
+/// Pins route hosts to their container bounds so changing from a previous panel
+/// size cannot apply an autoresizing delta to an already-final-sized child.
+enum UsageRouteContainerLayout {
+    static func pin(_ view: NSView, in container: NSView) {
+        view.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(view)
+        NSLayoutConstraint.activate([
+            view.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            view.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            view.topAnchor.constraint(equalTo: container.topAnchor),
+            view.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+        ])
+    }
+}
+#endif
 
 private enum UsageProviderVisualStyle {
     static func assetName(_ providerID: String) -> String {
@@ -407,6 +438,7 @@ private enum UsageDenseRouteLayout {
     static let providerBorderWidth: CGFloat = 0.75
     static let providerFactsSpacing: CGFloat = 22
     static let providerChartWidth: CGFloat = 300
+    static let horizontalProviderMinimumWidth: CGFloat = 620
     static let totalCornerRadius: CGFloat = 9
     static let totalBackgroundOpacity: CGFloat = 0.045
     static let visibleLabelOrder = ["Total Tokens Costs", "Claude", "Codex", "Today cost", "Retained cost", "Tokens", "Daily cost"]
@@ -469,13 +501,15 @@ private struct UsageDenseRoute: View {
                     )
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
-                    ScrollView {
+                    ScrollView(.vertical) {
                         LazyVStack(alignment: .leading, spacing: UsageDenseRouteLayout.sectionSpacing) {
                             ForEach(orderedCards) { card in
                                 UsageDenseProviderSection(card: card, chartPlotHeight: chartPlotHeight)
                             }
                         }
+                        .frame(maxWidth: .infinity, alignment: .topLeading)
                     }
+                    .defaultScrollAnchor(.top)
                     .frame(maxHeight: .infinity)
                 }
 
@@ -640,6 +674,7 @@ private struct UsageDenseProviderSection: View {
                     facts
                     chart.frame(width: UsageDenseRouteLayout.providerChartWidth, height: chartPanelHeight)
                 }
+                .frame(minWidth: UsageDenseRouteLayout.horizontalProviderMinimumWidth)
                 VStack(alignment: .leading, spacing: 14) {
                     facts
                     chart.frame(height: chartPanelHeight)

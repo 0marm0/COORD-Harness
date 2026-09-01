@@ -6,6 +6,7 @@ import os
 import sqlite3
 import stat
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -205,6 +206,7 @@ def test_inventory_topology_refuses_duplicate_and_missing_roots(tmp_path: Path) 
 # --- clone_regular_file_cow / clone_or_link_regular_file -----------------
 
 
+@pytest.mark.skipif(sys.platform != "darwin", reason="requires macOS/APFS fclonefileat")
 def test_clone_regular_file_cow_real_clone_is_independent_and_byte_identical(
     tmp_path: Path,
 ) -> None:
@@ -289,6 +291,7 @@ def test_clone_regular_file_cow_has_no_silent_byte_copy_fallback(tmp_path: Path)
         os.close(destination_dir_fd)
 
 
+@pytest.mark.skipif(sys.platform != "darwin", reason="requires macOS/APFS fclonefileat")
 def test_clone_or_link_regular_file_dedupes_hardlinks_via_real_clone(tmp_path: Path) -> None:
     source_dir = tmp_path / "cl_src"
     source_dir.mkdir()
@@ -327,6 +330,7 @@ def test_clone_or_link_regular_file_dedupes_hardlinks_via_real_clone(tmp_path: P
 # --- materialize_stores_cow ------------------------------------------------
 
 
+@pytest.mark.skipif(sys.platform != "darwin", reason="requires macOS/APFS fclonefileat")
 def test_materialize_stores_cow_reproduces_topology_and_content(tmp_path: Path) -> None:
     source = _build_source_store(tmp_path)
     destination = tmp_path / "dst_store"
@@ -348,6 +352,7 @@ def test_materialize_stores_cow_reproduces_topology_and_content(tmp_path: Path) 
     )
 
 
+@pytest.mark.skipif(sys.platform != "darwin", reason="requires macOS/APFS fclonefileat")
 def test_materialize_stores_cow_refuses_when_destination_already_exists(
     tmp_path: Path,
 ) -> None:
@@ -615,6 +620,7 @@ def test_sandbox_profile_text_is_deterministic_and_denies_by_default() -> None:
 # --- red_arm_probe -----------------------------------------------------------
 
 
+@pytest.mark.skipif(sys.platform != "darwin", reason="requires macOS UF_IMMUTABLE/chflags")
 def test_red_arm_probe_confirms_protected_write_denied_and_cleanroom_write_allowed(
     tmp_path: Path,
 ) -> None:

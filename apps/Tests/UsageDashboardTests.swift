@@ -1061,8 +1061,40 @@ final class UsageDashboardTests: XCTestCase {
             visibleFrame: smallVisible
         )
         XCTAssertEqual(compactDetached.height, 660)
+        let narrowVisible = NSRect(x: 0, y: 0, width: 430, height: 700)
+        XCTAssertEqual(UsageWindowGeometry.attachedContentSize(visibleFrame: narrowVisible, anchorFrame: nil).width, 390)
+        let narrowDetached = UsageWindowGeometry.detachedContentSize(
+            currentSize: NSSize(width: 720, height: 620),
+            visibleFrame: narrowVisible
+        )
+        XCTAssertEqual(narrowDetached.width, 390)
     }
 
+
+    func testUsageRouteContainerStaysPinnedAcrossPriorPanelSizeTransition() {
+        let glass = NSView(frame: NSRect(x: 0, y: 0, width: 500, height: 620))
+        let route = NSView(frame: NSRect(x: 0, y: 0, width: 460, height: 880))
+        let hosting = NSView(frame: route.bounds)
+        UsageRouteContainerLayout.pin(hosting, in: route)
+        UsageRouteContainerLayout.pin(route, in: glass)
+
+        let target = NSSize(width: 460, height: 880)
+        glass.setFrameSize(target)
+        glass.layoutSubtreeIfNeeded()
+        route.layoutSubtreeIfNeeded()
+
+        XCTAssertEqual(route.frame.origin, .zero)
+        XCTAssertEqual(route.frame.size, target)
+        XCTAssertEqual(hosting.frame.origin, .zero)
+        XCTAssertEqual(hosting.frame.size, target)
+
+        let compact = NSSize(width: 390, height: 660)
+        glass.setFrameSize(compact)
+        glass.layoutSubtreeIfNeeded()
+        route.layoutSubtreeIfNeeded()
+        XCTAssertEqual(route.frame.size, compact)
+        XCTAssertEqual(hosting.frame.size, compact)
+    }
     func testEarnedResetInventoryNeverClaimsCurrentResetEligibility() throws {
         let snapshot = try decoder().decode(UsageIntelligenceSnapshot.self, from: Data(#"""
         {
@@ -1575,6 +1607,7 @@ final class UsageDashboardTests: XCTestCase {
             "providerBorderOpacity: CGFloat = 0.23",
             "providerFactsSpacing: CGFloat = 22",
             "providerChartWidth: CGFloat = 300",
+            "horizontalProviderMinimumWidth: CGFloat = 620",
             "Color(red: 0.95, green: 0.47, blue: 0.24)",
             "Color(red: 0.66, green: 0.42, blue: 1.00)",
             ".font(.system(size: 19, weight: .bold, design: .rounded))",
@@ -1595,7 +1628,7 @@ final class UsageDashboardTests: XCTestCase {
         XCTAssertTrue(installed.contains("usesDenseRoute: true"))
         XCTAssertTrue(installed.contains("onRefresh: { Task { await store.refresh(force: true) } }"))
         XCTAssertTrue(installed.contains("UsageAccountSettingsView("))
-        XCTAssertTrue(coordRoute.contains("UsageWindowGeometry.attachedHeight("))
+        XCTAssertTrue(coordRoute.contains("UsageWindowGeometry.attachedContentSize("))
         XCTAssertTrue(coordContent.contains("Refresh provider usage"))
         XCTAssertTrue(coordContent.contains("Provider settings"))
     }
@@ -1621,11 +1654,17 @@ final class UsageDashboardTests: XCTestCase {
         XCTAssertTrue(content.contains("preferredHeight: CGFloat = 880"))
         XCTAssertTrue(content.contains("screenInset: CGFloat = 40"))
         XCTAssertTrue(content.contains("visibleFrame.height"))
-        XCTAssertTrue(popover.contains("UsageWindowGeometry.attachedHeight("))
+        XCTAssertTrue(popover.contains("UsageWindowGeometry.attachedContentSize("))
         XCTAssertTrue(popover.contains("UsageWindowGeometry.detachedContentSize("))
         XCTAssertTrue(popover.contains("window.setContentSize(targetSize)"))
         XCTAssertTrue(popover.contains("window.constrainFrameRect(window.frame, to: screen)"))
-        XCTAssertTrue(popover.contains("newContent.autoresizingMask = [.width, .height]"))
+        XCTAssertFalse(popover.contains("newContent.autoresizingMask = [.width, .height]"))
+        XCTAssertTrue(popover.contains("hosting.sizingOptions = []"))
+        XCTAssertTrue(popover.contains("UsageRouteContainerLayout.pin(hosting, in: newContent)"))
+        XCTAssertTrue(popover.contains("UsageRouteContainerLayout.pin(newContent, in: glass)"))
+        let hostResize = try XCTUnwrap(popover.range(of: "popover.contentSize = targetSize"))
+        let contentInstall = try XCTUnwrap(popover.range(of: "UsageRouteContainerLayout.pin(newContent, in: glass)"))
+        XCTAssertLessThan(hostResize.lowerBound, contentInstall.lowerBound)
         XCTAssertFalse(popover.contains("min(UsageWindowGeometry.preferredHeight, availablePopoverHeight())"))
         XCTAssertTrue(content.contains("private enum UsageDashboardCostFormat"))
         XCTAssertTrue(content.contains("replacingOccurrences(of: \"USD \", with: \"$\")"))
