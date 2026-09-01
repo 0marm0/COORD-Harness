@@ -1,5 +1,39 @@
 import SwiftUI
 
+enum UsageWindowGeometry {
+    static let preferredWidth: CGFloat = 460
+    static let preferredHeight: CGFloat = 880
+    static let screenInset: CGFloat = 40
+    static let anchorGap: CGFloat = 12
+    static let minimumHeight: CGFloat = 360
+
+    static func attachedHeight(visibleFrame: CGRect?, anchorFrame: CGRect?) -> CGFloat {
+        guard let visibleFrame else { return preferredHeight }
+        let screenAvailable = max(minimumHeight, visibleFrame.height - screenInset)
+        guard let anchorFrame else { return min(preferredHeight, screenAvailable) }
+        let belowAnchor = max(0, anchorFrame.minY - visibleFrame.minY - anchorGap)
+        let available = belowAnchor >= minimumHeight ? belowAnchor : screenAvailable
+        return min(preferredHeight, max(minimumHeight, available))
+    }
+
+    static func detachedContentSize(
+        currentSize: CGSize,
+        visibleFrame: CGRect?
+    ) -> CGSize {
+        let desiredHeight = max(preferredHeight, currentSize.height)
+        let height: CGFloat
+        if let visibleFrame {
+            height = min(desiredHeight, max(minimumHeight, visibleFrame.height - screenInset))
+        } else {
+            height = desiredHeight
+        }
+        return CGSize(
+            width: max(preferredWidth, currentSize.width),
+            height: height
+        )
+    }
+}
+
 private enum UsageProviderVisualStyle {
     static func assetName(_ providerID: String) -> String {
         providerID.lowercased() == "claude" ? "claude-menu" : "codex-menu"
@@ -375,7 +409,7 @@ private enum UsageDenseRouteLayout {
     static let providerChartWidth: CGFloat = 300
     static let totalCornerRadius: CGFloat = 9
     static let totalBackgroundOpacity: CGFloat = 0.045
-    static let visibleLabelOrder = ["Total Tokens Costs", "Claude", "Codex", "Today", "Retained cost", "Tokens", "Daily cost"]
+    static let visibleLabelOrder = ["Total Tokens Costs", "Claude", "Codex", "Today cost", "Retained cost", "Tokens", "Daily cost"]
 
     static let claudeTint = Color(red: 0.95, green: 0.47, blue: 0.24)
     static let codexTint = Color(red: 0.66, green: 0.42, blue: 1.00)
@@ -550,15 +584,6 @@ private struct UsageDenseProviderSection: View {
     private var factsSpacing: CGFloat { isClaude ? 10 : 16 }
     private var quotaSpacing: CGFloat { isClaude ? 8 : 12 }
     private var metricSpacing: CGFloat { isClaude ? 12 : 18 }
-    private var projectedHistory: UsageHistoryPresentation? {
-        guard let dailyProjection else { return nil }
-        return UsageHistoryPresentation.sources(for: card.provider)
-            .first(where: { $0.kind == dailyProjection.sourceKind })
-    }
-    private var dailyRowsByDay: [String: UsageDaily] {
-        let rows = projectedHistory?.daily ?? []
-        return Dictionary(uniqueKeysWithValues: rows.map { row in (row.date, row) })
-    }
     private var effectiveChartPlotHeight: CGFloat {
         switch card.id.lowercased() {
         case "claude": return UsageDenseRouteLayout.claudeChartPlotHeight
@@ -569,10 +594,21 @@ private struct UsageDenseProviderSection: View {
     private var chartPanelHeight: CGFloat {
         effectiveChartPlotHeight + UsageDenseRouteLayout.chartChromeHeight
     }
-    private var dailyProjection: UsageDailyCostTrendProjection? {
+    private var dailyCostProjections: [UsageDailyCostTrendProjection] {
         UsageHistoryPresentation.sources(for: card.provider)
             .map { UsageDailyCostTrendProjection.make(providerID: card.id, history: $0, costs: card.provider.costs) }
-            .first(where: { $0.points.count >= 2 })
+    }
+    private var dailyProjection: UsageDailyCostTrendProjection? {
+        dailyCostProjections.first(where: { $0.points.count >= 2 })
+    }
+    private var todayCostPoint: UsageDailyCostTrendPoint? {
+        dailyCostProjections.lazy.compactMap { $0.currentDayPoint() }.first
+    }
+    private var todayCostLabel: String {
+        UsageDashboardCostFormat.display(
+            todayCostPoint?.nanos,
+            currency: todayCostPoint?.currency ?? card.provider.costs?.apiRateEstimate?.currency
+        )
     }
     private var quotas: [(String, UsageQuotaWindow?)] {
         [("Session", summary.session), ("Weekly", summary.weekly), ("Fable", summary.fable)]
@@ -635,7 +671,7 @@ private struct UsageDenseProviderSection: View {
                 }
             }
             HStack(spacing: metricSpacing) {
-                UsageDenseMetric(label: "Today", value: UsageFormat.tokens(summary.todayTokens))
+                UsageDenseMetric(label: "Today cost", value: todayCostLabel)
                 UsageDenseMetric(label: "Retained cost", value: UsageDashboardCostFormat.display(summary.retainedUSDEstimateNanos))
                 UsageDenseMetric(label: "Tokens", value: UsageFormat.tokens(summary.todayTokens))
             }
@@ -660,8 +696,7 @@ private struct UsageDenseProviderSection: View {
                 UsageDenseDailyCostChart(
                     projection: dailyProjection,
                     tint: tint,
-                    plotHeight: effectiveChartPlotHeight,
-                    dailyRowsByDay: dailyRowsByDay
+                    plotHeight: effectiveChartPlotHeight
                 )
             } else {
                 Text("History unavailable")
@@ -742,13 +777,12 @@ private struct UsageDenseDailyCostChart: View {
     let projection: UsageDailyCostTrendProjection
     let tint: Color
     let plotHeight: CGFloat
-    let dailyRowsByDay: [String: UsageDaily]
 
     @State private var hoveredPoint: UsageDailyCostTrendPoint?
     @State private var hoverLocation = CGPoint.zero
 
-    private func modelDetail(for row: UsageDaily?) -> String {
-        let models = row?.modelBreakdowns ?? []
+    private func modelDetail(for point: UsageDailyCostTrendPoint) -> String {
+        let models = point.modelBreakdowns ?? []
         guard !models.isEmpty else { return "No per-day model detail" }
         return models.map { model in
             "\(model.displayLabel): \(UsageFormat.tokens(model.totalTokens))"
@@ -756,13 +790,12 @@ private struct UsageDenseDailyCostChart: View {
     }
 
     private func hoverDetail(for point: UsageDailyCostTrendPoint) -> String {
-        let row = dailyRowsByDay[point.day]
-        let tokens = row?.totalTokens.map(UsageFormat.tokens) ?? "Unavailable"
+        let tokens = point.totalTokens.map(UsageFormat.tokens) ?? "Unavailable"
         return [
             "Date: \(point.day)",
             "Cost: \(UsageDashboardCostFormat.display(point.nanos, currency: point.currency))",
             "Tokens: \(tokens)",
-            "Models: \(modelDetail(for: row))",
+            "Models: \(modelDetail(for: point))",
         ].joined(separator: "\n")
     }
 
@@ -812,7 +845,6 @@ private struct UsageDenseDailyCostChart: View {
                             let maximumY = max(minimumY, proxy.size.height - 50)
                             UsageDenseDailyHoverCard(
                                 point: hoveredPoint,
-                                row: dailyRowsByDay[hoveredPoint.day],
                                 tint: tint
                             )
                             .frame(width: cardWidth)
@@ -842,11 +874,10 @@ private struct UsageDenseDailyCostChart: View {
 
 private struct UsageDenseDailyHoverCard: View {
     let point: UsageDailyCostTrendPoint
-    let row: UsageDaily?
     let tint: Color
 
     private var topModels: [UsageDailyModelBreakdown] {
-        Array((row?.modelBreakdowns ?? []).sorted { lhs, rhs in
+        Array((point.modelBreakdowns ?? []).sorted { lhs, rhs in
             let leftTokens = lhs.totalTokens ?? -1
             let rightTokens = rhs.totalTokens ?? -1
             if leftTokens != rightTokens { return leftTokens > rightTokens }
@@ -861,7 +892,7 @@ private struct UsageDenseDailyHoverCard: View {
             HStack(spacing: 8) {
                 Text(UsageDashboardCostFormat.display(point.nanos, currency: point.currency))
                 Spacer(minLength: 4)
-                Text(UsageFormat.tokens(row?.totalTokens))
+                Text(UsageFormat.tokens(point.totalTokens))
             }
             .font(.system(size: 9, weight: .semibold).monospacedDigit())
             if topModels.isEmpty {
@@ -888,7 +919,7 @@ private struct UsageDenseDailyHoverCard: View {
                 .stroke(Color.white.opacity(0.28), lineWidth: 0.5)
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Daily usage \(point.day), \(UsageDashboardCostFormat.display(point.nanos, currency: point.currency)), \(UsageFormat.tokens(row?.totalTokens)) tokens")
+        .accessibilityLabel("Daily usage \(point.day), \(UsageDashboardCostFormat.display(point.nanos, currency: point.currency)), \(UsageFormat.tokens(point.totalTokens)) tokens")
     }
 }
 private struct UsageDailyTrendOverview: View {

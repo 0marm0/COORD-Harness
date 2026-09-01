@@ -934,12 +934,12 @@ final class UsageDashboardTests: XCTestCase {
         XCTAssertEqual(retainedCost.sourceKind, .retainedEnvelope)
         XCTAssertEqual(
             retainedCost.points,
-            [UsageDailyCostTrendPoint(day: "2026-08-26", nanos: 1_500_000_000, costKind: "API-rate estimate", currency: "USD")]
+            [UsageDailyCostTrendPoint(day: "2026-08-26", nanos: 1_500_000_000, costKind: "API-rate estimate", currency: "USD", totalTokens: 99)]
         )
         XCTAssertEqual(reportedCost.sourceKind, .providerReported)
         XCTAssertEqual(
             reportedCost.points,
-            [UsageDailyCostTrendPoint(day: "2026-08-26", nanos: 2_200_000_000, costKind: "provider-native", currency: nil)]
+            [UsageDailyCostTrendPoint(day: "2026-08-26", nanos: 2_200_000_000, costKind: "provider-native", currency: nil, totalTokens: 333)]
         )
         XCTAssertNotEqual(retainedCost.points, reportedCost.points)
     }
@@ -983,6 +983,84 @@ final class UsageDashboardTests: XCTestCase {
         XCTAssertNil(models[0].providerNativeCostNanos)
         XCTAssertEqual(models[1].providerNativeCostNanos, 400_000_000)
         XCTAssertNil(models[1].apiRateEstimateNanos)
+
+        let history = UsageHistoryPresentation(
+            kind: .canonical,
+            label: "Canonical retained history",
+            provenance: "test",
+            daily: [daily],
+            todayTotalTokens: nil,
+            rolling7DTotalTokens: nil,
+            calendarWeekTotalTokens: nil,
+            allTimeTotalTokens: nil,
+            semantics: nil
+        )
+        let point = try XCTUnwrap(UsageDailyCostTrendProjection.make(providerID: "Claude", history: history, costs: nil).points.first)
+        XCTAssertEqual(point.totalTokens, 1_200)
+        XCTAssertEqual(point.modelBreakdowns?.map(\.displayLabel), ["Claude Opus", "Claude Sonnet"])
+    }
+
+    func testCurrentDayCostPrefersLocalCanonicalDayAndFallsBackToUTC() throws {
+        let points = [
+            UsageDailyCostTrendPoint(day: "2026-08-30", nanos: 1_500, costKind: "API-rate estimate", currency: "USD"),
+            UsageDailyCostTrendPoint(day: "2026-08-31", nanos: 700, costKind: "API-rate estimate", currency: "USD"),
+            UsageDailyCostTrendPoint(day: "2026-09-01", nanos: 800, costKind: "API-rate estimate", currency: "USD"),
+        ]
+        let projection = UsageDailyCostTrendProjection(
+            providerID: "codex",
+            sourceKind: .canonical,
+            sourceLabel: "Canonical retained history",
+            points: points
+        )
+        let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-09-01T00:30:00Z"))
+        var localCalendar = Calendar(identifier: .gregorian)
+        localCalendar.timeZone = try XCTUnwrap(TimeZone(identifier: "America/Los_Angeles"))
+
+        let current = try XCTUnwrap(projection.currentDayPoint(now: now, localCalendar: localCalendar))
+        XCTAssertEqual(current.day, "2026-08-31")
+        XCTAssertEqual(current.nanos, 700)
+        XCTAssertEqual(projection.points.map(\.nanos).max(), 1_500, "Today cost must remain distinct from the peak graph amount")
+
+        let utcOnly = UsageDailyCostTrendProjection(
+            providerID: "codex",
+            sourceKind: .canonical,
+            sourceLabel: "Canonical retained history",
+            points: [points[0], points[2]]
+        )
+        XCTAssertEqual(utcOnly.currentDayPoint(now: now, localCalendar: localCalendar)?.day, "2026-09-01")
+    }
+
+    func testUsageWindowGeometryShowsFullRouteWhenPossibleAndFitsSmallScreens() {
+        let operatorVisible = NSRect(x: 0, y: 0, width: 1_728, height: 1_092)
+        let operatorAnchor = NSRect(x: 1_000, y: 1_092, width: 24, height: 24)
+        XCTAssertEqual(
+            UsageWindowGeometry.attachedHeight(visibleFrame: operatorVisible, anchorFrame: operatorAnchor),
+            880
+        )
+
+        let detached = UsageWindowGeometry.detachedContentSize(
+            currentSize: NSSize(width: 404, height: 620),
+            visibleFrame: operatorVisible
+        )
+        XCTAssertEqual(detached.width, 460)
+        XCTAssertEqual(detached.height, 880)
+
+        let resized = UsageWindowGeometry.detachedContentSize(
+            currentSize: NSSize(width: 720, height: 940),
+            visibleFrame: operatorVisible
+        )
+        XCTAssertEqual(resized.width, 720)
+        XCTAssertEqual(resized.height, 940)
+
+        let smallVisible = NSRect(x: 0, y: 0, width: 1_280, height: 700)
+        let compactHeight = UsageWindowGeometry.attachedHeight(visibleFrame: smallVisible, anchorFrame: nil)
+        XCTAssertLessThan(compactHeight, UsageWindowGeometry.preferredHeight)
+        XCTAssertGreaterThanOrEqual(compactHeight, UsageWindowGeometry.minimumHeight)
+        let compactDetached = UsageWindowGeometry.detachedContentSize(
+            currentSize: NSSize(width: 404, height: 620),
+            visibleFrame: smallVisible
+        )
+        XCTAssertEqual(compactDetached.height, 660)
     }
 
     func testEarnedResetInventoryNeverClaimsCurrentResetEligibility() throws {
@@ -1505,7 +1583,7 @@ final class UsageDashboardTests: XCTestCase {
             XCTAssertTrue(coordContent.contains(token), "COORD dense geometry drifted from \(token)")
         }
 
-        let visibleLabelOrder = ["Total Tokens Costs", "Today", "Retained cost", "Tokens", "Daily cost"]
+        let visibleLabelOrder = ["Total Tokens Costs", "Today cost", "Retained cost", "Tokens", "Daily cost"]
         let denseRouteStart = try XCTUnwrap(coordContent.range(of: "private struct UsageDenseRoute: View"))
         let denseRouteEnd = try XCTUnwrap(coordContent.range(of: "private struct UsageDailyTrendOverview", range: denseRouteStart.upperBound..<coordContent.endIndex))
         let denseRouteSource = String(coordContent[denseRouteStart.lowerBound..<denseRouteEnd.lowerBound])
@@ -1517,7 +1595,7 @@ final class UsageDashboardTests: XCTestCase {
         XCTAssertTrue(installed.contains("usesDenseRoute: true"))
         XCTAssertTrue(installed.contains("onRefresh: { Task { await store.refresh(force: true) } }"))
         XCTAssertTrue(installed.contains("UsageAccountSettingsView("))
-        XCTAssertTrue(coordRoute.contains("min(UsageWindowGeometry.preferredHeight, availablePopoverHeight())"))
+        XCTAssertTrue(coordRoute.contains("UsageWindowGeometry.attachedHeight("))
         XCTAssertTrue(coordContent.contains("Refresh provider usage"))
         XCTAssertTrue(coordContent.contains("Provider settings"))
     }
@@ -1539,13 +1617,16 @@ final class UsageDashboardTests: XCTestCase {
         let denseEnd = try XCTUnwrap(content.range(of: "private struct UsageDailyTrendOverview", range: denseStart.upperBound..<content.endIndex))
         let dense = String(content[denseStart.lowerBound..<denseEnd.lowerBound])
 
-        XCTAssertTrue(popover.contains("let usageWindowWidth: CGFloat = 460"))
-        XCTAssertTrue(popover.contains("max(usageWindowWidth, detachedSize?.width ?? usageWindowWidth)"))
-        XCTAssertTrue(popover.contains("preferredHeight: CGFloat = 880"))
-        XCTAssertTrue(popover.contains("detachedScreenInset: CGFloat = 40"))
-        XCTAssertTrue(popover.contains("visibleFrame.height"))
-        XCTAssertTrue(popover.contains("min(UsageWindowGeometry.preferredHeight, availablePopoverHeight())"))
-        XCTAssertTrue(popover.contains("UsageWindowGeometry.detachedHeight("))
+        XCTAssertTrue(content.contains("preferredWidth: CGFloat = 460"))
+        XCTAssertTrue(content.contains("preferredHeight: CGFloat = 880"))
+        XCTAssertTrue(content.contains("screenInset: CGFloat = 40"))
+        XCTAssertTrue(content.contains("visibleFrame.height"))
+        XCTAssertTrue(popover.contains("UsageWindowGeometry.attachedHeight("))
+        XCTAssertTrue(popover.contains("UsageWindowGeometry.detachedContentSize("))
+        XCTAssertTrue(popover.contains("window.setContentSize(targetSize)"))
+        XCTAssertTrue(popover.contains("window.constrainFrameRect(window.frame, to: screen)"))
+        XCTAssertTrue(popover.contains("newContent.autoresizingMask = [.width, .height]"))
+        XCTAssertFalse(popover.contains("min(UsageWindowGeometry.preferredHeight, availablePopoverHeight())"))
         XCTAssertTrue(content.contains("private enum UsageDashboardCostFormat"))
         XCTAssertTrue(content.contains("replacingOccurrences(of: \"USD \", with: \"$\")"))
         XCTAssertTrue(dense.contains("UsageDashboardCostFormat.display(totalEstimatedCostNanos)"))
@@ -1565,10 +1646,13 @@ final class UsageDashboardTests: XCTestCase {
         XCTAssertTrue(dense.contains("Date: \\(point.day)"))
         XCTAssertTrue(dense.contains("Cost: \\(UsageDashboardCostFormat.display(point.nanos, currency: point.currency))"))
         XCTAssertTrue(dense.contains("Tokens: \\(tokens)"))
-        XCTAssertTrue(dense.contains("dailyRowsByDay: [String: UsageDaily]"))
-        XCTAssertTrue(dense.contains("row?.modelBreakdowns ?? []"))
+        XCTAssertFalse(dense.contains("dailyRowsByDay"))
+        XCTAssertTrue(dense.contains("point.modelBreakdowns ?? []"))
+        XCTAssertTrue(dense.contains("point.totalTokens.map(UsageFormat.tokens)"))
         XCTAssertTrue(dense.contains("No per-day model detail"))
-        XCTAssertTrue(dense.contains("Models: \\(modelDetail(for: row))"))
+        XCTAssertTrue(dense.contains("Models: \\(modelDetail(for: point))"))
+        XCTAssertTrue(dense.contains("UsageDenseMetric(label: \"Today cost\", value: todayCostLabel)"))
+        XCTAssertFalse(dense.contains("UsageDenseMetric(label: \"Today\", value: UsageFormat.tokens"))
         XCTAssertEqual(dense.components(separatedBy: "\"Session\"").count - 1, 1)
         XCTAssertEqual(dense.components(separatedBy: "\"Weekly\"").count - 1, 1)
         XCTAssertEqual(dense.components(separatedBy: "\"Fable\"").count - 1, 1)

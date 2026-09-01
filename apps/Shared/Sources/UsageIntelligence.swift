@@ -965,6 +965,24 @@ struct UsageDailyCostTrendPoint: Equatable, Sendable {
     let nanos: Int64
     let costKind: String
     let currency: String?
+    let totalTokens: Int64?
+    let modelBreakdowns: [UsageDailyModelBreakdown]?
+
+    init(
+        day: String,
+        nanos: Int64,
+        costKind: String,
+        currency: String?,
+        totalTokens: Int64? = nil,
+        modelBreakdowns: [UsageDailyModelBreakdown]? = nil
+    ) {
+        self.day = day
+        self.nanos = nanos
+        self.costKind = costKind
+        self.currency = currency
+        self.totalTokens = totalTokens
+        self.modelBreakdowns = modelBreakdowns
+    }
 }
 
 struct UsageDailyCostTrendProjection: Equatable, Sendable {
@@ -986,7 +1004,9 @@ struct UsageDailyCostTrendProjection: Equatable, Sendable {
                         day: row.date,
                         nanos: nanos,
                         costKind: "API-rate estimate",
-                        currency: costs?.apiRateEstimate?.currency
+                        currency: costs?.apiRateEstimate?.currency,
+                        totalTokens: row.totalTokens,
+                        modelBreakdowns: row.modelBreakdowns
                     )
                 }
                 if let nanos = row.providerNativeCostNanos, nanos >= 0 {
@@ -994,7 +1014,9 @@ struct UsageDailyCostTrendProjection: Equatable, Sendable {
                         day: row.date,
                         nanos: nanos,
                         costKind: "provider-native",
-                        currency: costs?.providerNative?.currency
+                        currency: costs?.providerNative?.currency,
+                        totalTokens: row.totalTokens,
+                        modelBreakdowns: row.modelBreakdowns
                     )
                 }
                 return nil
@@ -1006,6 +1028,30 @@ struct UsageDailyCostTrendProjection: Equatable, Sendable {
             sourceLabel: history.label,
             points: Array(points.suffix(max(0, limit)))
         )
+    }
+
+    func currentDayPoint(
+        now: Date = Date(),
+        localCalendar: Calendar = .autoupdatingCurrent
+    ) -> UsageDailyCostTrendPoint? {
+        var utcCalendar = Calendar(identifier: .gregorian)
+        utcCalendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let candidateDays = [
+            Self.canonicalDay(for: now, calendar: localCalendar),
+            Self.canonicalDay(for: now, calendar: utcCalendar),
+        ].compactMap { $0 }
+        for day in candidateDays {
+            if let point = points.last(where: { $0.day == day }) { return point }
+        }
+        return nil
+    }
+
+    private static func canonicalDay(for date: Date, calendar: Calendar) -> String? {
+        let components = calendar.dateComponents([.year, .month, .day], from: date)
+        guard let year = components.year, let month = components.month, let day = components.day else {
+            return nil
+        }
+        return String(format: "%04d-%02d-%02d", year, month, day)
     }
 }
 
