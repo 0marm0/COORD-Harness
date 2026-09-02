@@ -531,6 +531,33 @@ def main(argv=None) -> int:
     p.add_argument("--limit", type=int, default=40,
                    help="how many findings to list; the counts are always complete")
     p = _add_subparser(sub,
+        "stall-scan",
+        help="report finished runs that likely stalled with live child work under them",
+    )
+    # Record-only by construction, and it stays that way here. The module's own
+    # docstring reserves nudging for "a future caller once production examples
+    # clear a precision bar"; a driver that started nudging on its first day
+    # would be that decision taken by accident. `scan_coord_db` opens the
+    # database `mode=ro`, so asking the question cannot change the answer.
+    p.add_argument("--limit", type=int, default=40,
+                   help="how many candidates to list; the counts are always complete")
+    p = _add_subparser(sub,
+        "lint-fail-loud",
+        help="report silent-failure patterns in this package against a frozen baseline",
+    )
+    # Report-only, deliberately: the lint has 167 unallowlisted findings inside
+    # the package on the day this driver landed, and a gate that is red on its
+    # first run is a gate somebody deletes. The baseline in
+    # tools/fail_loud_baseline.json is what makes the count actionable -- it is
+    # NOT an allowlist, and it is tracked precisely because the module's own
+    # allowlist lives under the gitignored state directory, where a gate driven
+    # by it is vacuous in a fresh checkout.
+    p.add_argument("--baseline", default=None,
+                   help="frozen per-file counts to compare against "
+                        "(default: tools/fail_loud_baseline.json)")
+    p.add_argument("--limit", type=int, default=40,
+                   help="how many new findings to list; the counts are always complete")
+    p = _add_subparser(sub,
         "create",
         help="create the first or next proof-gated work item in this coord database",
     )
@@ -911,6 +938,107 @@ def main(argv=None) -> int:
         # The counts above are complete whatever `--limit` shows, so a truncated
         # listing never turns a malformed board into a clean-looking one.
         return 1 if args.strict and findings else 0
+
+    if args.cmd == "stall-scan":
+        from ..lints import stall_detector
+
+        db_path = Path(args.db) if args.db is not None else harness_config.coord_db_path()
+        if not Path(db_path).exists():
+            _emit({"ok": False, "error": f"no coord database at {db_path}"})
+            return 2
+        # auto_nudge_enabled stays False: this surface reports, it never acts.
+        candidates = stall_detector.scan_coord_db(str(db_path))
+        limit = max(0, int(args.limit))
+        _emit({
+            "ok": True,
+            "db": str(db_path),
+            "candidates": len(candidates),
+            "shown": min(limit, len(candidates)),
+            "auto_nudge": False,
+            "findings": [
+                {
+                    "run_id": c.run_id,
+                    "work_id": c.work_id,
+                    "session_id": c.session_id,
+                    "confidence": c.verdict.confidence,
+                    "reasons": list(c.verdict.reasons),
+                }
+                for c in candidates[:limit]
+            ],
+        })
+        # Advisory: a detected stall is still a successful read.
+        return 0
+
+    if args.cmd == "lint-fail-loud":
+        from ..lints import fail_loud_patterns
+
+        repo = fail_loud_patterns.REPO_ROOT
+        scan_root = repo / "src" / "coordharness"
+        baseline_path = (
+            Path(args.baseline) if args.baseline is not None
+            else repo / "tools" / "fail_loud_baseline.json"
+        )
+        if not scan_root.is_dir():
+            _emit({"ok": False, "error": f"no package to scan at {scan_root}"})
+            return 2
+        # The package, not the checkout. The module's own SRC_ROOT is the
+        # repository root, which walks .venv (310 findings from third-party
+        # dependencies) and build/ (a byte copy of src, counted twice) -- that
+        # is how the headline "686 findings" was three times the number this
+        # project can act on.
+        from collections import Counter
+
+        findings = fail_loud_patterns.scan_tree(scan_root)
+        unallowlisted = [f for f in findings if not f.allowlisted]
+        # Counter, not dict.get(key, 0): a missing key here means "no findings
+        # recorded for that file and pattern", which is a real zero rather than
+        # a default standing in for an answer nobody looked up -- and this lint
+        # flags the `.get(key, 0)` spelling for exactly that ambiguity, so a
+        # driver written with it would ship its own first regression.
+        current = Counter(f"{f.file}::{f.pattern}" for f in unallowlisted)
+        baseline: Counter[str] = Counter()
+        baseline_frozen_total = None
+        if baseline_path.is_file():
+            payload = json.loads(baseline_path.read_text(encoding="utf-8"))
+            baseline = Counter(
+                {str(k): int(v) for k, v in (payload["counts"] or {}).items()}
+            )
+            baseline_frozen_total = payload["total"]
+        # New findings are counted per (file, pattern) rather than per line, so
+        # moving a function down a file is not a regression and adding a second
+        # silent failure to a file that already had one still is.
+        regressions = sorted(
+            (
+                {"key": key, "baseline": baseline[key], "current": count}
+                for key, count in current.items()
+                if count > baseline[key]
+            ),
+            key=lambda row: (row["baseline"] - row["current"], row["key"]),
+        )
+        limit = max(0, int(args.limit))
+        _emit({
+            "ok": True,
+            "scan_root": scan_root.relative_to(repo).as_posix(),
+            "modules_scanned": sum(1 for _ in scan_root.rglob("*.py")),
+            "total_hits": len(findings),
+            "allowlisted": len(findings) - len(unallowlisted),
+            "unallowlisted": len(unallowlisted),
+            # os.path.relpath, not Path.relative_to: a baseline given from
+            # outside the checkout is a legitimate call (a frozen copy, a test
+            # fixture) and relative_to raises on it, which turned a report into
+            # a traceback with no output at all.
+            "baseline_path": (
+                os.path.relpath(baseline_path, repo) if baseline_path.is_file() else None
+            ),
+            "baseline_total": baseline_frozen_total,
+            "regressed_keys": len(regressions),
+            "shown": min(limit, len(regressions)),
+            "regressions": regressions[:limit],
+            "mode": "REPORT-ONLY: this surface never exits non-zero on findings",
+        })
+        # Record then report. Refusing is a ratchet decision for the board, not
+        # a default this driver may take on its own.
+        return 0
 
     bootstrap_database(args.db)
     ident = resolve_identity()

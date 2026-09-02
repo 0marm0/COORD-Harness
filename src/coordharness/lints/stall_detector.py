@@ -420,7 +420,10 @@ def main() -> int:
         for c in candidates:
             print(f"  {c.run_id} [{c.work_id}] confidence={c.verdict.confidence} reasons={list(c.verdict.reasons)}")
         if candidates:
-            print("\nRECORD-ONLY - not wired to any nudge or gate. Review manually.")
+            print(
+                "\nRECORD-ONLY - `coord stall-scan` reports these; nothing nudges "
+                "or refuses on them. Review manually."
+            )
 
     return 0
 

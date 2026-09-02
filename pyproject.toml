@@ -74,3 +74,11 @@ target-version = "py311"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = ["slow: builds a virtualenv or wheel; deselect with -m 'not slow'"]
+# coordharness.testing.verified_artifact_skip is a pytest plugin: it defines
+# pytest_configure / pytest_collection_finish / pytest_runtest_logreport /
+# pytest_terminal_summary and had no caller, so a guard that skipped because
+# its artifact was never materialized was counted in the run's skip total and
+# named nowhere. Loading it here is what makes an unmeasured guard say so.
+# Removing this line does not fail anything -- it makes the report disappear,
+# which is the failure mode it exists to prevent.
+addopts = "-p coordharness.testing.verified_artifact_skip"
