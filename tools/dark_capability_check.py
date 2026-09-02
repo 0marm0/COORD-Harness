@@ -30,6 +30,7 @@ import ast
 import json
 import re
 import sys
+import tomllib
 from pathlib import Path
 
 ALLOWLIST_NAME = "dark_capability_allowlist.json"
@@ -89,6 +90,44 @@ def _importers_by_module(repo: Path) -> dict[str, set[Path]]:
     return index
 
 
+def declared_entry_text(repo: Path) -> str:
+    """The parts of ``pyproject.toml`` that actually make a module load.
+
+    Console scripts, entry points, and pytest ``-p`` plugin registrations --
+    read structurally, not as a substring of the whole file. The first version
+    matched the raw file text, so a COMMENT naming a module was enough to make
+    it read as wired: the ablation that removed a plugin's registration left
+    the sentence explaining the registration behind, and the check stayed green
+    on a module nothing loaded. A guard whose own ablation cannot turn it red
+    is a claim, not a check.
+    """
+    path = repo / "pyproject.toml"
+    if not path.is_file():
+        return ""
+    try:
+        data = tomllib.loads(path.read_text(encoding="utf-8"))
+    except (OSError, tomllib.TOMLDecodeError):
+        return ""
+    parts: list[str] = []
+    project = data.get("project") or {}
+    parts.extend(str(v) for v in (project.get("scripts") or {}).values())
+    for group in (project.get("entry-points") or {}).values():
+        if isinstance(group, dict):
+            parts.extend(str(v) for v in group.values())
+    if isinstance(project.get("gui-scripts"), dict):
+        parts.extend(str(v) for v in project["gui-scripts"].values())
+    pytest_options = ((data.get("tool") or {}).get("pytest") or {}).get("ini_options") or {}
+    addopts = pytest_options.get("addopts")
+    if isinstance(addopts, str):
+        parts.append(addopts)
+    elif isinstance(addopts, list):
+        parts.extend(str(v) for v in addopts)
+    plugins = pytest_options.get("plugins")
+    if isinstance(plugins, list):
+        parts.extend(str(v) for v in plugins)
+    return "\n".join(parts)
+
+
 def dark_modules(repo: Path, index: dict[str, set[Path]] | None = None) -> list[tuple[str, str]]:
     """Modules that nothing outside the test tree imports.
 
@@ -103,8 +142,7 @@ def dark_modules(repo: Path, index: dict[str, set[Path]] | None = None) -> list[
     source_root = repo / "src"
     if index is None:
         index = _importers_by_module(repo)
-    pyproject = repo / "pyproject.toml"
-    entry_text = pyproject.read_text(encoding="utf-8") if pyproject.is_file() else ""
+    entry_text = declared_entry_text(repo)
 
     findings: list[tuple[str, str]] = []
     for path in sorted(source_root.rglob("*.py")):
@@ -115,7 +153,9 @@ def dark_modules(repo: Path, index: dict[str, set[Path]] | None = None) -> list[
         ):
             continue
         stem = path.stem
-        # A console-script entry point is a caller even though nothing imports it.
+        # A console-script entry point, or a pytest ``-p`` plugin registration,
+        # is a caller even though nothing imports it. Read from the declared
+        # values only -- see declared_entry_text.
         if stem in entry_text:
             continue
         if any(other != path for other in index.get(stem, ())):
