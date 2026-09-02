@@ -356,6 +356,7 @@
     "src/coordharness/usage/routing.py": "usage-aware routing advice over the existing ledger; reads only, never switches",
     "src/coordharness/util.py": "small shared helpers; replaces one function from an unported package",
     "tests/extract/test_gate.py": "adversarial publication-gate regression tests",
+    "tests/extract/test_gate_approved_identity.py": "regressions for the approved-public-attribution allowance in the history scanner: an operator-declared identity clears its own author/committer name fields, a different name containing it still fails, and the name in file content, message bodies or an empty/malformed list still fails",
     "tests/extract/test_port.py": "adversarial porter safety and atomicity regression tests",
     "tests/extract/test_repin.py": "tests for the authored.json completeness check: planted undeclared file, planted stale pin, refusal to invent a description or an unreasoned re-pin",
     "tests/jobs/test_launch_authority.py": "adversarial standalone tracked-launch authority tests",
