@@ -937,6 +937,12 @@ def _commit_metadata_fields(
     return tuple(fields)
 
 
+#: The commit-header fields that carry a human's display name, as opposed to a
+#: mailbox, a trailer block or prose. Only these are eligible for the approved
+#: attribution allowance below.
+_ATTRIBUTED_NAME_FIELDS = frozenset({"author name", "committer name"})
+
+
 def _scan_history_field(
     text: str,
     commit: str,
@@ -946,16 +952,33 @@ def _scan_history_field(
     report: Report,
     *,
     neutral_noreply: bool,
+    approved_identities: Sequence[str] = (),
 ) -> None:
     identity = f"history commit {commit} {field_name}"
-    for pattern, reason in forbidden:
-        matches = list(pattern.finditer(text))
-        if neutral_noreply and reason == "email address":
-            matches = [
-                match for match in matches if not port.is_neutral_noreply(match.group(0))
-            ]
-        if matches:
-            report.history.append(f"{identity}: {reason}")
+    # A repository published under a person's own name has to carry that name in
+    # its authorship, or the history is either anonymous or false. The operator
+    # declaring an identity in the vocabulary is what makes it the approved
+    # public attribution, and this is the only place that declaration applies:
+    # the whole field must equal an approved string exactly, so a different
+    # person whose name merely contains it -- the substring the privacy phrase
+    # was written to catch -- still fails. Nothing else is widened. Email fields
+    # keep their own, narrower neutral-noreply rule; the message body and trailer
+    # block stay strict; and the same string inside a tracked file is still a
+    # finding, because a name in file content is usually an absolute home path
+    # or an unported source reference -- a different leak that no attribution
+    # decision authorises.
+    approved_name = (
+        field_name in _ATTRIBUTED_NAME_FIELDS and text.strip() in tuple(approved_identities)
+    )
+    if not approved_name:
+        for pattern, reason in forbidden:
+            matches = list(pattern.finditer(text))
+            if neutral_noreply and reason == "email address":
+                matches = [
+                    match for match in matches if not port.is_neutral_noreply(match.group(0))
+                ]
+            if matches:
+                report.history.append(f"{identity}: {reason}")
     folded = text.casefold()
     for token in tokens:
         if token.text in folded:
@@ -1006,6 +1029,7 @@ def check_history(
     ref: str,
     extra_excluded: set[str],
     selected_commit: str | None = None,
+    approved_identities: Sequence[str] = (),
 ) -> None:
     if selected_commit is None:
         selected_commit = _resolve_commit_ref(root, ref)
@@ -1033,6 +1057,7 @@ def check_history(
                     tokens,
                     report,
                     neutral_noreply=neutral_noreply,
+                    approved_identities=approved_identities,
                 )
         tree = _git(root, ["ls-tree", "-r", "-z", "--full-tree", commit])
         if tree.returncode:
@@ -1110,9 +1135,11 @@ def run(
     try:
         vocabulary = port.load_vocabulary(vocabulary_path) if vocabulary_path else {}
         renames, forbidden = port.compile_vocabulary(vocabulary)
+        approved_identities = port.compile_approved_identities(vocabulary)
     except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError, re.error) as exc:
         report.patterns.append(f"vocabulary: invalid ({type(exc).__name__})")
         renames, forbidden = port.compile_vocabulary({})
+        approved_identities = ()
     check_shape(entries, blobs, report)
     check_coverage(entries, blobs, manifest, authored, report)
     if source_manifest_path and (
@@ -1158,6 +1185,7 @@ def run(
             ref=ref or "HEAD",
             extra_excluded=excluded,
             selected_commit=selected_commit,
+            approved_identities=approved_identities,
         )
     return report
 

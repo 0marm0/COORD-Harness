@@ -99,6 +99,30 @@ def compile_vocabulary(vocabulary: dict) -> tuple[
     return tuple(renames), forbidden
 
 
+def compile_approved_identities(vocabulary: dict) -> tuple[str, ...]:
+    """The exact display names the operator has declared as public attribution.
+
+    `compile_vocabulary` reads only `renames` and `forbidden`; a key it does not
+    know is dropped in silence, so this list has to be compiled explicitly or a
+    declared allowance would be a no-op that still reads as configured. The
+    entries are exact strings, never patterns: an allowance compiled as a regex
+    would let a name that merely CONTAINS an approved one through, which is the
+    opposite of an identity check.
+
+    A malformed list raises rather than degrading to empty, so a typo in the
+    vocabulary is a refusal the caller reports, not a quietly stricter run.
+    """
+    value = vocabulary.get("approved_identities", [])
+    if not isinstance(value, list):
+        raise ValueError("approved_identities must be a list of strings")
+    identities: list[str] = []
+    for item in value:
+        if not isinstance(item, str) or not item.strip():
+            raise ValueError("each approved identity must be a non-empty string")
+        identities.append(item.strip())
+    return tuple(identities)
+
+
 RENAMES, FORBIDDEN = compile_vocabulary({})
 
 # The vocabulary is not committed, so it is found by convention or named
