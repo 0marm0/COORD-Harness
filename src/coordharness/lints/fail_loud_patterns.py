@@ -628,7 +628,7 @@ def main() -> int:
                     "allowlisted_count": len(findings) - len(unallowlisted),
                     "warn_count": len(unallowlisted),
                     "warn_count_by_pattern": by_pattern,
-                    "mode": "WARN-ONLY (not wired to any gate)",
+                    "mode": "WARN-ONLY (reported by `coord lint-fail-loud`; no gate refuses)",
                     "findings": [f._asdict() for f in shown],
                 },
                 indent=2,
@@ -650,8 +650,9 @@ def main() -> int:
             if f.allowlisted:
                 print(f"    reason  : {f.allow_reason}")
         print(
-            "\nWARN-ONLY - not wired to any check-registry gate by default. "
-            "Populate the allowlist and promote a pattern to enforce mode when it is ready."
+            "\nWARN-ONLY - `coord lint-fail-loud` reports these against the frozen "
+            "baseline in tools/fail_loud_baseline.json; no gate refuses on them. "
+            "Promoting the ratchet to a refusal is a recorded decision, not a default."
         )
 
     return 0
