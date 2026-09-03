@@ -441,7 +441,7 @@ private enum UsageDenseRouteLayout {
     static let horizontalProviderMinimumWidth: CGFloat = 620
     static let totalCornerRadius: CGFloat = 9
     static let totalBackgroundOpacity: CGFloat = 0.045
-    static let visibleLabelOrder = ["Total Tokens Costs", "Claude", "Codex", "Today cost", "Retained cost", "Tokens", "Daily cost"]
+    static let visibleLabelOrder = ["Total Tokens Costs", "Claude", "Codex", "Today cost", "Tokens today", "Retained cost", "Daily cost"]
 
     static let claudeTint = Color(red: 0.95, green: 0.47, blue: 0.24)
     static let codexTint = Color(red: 0.66, green: 0.42, blue: 1.00)
@@ -596,10 +596,9 @@ private struct UsageDenseTotalCostStrip: View {
         .frame(maxWidth: .infinity, alignment: .center)
         .padding(.horizontal, UsageDenseRouteLayout.outerPadding)
         .padding(.vertical, 10)
-        .background(
-            Color.primary.opacity(UsageDenseRouteLayout.totalBackgroundOpacity),
-            in: RoundedRectangle(cornerRadius: UsageDenseRouteLayout.totalCornerRadius)
-        )
+        // No box. A filled card behind the total sat on top of the sheet's own
+        // background and read as a second panel around a single figure. Matches
+        // LITAN, which dropped it for the same reason on 2026-09-02.
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Total estimated API-rate cost \(UsageDashboardCostFormat.display(totalEstimatedCostNanos))")
     }
@@ -707,8 +706,12 @@ private struct UsageDenseProviderSection: View {
             }
             HStack(spacing: metricSpacing) {
                 UsageDenseMetric(label: "Today cost", value: todayCostLabel)
+                // "Tokens" was ambiguous against LITAN, which shows both a daily
+                // and a cumulative figure: the same bare label carried today's
+                // number on one surface and an 85B lifetime envelope on the
+                // other. This one is today's, so it says so.
+                UsageDenseMetric(label: "Tokens today", value: UsageFormat.tokens(summary.todayTokens))
                 UsageDenseMetric(label: "Retained cost", value: UsageDashboardCostFormat.display(summary.retainedUSDEstimateNanos))
-                UsageDenseMetric(label: "Tokens", value: UsageFormat.tokens(summary.todayTokens))
             }
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
