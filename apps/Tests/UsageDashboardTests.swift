@@ -1616,9 +1616,9 @@ final class UsageDashboardTests: XCTestCase {
             XCTAssertTrue(coordContent.contains(token), "COORD dense geometry drifted from \(token)")
         }
 
-        // "Tokens" became "Tokens today" and moved ahead of the cost, matching
-        // LITAN: the bare label carried today's figure here and a lifetime
-        // envelope there, which is how one number read as two.
+        // "Tokens" became "Tokens today" and moved ahead of the cost: a bare
+        // label carrying today's figure here and a lifetime envelope
+        // elsewhere is how one number reads as two.
         let visibleLabelOrder = ["Total Tokens Costs", "Today cost", "Tokens today", "Retained cost", "Daily cost"]
         let denseRouteStart = try XCTUnwrap(coordContent.range(of: "private struct UsageDenseRoute: View"))
         let denseRouteEnd = try XCTUnwrap(coordContent.range(of: "private struct UsageDailyTrendOverview", range: denseRouteStart.upperBound..<coordContent.endIndex))
