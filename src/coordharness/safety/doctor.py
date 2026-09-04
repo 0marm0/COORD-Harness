@@ -741,6 +741,7 @@ def _classify_pointer(
     project_root: Path,
     must_exist: bool,
     allow_legacy_absolute: bool = False,
+    allow_line_suffix: bool = False,
 ) -> str:
     """Classify one stored pointer.
 
@@ -755,13 +756,21 @@ def _classify_pointer(
     """
 
     value = raw.strip()
+    line_no: int | None = None
     absolute = False
     if value.startswith("project://"):
         value = value.removeprefix("project://")
     elif _POINTER_SCHEME.match(value):
         return _POINTER_INVALID
+    if allow_line_suffix:
+        match = re.fullmatch(r"(.+):([1-9][0-9]*)", value)
+        if match is not None:
+            value = match.group(1)
+            line_no = int(match.group(2))
+    if value:
+        absolute = Path(value).is_absolute()
     else:
-        absolute = Path(value).is_absolute() if value else False
+        absolute = False
     if absolute and not allow_legacy_absolute:
         return _POINTER_INVALID
     try:
@@ -774,6 +783,15 @@ def _classify_pointer(
         )
     except (OSError, PathSafetyError, ValueError):
         return _POINTER_INVALID
+    if line_no is not None and resolved.exists():
+        if not resolved.is_file():
+            return _POINTER_INVALID
+        try:
+            with resolved.open(errors="replace") as handle:
+                if sum(1 for _line in handle) < line_no:
+                    return _POINTER_INVALID
+        except OSError:
+            return _POINTER_INVALID
     if absolute:
         return _POINTER_ABSOLUTE
     if must_exist or resolved.exists():
@@ -820,7 +838,10 @@ def _check_public_paths(
                 record(
                     f"{work_id}:context_pack_ref",
                     _classify_pointer(
-                        context, project_root=project_root, must_exist=True
+                        context,
+                        project_root=project_root,
+                        must_exist=True,
+                        allow_line_suffix=True,
                     ),
                 )
 
