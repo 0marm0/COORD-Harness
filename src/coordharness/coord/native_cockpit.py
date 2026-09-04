@@ -18,6 +18,7 @@ except ImportError:  # pragma: no cover - exercised on non-POSIX installs
 from coordharness import config as _harness_config
 from . import config as _coord_config
 from . import coord_db, process_liveness
+from .creation_lint import is_descriptive_label
 from coordharness.jobs import sidecar_snapshot, status as jobstatus
 
 _logger = logging.getLogger(__name__)
@@ -617,11 +618,15 @@ _SESSION_GROUP_PREFIX = "agent-session:"
 _SESSION_GROUP_UNOWNED = _SESSION_GROUP_PREFIX + "unowned"
 _SESSION_GROUP_UNOWNED_LABEL = "Unowned"
 
-# (row payload field, agent_sessions field) pairs naming the same identity.
+# Strong identities can join two registrations without any extra assumption.
 _SESSION_IDENTITY_FIELDS = (
     ("owner_session_id", "session_id"),
     ("owner_external_thread_id", "external_thread_id"),
-    ("owner_worktree_id", "worktree_id"),
+)
+_SESSION_WORKTREE_FIELDS = ("owner_worktree_id", "worktree_id")
+_OPAQUE_SESSION_ID_RE = re.compile(
+    r"^(?:[0-9a-f]{12,32}|[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})$",
+    re.I,
 )
 
 
@@ -639,7 +644,7 @@ def _session_identity(actor: Any, value: Any) -> tuple[str, str]:
 
 
 def _session_identities(actor: Any, record: dict[str, Any]) -> list[tuple[str, str]]:
-    """Every identity in ``record`` that may name the same external chat."""
+    """Strong identities in ``record`` that may name the same external chat."""
     out: list[tuple[str, str]] = []
     for fields in _SESSION_IDENTITY_FIELDS:
         for field in fields:
@@ -647,6 +652,17 @@ def _session_identities(actor: Any, record: dict[str, Any]) -> list[tuple[str, s
             if ident[1] and ident not in out:
                 out.append(ident)
     return out
+
+
+def _session_worktree_identity(
+    actor: Any, record: dict[str, Any]
+) -> tuple[str, str] | None:
+    """Return the weak worktree bridge carried by ``record``, if any."""
+    for field in _SESSION_WORKTREE_FIELDS:
+        ident = _session_identity(actor, record.get(field))
+        if ident[1]:
+            return ident
+    return None
 
 
 class _IdentityUnion:
@@ -687,7 +703,27 @@ def _session_group_key(identity: tuple[str, str]) -> str:
     return _SESSION_GROUP_PREFIX + (f"{lane}:{ident}" if lane else ident)
 
 
+def _preferred_session_label(record: dict[str, Any] | None) -> str:
+    """Return a human-authored/descriptive label, never an id-shaped fallback."""
+    if not record:
+        return ""
+    session_id = record.get("session_id")
+    for field in ("human_label", "conversation_title"):
+        text = str(record.get(field) or "").strip()
+        if is_descriptive_label(text, work_id=session_id):
+            return text[:96]
+    return ""
+
+
+def _opaque_session_identity(identity: tuple[str, str]) -> bool:
+    tail = identity[1].rsplit(":", 1)[-1].strip()
+    return bool(_OPAQUE_SESSION_ID_RE.fullmatch(tail))
+
+
 def _session_group_label(identity: tuple[str, str], record: dict[str, Any] | None) -> str:
+    preferred = _preferred_session_label(record)
+    if preferred:
+        return preferred
     if record:
         for field in ("human_label", "conversation_title"):
             text = str(record.get(field) or "").strip()
@@ -706,6 +742,7 @@ def _apply_session_grouping(
     registered: dict[tuple[str, str], dict[str, Any]] = {}
     orchestrators: set[tuple[str, str]] = set()
     has_parent: set[tuple[str, str]] = set()
+    worktree_by_primary: dict[tuple[str, str], tuple[str, str]] = {}
 
     for record in session_records or []:
         actor = record.get("actor")
@@ -724,14 +761,38 @@ def _apply_session_grouping(
         else:
             orchestrators.add(primary)
         registered[primary] = record
+        worktree = _session_worktree_identity(actor, record)
+        if worktree:
+            worktree_by_primary[primary] = worktree
+
+    # A worktree is a weak bridge. It can attach an alias only when all
+    # registered sessions carrying it already resolve to one strong family.
+    # Two root chats can share a linked worktree, so a worktree alone must
+    # never grant either chat the other's group. Claim-family authority is
+    # stricter still and never uses a worktree-only match.
+    roots_by_worktree: dict[tuple[str, str], set[tuple[str, str]]] = {}
+    for primary, worktree in worktree_by_primary.items():
+        roots_by_worktree.setdefault(worktree, set()).add(union.find(primary))
+    unique_worktree_roots = {
+        worktree: next(iter(roots))
+        for worktree, roots in roots_by_worktree.items()
+        if len(roots) == 1
+    }
+    for worktree, root in unique_worktree_roots.items():
+        union.union(worktree, root)
 
     row_identities: list[list[tuple[str, str]]] = []
     for payload in payloads:
         actor = payload.get("owner_session_actor") or payload.get("owner") or ""
         idents = _session_identities(actor, payload)
+        worktree = _session_worktree_identity(actor, payload)
+        if not idents and worktree in unique_worktree_roots:
+            idents = [worktree]
         row_identities.append(idents)
         for ident in idents[1:]:
             union.union(idents[0], ident)
+        if idents and worktree in unique_worktree_roots:
+            union.union(idents[0], unique_worktree_roots[worktree])
 
     families = union.families()
 
@@ -739,11 +800,19 @@ def _apply_session_grouping(
         members = families.get(root) or [root]
         roots = [m for m in members if m in orchestrators]
         if roots:
-            return min(roots)
+            return min(roots, key=_canonical_rank)
         known = [m for m in members if m in registered]
         if known:
-            return min(known)
+            return min(known, key=_canonical_rank)
         return min(members)
+
+    def _canonical_rank(identity: tuple[str, str]) -> tuple[int, int, tuple[str, str]]:
+        record = registered.get(identity)
+        return (
+            0 if _preferred_session_label(record) else 1,
+            1 if _opaque_session_identity(identity) else 0,
+            identity,
+        )
 
     resolved: dict[tuple[str, str], tuple[str, str]] = {}
     for payload, idents in zip(payloads, row_identities):
@@ -801,7 +870,8 @@ def _agent_session_records(conn: sqlite3.Connection) -> list[dict[str, Any]]:
     try:
         cursor = conn.execute(
             "SELECT session_id, actor, parent_session_id, external_thread_id,"
-            " worktree_id, human_label, conversation_title FROM agent_sessions"
+            " worktree_id, human_label, conversation_title, label_source"
+            " FROM agent_sessions"
         )
     except sqlite3.Error:  # pragma: no cover - schema older than this projection
         return []
