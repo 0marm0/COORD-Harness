@@ -162,10 +162,10 @@ def _git_worktree_dirs(cwd: str) -> tuple[str, str] | None:
 def _linked_worktree_id(cwd: str) -> str | None:
     """Git's own identity for a LINKED worktree, or ``None``.
 
-    ``worktree_id`` is a BRIDGE: the projection folds two session ids that
-    carry the same worktree id into one orchestrating chat, and
-    ``related_session_ids`` treats them as one session family for claim
-    authority. So the value has to name something that belongs to ONE chat.
+    ``worktree_id`` is a WEAK DISPLAY BRIDGE: projection may fold an alias into
+    a registered session only when every registration carrying that value has
+    already resolved to one strong chat family. Lifecycle claim authority does
+    not use it; two root chats can share one linked worktree.
 
     Two things follow, and both are deliberate:
 

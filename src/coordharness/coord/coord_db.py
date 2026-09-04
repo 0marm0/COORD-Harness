@@ -266,11 +266,19 @@ def _related_session_ids_unlocked(
     *,
     actor: str | None = None,
 ) -> list[str]:
+    """Return aliases connected by strong chat identity only.
+
+    ``worktree_id`` is deliberately excluded. More than one root chat may run
+    in the same linked worktree, so treating it as claim-family authority lets
+    either chat renew or mutate the other's claim. Projection may use a
+    worktree as a weak, uniqueness-checked display bridge; lifecycle ownership
+    requires the session id/suffix or an exact external thread id.
+    """
     sid = str(session_id or "").strip()
     if not sid:
         return []
     row = conn.execute(
-        "SELECT actor, external_thread_id, worktree_id FROM agent_sessions WHERE session_id=?",
+        "SELECT actor, external_thread_id FROM agent_sessions WHERE session_id=?",
         (sid,),
     ).fetchone()
     actual_actor = str(actor or (row["actor"] if row else "") or "").strip().lower()
@@ -280,8 +288,7 @@ def _related_session_ids_unlocked(
     external_thread_id = str(
         row["external_thread_id"] if row and row["external_thread_id"] else ""
     ).strip()
-    worktree_id = str(row["worktree_id"] if row and row["worktree_id"] else "").strip()
-    if not suffix and not external_thread_id and not worktree_id:
+    if not suffix and not external_thread_id:
         return [sid]
     related: list[str] = []
     candidates = {
@@ -290,14 +297,13 @@ def _related_session_ids_unlocked(
         f"{actual_actor}:{suffix}",
     }
     for session_row in conn.execute(
-        "SELECT session_id, external_thread_id, worktree_id FROM agent_sessions WHERE actor=?",
+        "SELECT session_id, external_thread_id FROM agent_sessions WHERE actor=?",
         (actual_actor,),
     ).fetchall():
         candidate = str(session_row["session_id"] or "").strip()
         candidate_external_thread_id = str(
             session_row["external_thread_id"] or ""
         ).strip()
-        candidate_worktree_id = str(session_row["worktree_id"] or "").strip()
         if (
             candidate in candidates
             or (suffix and candidate.endswith(f":{suffix}"))
@@ -305,7 +311,6 @@ def _related_session_ids_unlocked(
                 external_thread_id
                 and candidate_external_thread_id == external_thread_id
             )
-            or (worktree_id and candidate_worktree_id == worktree_id)
         ):
             related.append(candidate)
     if sid not in related:
