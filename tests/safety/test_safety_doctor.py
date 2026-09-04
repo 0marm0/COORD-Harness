@@ -108,6 +108,48 @@ def test_traversal_pointer_blocks_without_echoing_value(current_harness) -> None
     assert secretish not in json.dumps(report)
 
 
+def test_context_pointer_accepts_an_exact_repo_path_line(current_harness) -> None:
+    project, state, db = current_harness
+    context = project / "docs" / "context.md"
+    context.parent.mkdir(parents=True, exist_ok=True)
+    context.write_text("# Context\n\nSecond line of evidence.\n", encoding="utf-8")
+    conn = connect(db)
+    try:
+        conn.execute(
+            "INSERT INTO work_items(work_id,title,intent_state,context_pack_ref,created_at,updated_at)"
+            " VALUES ('WORK-CONTEXT','portable context','planned','docs/context.md:3',1,1)"
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    valid = _finding(
+        run_doctor(db_path=db, project_root=project, state_root=state, now=2),
+        "doctor.public_paths",
+    )
+    assert "WORK-CONTEXT:context_pack_ref" not in valid["details"][
+        "invalid_pointer_fields"
+    ]
+
+    conn = connect(db)
+    try:
+        conn.execute(
+            "UPDATE work_items SET context_pack_ref='docs/context.md:4'"
+            " WHERE work_id='WORK-CONTEXT'"
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    invalid = _finding(
+        run_doctor(db_path=db, project_root=project, state_root=state, now=2),
+        "doctor.public_paths",
+    )
+    assert invalid["details"]["invalid_pointer_fields"] == [
+        "WORK-CONTEXT:context_pack_ref"
+    ]
+
+
 def test_sidecar_symlink_blocks_before_target_read(current_harness, tmp_path: Path) -> None:
     project, state, db = current_harness
     external = tmp_path / "outside.json"
