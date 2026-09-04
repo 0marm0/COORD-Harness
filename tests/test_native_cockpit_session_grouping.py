@@ -54,6 +54,7 @@ def _session(
     worktree_id: str = "",
     label: str = "",
     title: str = "",
+    label_source: str = "",
 ) -> dict[str, Any]:
     return {
         "session_id": session_id,
@@ -63,6 +64,7 @@ def _session(
         "worktree_id": worktree_id,
         "human_label": label,
         "conversation_title": title,
+        "label_source": label_source,
     }
 
 
@@ -209,7 +211,35 @@ def test_one_chat_under_two_identities_is_one_group() -> None:
     assert model[0]["label"] == "Chat one"
 
 
-def test_worktree_id_also_bridges_two_identities() -> None:
+def test_authored_label_beats_a_raw_uuid_alias() -> None:
+    raw_uuid = "8960a254-6cd7-442d-91ad-0cb2050f0f3c"
+    sessions = [
+        _session(
+            f"claude:{raw_uuid}",
+            thread_id=raw_uuid,
+            label="Claude 0cb2050f0f3c",
+            label_source="inferred",
+        ),
+        _session(
+            "claude:session-contracts",
+            thread_id=raw_uuid,
+            label="Coord session contracts",
+            label_source="env",
+        ),
+    ]
+    payloads = [
+        _payload("W-1", session_id=f"claude:{raw_uuid}", thread_id=raw_uuid),
+        _payload("W-2", session_id="claude:session-contracts", thread_id=raw_uuid),
+    ]
+
+    native_cockpit._apply_session_grouping(payloads, sessions)
+
+    assert len(set(_keys(payloads))) == 1
+    assert _keys(payloads)[0].endswith(":session-contracts")
+    assert {p["session_group_label"] for p in payloads} == {"Coord session contracts"}
+
+
+def test_shared_worktree_does_not_merge_two_root_chats() -> None:
     sessions = [
         _session("codex:one", actor="codex", worktree_id="wt-7"),
         _session("codex:two", actor="codex", worktree_id="wt-7"),
@@ -221,7 +251,58 @@ def test_worktree_id_also_bridges_two_identities() -> None:
 
     native_cockpit._apply_session_grouping(payloads, sessions)
 
+    assert len(set(_keys(payloads))) == 2
+
+
+def test_shared_worktree_never_grants_claim_family_authority(seeded_db: Path) -> None:
+    conn = connect(seeded_db)
+    try:
+        coord_db.register_session(
+            conn, "claude:one", "claude", worktree_id="wt-shared"
+        )
+        coord_db.register_session(
+            conn, "claude:two", "claude", worktree_id="wt-shared"
+        )
+        claim_id = coord_db.claim_work(
+            conn, "claude:one", "GROUPING-EPIC-A", step="first chat working"
+        )
+
+        assert coord_db.related_session_ids(
+            conn, "claude:two", actor="claude"
+        ) == ["claude:two"]
+        assert coord_db.held_claim_id_for_session_family(
+            conn,
+            "GROUPING-EPIC-A",
+            session_id="claude:two",
+            actor="claude",
+        ) is None
+        assert coord_db.held_claim_id_for_session_family(
+            conn,
+            "GROUPING-EPIC-A",
+            session_id="claude:one",
+            actor="claude",
+        ) == claim_id
+    finally:
+        conn.close()
+
+
+def test_unique_registered_worktree_can_bridge_an_unregistered_alias() -> None:
+    sessions = [
+        _session("codex:canonical", actor="codex", worktree_id="wt-unique"),
+    ]
+    payloads = [
+        _payload(
+            "W-1", actor="codex", session_id="codex:canonical", worktree_id="wt-unique"
+        ),
+        _payload(
+            "W-2", actor="codex", session_id="codex:alias", worktree_id="wt-unique"
+        ),
+    ]
+
+    native_cockpit._apply_session_grouping(payloads, sessions)
+
     assert len(set(_keys(payloads))) == 1
+    assert _keys(payloads)[0].endswith(":canonical")
 
 
 def test_bare_and_lane_namespaced_ids_are_the_same_chat() -> None:
