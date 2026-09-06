@@ -1619,7 +1619,7 @@ final class UsageDashboardTests: XCTestCase {
         // "Tokens" became "Tokens today" and moved ahead of the cost: a bare
         // label carrying today's figure here and a lifetime envelope
         // elsewhere is how one number reads as two.
-        let visibleLabelOrder = ["Total Tokens Costs", "Today cost", "Tokens today", "Retained cost", "Daily cost"]
+        let visibleLabelOrder = ["Total Tokens Costs", "Today cost", "Quota tokens today", "Retained cost", "Priceable today", "Unpriced / overlap", "Daily cost"]
         let denseRouteStart = try XCTUnwrap(coordContent.range(of: "private struct UsageDenseRoute: View"))
         let denseRouteEnd = try XCTUnwrap(coordContent.range(of: "private struct UsageDailyTrendOverview", range: denseRouteStart.upperBound..<coordContent.endIndex))
         let denseRouteSource = String(coordContent[denseRouteStart.lowerBound..<denseRouteEnd.lowerBound])
