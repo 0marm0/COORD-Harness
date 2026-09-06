@@ -256,7 +256,7 @@ def test_a_configured_third_lane_receives_a_typed_handoff(project: Path) -> None
             "--expected-version", str(work["version"]),
             "--expected-assignee", "codex",
             "--ref", "docs/reports/derivation.md",
-            "--constraint", "keep the served number bound to served_truth",
+            "--constraint", "keep the served number bound to its registry",
             session="codex:author",
         )
     )
