@@ -3,7 +3,7 @@
 `panel_quorum.py` was written, documented and covered by thirty tests, and its
 own docstring said `NOT WIRED: nothing here is called by the close gate`. The
 single-verdict contract meant no row could ask for a second opinion — the one
-thing a two-agent harness exists to make possible.
+thing a harness with two agents exists to make possible.
 
 These tests are the wiring, asserted end to end through `completion_review_state`.
 """

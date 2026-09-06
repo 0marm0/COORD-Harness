@@ -18,7 +18,7 @@ records a concrete not-applicable reason.
   has room. Smaller displays keep a working scroll fallback.
 - Attached and detached usage windows use the same content geometry. Resizing only
   a glass/background view while leaving the host window fixed is a failure.
-- Public fixtures are synthetic or privacy-redacted. No litigation-product names,
+- Public fixtures are synthetic or privacy-redacted. No sibling-product names,
   paths, board rows, prompts, or private data may enter COORD.
 
 ## Acceptance gate

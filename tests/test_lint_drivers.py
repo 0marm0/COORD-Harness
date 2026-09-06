@@ -123,7 +123,7 @@ def test_an_unmeasured_guard_is_named_only_while_the_plugin_is_loaded(tmp_path):
     probe.write_text(
         "from coordharness.testing.verified_artifact_skip import skip_unmeasured\n"
         "\n\ndef test_probe():\n"
-        "    skip_unmeasured(guard_id='n0902-probe', reason='synthesized poison',\n"
+        "    skip_unmeasured(guard_id='lint-probe', reason='synthesized poison',\n"
         "                    artifact='/nonexistent/probe.json')\n"
     )
     common = [sys.executable, "-m", "pytest", "-q", "-p", "no:randomly", str(probe)]
@@ -131,8 +131,8 @@ def test_an_unmeasured_guard_is_named_only_while_the_plugin_is_loaded(tmp_path):
                                  capture_output=True, text=True, timeout=180)
     without = subprocess.run(common + ["-p", f"no:{PLUGIN}"], cwd=REPO,
                              capture_output=True, text=True, timeout=180)
-    assert "UNMEASURED guard=n0902-probe" in with_plugin.stdout
-    assert "UNMEASURED guard=n0902-probe" not in without.stdout
+    assert "UNMEASURED guard=lint-probe" in with_plugin.stdout
+    assert "UNMEASURED guard=lint-probe" not in without.stdout
     assert "1 skipped" in without.stdout, (
         "the ablated run still passes -- a skipped guard reads as green, which "
         "is the whole failure mode"
