@@ -1,6 +1,5 @@
 # Authored COORD group labels and shared-worktree containment
 
-**Work:** `N0902-CDX-COORD-GROUP-LABEL-IDENTITY-R1` (T1)
 **Repository:** `COORD-Harness`
 **Starting commit:** `6d0a14ae1ae72f99fc662527778eef4af4997e00`
 
@@ -69,6 +68,6 @@ currently installed binary.
 - `src/coordharness/safety/doctor.py`
 - `tests/test_native_cockpit_session_grouping.py`
 - `tests/safety/test_safety_doctor.py`
-- `reports/N0902-CDX-COORD-GROUP-LABEL-IDENTITY-R1.md`
+- `reports/coord-group-label-identity.md`
 
 No network publication occurred.

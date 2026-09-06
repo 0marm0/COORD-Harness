@@ -118,7 +118,7 @@ class _Response:
     [
         "https://127.0.0.1:7870/api/usage/v1",
         "http://example.com/api/usage/v1",
-        "http://10.0.0.1/api/usage/v1",
+        "http://proxy.invalid/api/usage/v1",
         "http://user:synthetic-password@127.0.0.1/api/usage/v1",
         "http://127.0.0.1:99999/api/usage/v1",
         "http://127.0.0.1/api/usage/v1#secret",
