@@ -441,7 +441,7 @@ private enum UsageDenseRouteLayout {
     static let horizontalProviderMinimumWidth: CGFloat = 620
     static let totalCornerRadius: CGFloat = 9
     static let totalBackgroundOpacity: CGFloat = 0.045
-    static let visibleLabelOrder = ["Total Tokens Costs", "Claude", "Codex", "Today cost", "Tokens today", "Retained cost", "Daily cost"]
+    static let visibleLabelOrder = ["Total Tokens Costs", "Claude", "Codex", "Today cost", "Quota tokens today", "Retained cost", "Priceable today", "Unpriced / overlap", "Daily cost"]
 
     static let claudeTint = Color(red: 0.95, green: 0.47, blue: 0.24)
     static let codexTint = Color(red: 0.66, green: 0.42, blue: 1.00)
@@ -645,6 +645,15 @@ private struct UsageDenseProviderSection: View {
     private var quotas: [(String, UsageQuotaWindow?)] {
         [("Session", summary.session), ("Weekly", summary.weekly), ("Fable", summary.fable)]
     }
+    private var quotaTodayTokens: Int64? {
+        card.provider.history?.providerReportedAccount?.todayTotalTokens ?? summary.todayTokens
+    }
+    private var priceableTodayTokens: Int64? { summary.todayTokens }
+    private var unpricedOrOverlapTodayTokens: Int64? {
+        guard let quota = card.provider.history?.providerReportedAccount?.todayTotalTokens,
+              let priceable = summary.todayTokens else { return nil }
+        return abs(quota - priceable)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: providerContentSpacing) {
@@ -709,8 +718,14 @@ private struct UsageDenseProviderSection: View {
                 // shows a cumulative figure elsewhere: the label would carry
                 // today's number on one surface and a lifetime envelope on
                 // another. This one is today's, so it says so.
-                UsageDenseMetric(label: "Tokens today", value: UsageFormat.tokens(summary.todayTokens))
+                UsageDenseMetric(label: card.provider.history?.providerReportedAccount?.todayTotalTokens == nil ? "Tokens today" : "Quota tokens today", value: UsageFormat.tokens(quotaTodayTokens))
                 UsageDenseMetric(label: "Retained cost", value: UsageDashboardCostFormat.display(summary.retainedUSDEstimateNanos))
+            }
+            if unpricedOrOverlapTodayTokens != nil {
+                HStack(spacing: metricSpacing) {
+                    UsageDenseMetric(label: "Priceable today", value: UsageFormat.tokens(priceableTodayTokens))
+                    UsageDenseMetric(label: "Unpriced / overlap", value: UsageFormat.tokens(unpricedOrOverlapTodayTokens))
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
