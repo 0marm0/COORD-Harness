@@ -277,13 +277,15 @@ final class NativeDetailPolishTests: XCTestCase {
             "LocalEnergyMode.allCases",
             #"identifier = NSUserInterfaceItemIdentifier("coord.stats.energy-mode."#,
             "contentTintColor = selected ? .white : Tokens.Color.lightGray.withAlphaComponent(0.32)",
-            "private let backgroundGlass = NSVisualEffectView()",
-            "backgroundGlass.material = .hudWindow",
-            "backgroundGlass.blendingMode = .behindWindow",
-            "calibratedRed: 0.018, green: 0.021, blue: 0.026, alpha: 0.92",
         ] {
             XCTAssertTrue(premium.contains(token), "COORD compact Stats lost \(token)")
         }
+        XCTAssertFalse(premium.contains("private let backgroundGlass = NSVisualEffectView()"))
+        XCTAssertFalse(premium.contains("backgroundGlass.material = .hudWindow"))
+        XCTAssertFalse(premium.contains("calibratedRed: 0.018, green: 0.021, blue: 0.026, alpha: 0.92"))
+        XCTAssertTrue(premium.contains("config.glassAlpha"))
+        XCTAssertTrue(premium.contains("NSColor(calibratedWhite: 0, alpha: glassAlpha)"))
+        XCTAssertTrue(routing.contains("popover.appearance = NSAppearance(named: .vibrantDark)"))
 
         let coordStart = try XCTUnwrap(premium.range(of: "private func rebuild()"))
         let coordEnd = try XCTUnwrap(premium.range(of: "private var cpuFacts:", range: coordStart.upperBound..<premium.endIndex))
