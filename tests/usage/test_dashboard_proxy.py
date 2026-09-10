@@ -162,6 +162,21 @@ def test_fresh_payload_is_semantically_preserved_and_request_has_no_credentials(
     assert not any(name.lower() in {"authorization", "cookie"} for name in seen["headers"])
 
 
+def test_unavailable_live_observation_state_preserves_provider_document() -> None:
+    payload = _payload()
+    payload["providers"]["claude"]["live_observation_state"] = "unavailable"
+    payload["providers"]["claude"]["windows"] = []
+    payload["providers"]["claude"]["quota_groups"] = []
+
+    actual = UsageDashboardProxy(
+        url=LOOPBACK_URL,
+        opener=lambda _request, _timeout: _Response(json.dumps(payload).encode("utf-8")),
+    ).get()
+
+    assert set(actual["providers"]) == {"claude"}
+    assert actual["providers"]["claude"]["live_observation_state"] == "unavailable"
+
+
 def test_unknown_live_observation_state_fails_closed() -> None:
     payload = _payload()
     payload["providers"]["claude"]["live_observation_state"] = "private_debug_state"

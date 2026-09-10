@@ -47,6 +47,7 @@ _LIVE_OBSERVATION_STATES = frozenset(
         "stale_last_good_no_current_windows",
         "quota_observation_expired",
         "quota_observation_unavailable",
+        "unavailable",
     }
 )
 _SAFE_TOKEN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,79}$")
