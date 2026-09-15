@@ -942,6 +942,11 @@ def _commit_metadata_fields(
 #: attribution allowance below.
 _ATTRIBUTED_NAME_FIELDS = frozenset({"author name", "committer name"})
 
+#: The commit-header fields that carry a mailbox. Only these are eligible for the
+#: approved-email allowance; a trailer block, a message body and file content
+#: never are.
+_ATTRIBUTED_EMAIL_FIELDS = frozenset({"author email", "committer email"})
+
 
 def _scan_history_field(
     text: str,
@@ -953,6 +958,7 @@ def _scan_history_field(
     *,
     neutral_noreply: bool,
     approved_identities: Sequence[str] = (),
+    approved_emails: Sequence[str] = (),
 ) -> None:
     identity = f"history commit {commit} {field_name}"
     # A repository published under a person's own name has to carry that name in
@@ -970,7 +976,15 @@ def _scan_history_field(
     approved_name = (
         field_name in _ATTRIBUTED_NAME_FIELDS and text.strip() in tuple(approved_identities)
     )
-    if not approved_name:
+    # The mailbox half of the same declaration, held to the same shape: the WHOLE
+    # author or committer email field must equal a declared address, compared
+    # case-insensitively because mail domains are. A different address at the same
+    # domain, a declared address inside a trailer block or message body, and the
+    # same address in file content all remain findings.
+    approved_email = field_name in _ATTRIBUTED_EMAIL_FIELDS and text.strip().casefold() in {
+        email.casefold() for email in approved_emails
+    }
+    if not (approved_name or approved_email):
         for pattern, reason in forbidden:
             matches = list(pattern.finditer(text))
             if neutral_noreply and reason == "email address":
@@ -1030,6 +1044,7 @@ def check_history(
     extra_excluded: set[str],
     selected_commit: str | None = None,
     approved_identities: Sequence[str] = (),
+    approved_emails: Sequence[str] = (),
 ) -> None:
     if selected_commit is None:
         selected_commit = _resolve_commit_ref(root, ref)
@@ -1058,6 +1073,7 @@ def check_history(
                     report,
                     neutral_noreply=neutral_noreply,
                     approved_identities=approved_identities,
+                    approved_emails=approved_emails,
                 )
         tree = _git(root, ["ls-tree", "-r", "-z", "--full-tree", commit])
         if tree.returncode:
@@ -1136,10 +1152,12 @@ def run(
         vocabulary = port.load_vocabulary(vocabulary_path) if vocabulary_path else {}
         renames, forbidden = port.compile_vocabulary(vocabulary)
         approved_identities = port.compile_approved_identities(vocabulary)
+        approved_emails = port.compile_approved_emails(vocabulary)
     except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError, re.error) as exc:
         report.patterns.append(f"vocabulary: invalid ({type(exc).__name__})")
         renames, forbidden = port.compile_vocabulary({})
         approved_identities = ()
+        approved_emails = ()
     check_shape(entries, blobs, report)
     check_coverage(entries, blobs, manifest, authored, report)
     if source_manifest_path and (
@@ -1186,6 +1204,7 @@ def run(
             extra_excluded=excluded,
             selected_commit=selected_commit,
             approved_identities=approved_identities,
+            approved_emails=approved_emails,
         )
     return report
 
