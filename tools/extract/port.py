@@ -123,6 +123,30 @@ def compile_approved_identities(vocabulary: dict) -> tuple[str, ...]:
     return tuple(identities)
 
 
+_APPROVED_EMAIL_SHAPE = re.compile(r"[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+\Z")
+
+
+def compile_approved_emails(vocabulary: dict) -> tuple[str, ...]:
+    """The exact mailboxes the operator has declared as public attribution.
+
+    The counterpart of `compile_approved_identities` for the author and committer
+    EMAIL fields. Entries are exact addresses, never patterns, for the same reason:
+    a pattern would let a different mailbox at the same domain through. A malformed
+    list or an entry that is not one complete address raises, so a typo is a
+    refusal the caller reports rather than an allowance that silently widened or
+    vanished.
+    """
+    value = vocabulary.get("approved_emails", [])
+    if not isinstance(value, list):
+        raise ValueError("approved_emails must be a list of strings")
+    emails: list[str] = []
+    for item in value:
+        if not isinstance(item, str) or not _APPROVED_EMAIL_SHAPE.fullmatch(item.strip()):
+            raise ValueError("each approved email must be one complete address")
+        emails.append(item.strip())
+    return tuple(emails)
+
+
 RENAMES, FORBIDDEN = compile_vocabulary({})
 
 # The vocabulary is not committed, so it is found by convention or named
