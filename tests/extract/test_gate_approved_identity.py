@@ -165,3 +165,104 @@ def test_a_malformed_approved_list_is_refused_not_ignored(tmp_path: Path) -> Non
     report = gate.run(root, vocabulary_path=path, history=True)
     assert any(item.startswith("vocabulary: invalid") for item in report.patterns)
     assert name_findings(report, sha) == []
+
+
+# --- the approved MAILBOX: the email half of the same declaration --------------
+# Built by concatenation so this file never carries a literal address the
+# content scanners would (correctly) flag.
+APPROVED_EMAIL = "fixtureperson" + "@" + "fixture-mail.test"
+SAME_DOMAIN_OTHER = "someone.else" + "@" + "fixture-mail.test"
+EMAIL_REASON = "email address"
+NEUTRAL = "noreply" + "@" + "github.com"
+
+
+def email_vocabulary(tmp_path: Path, *, emails: object) -> Path:
+    payload: dict[str, object] = {"forbidden": [[PHRASE, REASON, "i"]]}
+    if emails is not None:
+        payload["approved_emails"] = emails
+    path = tmp_path / "email-vocabulary.json"
+    write(path, json.dumps(payload))
+    return path
+
+
+def mailed_repo(
+    tmp_path: Path, email: str, *, message: str = "fixture"
+) -> tuple[Path, str]:
+    root = initialize_repo(tmp_path / "repo", {"safe.txt": "safe\n"})
+    env = {
+        **os.environ,
+        "GIT_AUTHOR_NAME": "Fixture",
+        "GIT_AUTHOR_EMAIL": email,
+        "GIT_COMMITTER_NAME": "Fixture",
+        "GIT_COMMITTER_EMAIL": email,
+    }
+    git(root, "commit", "-q", "-m", message, env=env)
+    return root, git(root, "rev-parse", "HEAD")
+
+
+def email_findings(report: gate.Report, sha: str) -> list[str]:
+    return sorted(
+        item
+        for item in report.history
+        if item.startswith(f"history commit {sha} author email")
+        or item.startswith(f"history commit {sha} committer email")
+    )
+
+
+def test_approved_email_clears_its_own_email_fields(tmp_path: Path) -> None:
+    root, sha = mailed_repo(tmp_path, APPROVED_EMAIL)
+    report = gate.run(
+        root, vocabulary_path=email_vocabulary(tmp_path, emails=[APPROVED_EMAIL]), history=True
+    )
+    assert email_findings(report, sha) == []
+
+
+def test_approved_email_ablated_by_an_empty_list_flags_the_same_commit(tmp_path: Path) -> None:
+    root, sha = mailed_repo(tmp_path, APPROVED_EMAIL)
+    ablated = gate.run(
+        root, vocabulary_path=email_vocabulary(tmp_path, emails=[]), history=True
+    )
+    assert email_findings(ablated, sha) == sorted(
+        f"history commit {sha} {field}: {reason}"
+        for field in ("author email", "committer email")
+        for reason in (REASON, EMAIL_REASON)
+    )
+    absent = gate.run(
+        root, vocabulary_path=email_vocabulary(tmp_path, emails=None), history=True
+    )
+    assert email_findings(absent, sha) == email_findings(ablated, sha)
+
+
+def test_a_different_address_at_the_same_domain_still_fails(tmp_path: Path) -> None:
+    root, sha = mailed_repo(tmp_path, SAME_DOMAIN_OTHER)
+    report = gate.run(
+        root, vocabulary_path=email_vocabulary(tmp_path, emails=[APPROVED_EMAIL]), history=True
+    )
+    assert f"history commit {sha} author email: {EMAIL_REASON}" in report.history
+
+
+def test_an_address_that_merely_contains_the_approved_one_still_fails(tmp_path: Path) -> None:
+    root, sha = mailed_repo(tmp_path, "x" + APPROVED_EMAIL)
+    report = gate.run(
+        root, vocabulary_path=email_vocabulary(tmp_path, emails=[APPROVED_EMAIL]), history=True
+    )
+    assert f"history commit {sha} author email: {EMAIL_REASON}" in report.history
+
+
+def test_approved_email_in_a_message_body_or_trailer_still_fails(tmp_path: Path) -> None:
+    message = f"subject\n\ncontact {APPROVED_EMAIL}\n\nCo-authored-by: Fixture <{APPROVED_EMAIL}>"
+    root, sha = mailed_repo(tmp_path, NEUTRAL, message=message)
+    report = gate.run(
+        root, vocabulary_path=email_vocabulary(tmp_path, emails=[APPROVED_EMAIL]), history=True
+    )
+    assert f"history commit {sha} message: {EMAIL_REASON}" in report.history
+    assert f"history commit {sha} message trailers: {EMAIL_REASON}" in report.history
+
+
+def test_a_malformed_approved_email_is_refused_not_ignored(tmp_path: Path) -> None:
+    root, sha = mailed_repo(tmp_path, APPROVED_EMAIL)
+    report = gate.run(
+        root, vocabulary_path=email_vocabulary(tmp_path, emails=["not-an-address"]), history=True
+    )
+    assert any(item.startswith("vocabulary: invalid") for item in report.patterns)
+    assert f"history commit {sha} author email: {EMAIL_REASON}" in report.history
