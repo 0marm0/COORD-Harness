@@ -155,6 +155,62 @@ struct UsageServiceError: Codable, Equatable, Identifiable, Sendable {
     var displayLabel: String { UsagePresentationText.errorLabel(code) }
 }
 
+struct UsageClaudeAccountProfile: Codable, Equatable, Identifiable, Sendable {
+    let id: String
+    let label: String
+    let active: Bool
+    let isolated: Bool
+    let account: UsageAccount?
+    let windows: [UsageQuotaWindow]
+    let quotaGroups: [UsageQuotaGroup]
+    let resetCredits: [UsageResetCredit]
+    let errors: [UsageServiceError]
+    let liveObservedAt: Date?
+    let liveObservationState: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id, label, active, isolated, account, windows, errors
+        case quotaGroups = "quota_groups"
+        case resetCredits = "reset_credits"
+        case liveObservedAt = "live_observed_at"
+        case liveObservationState = "live_observation_state"
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = try values.decode(String.self, forKey: .id)
+        label = try values.decode(String.self, forKey: .label)
+        active = try values.decodeIfPresent(Bool.self, forKey: .active) ?? false
+        isolated = try values.decodeIfPresent(Bool.self, forKey: .isolated) ?? false
+        account = try values.decodeIfPresent(UsageAccount.self, forKey: .account)
+        windows = Array((try values.decodeIfPresent([UsageQuotaWindow].self, forKey: .windows) ?? []).prefix(32))
+        quotaGroups = Array((try values.decodeIfPresent([UsageQuotaGroup].self, forKey: .quotaGroups) ?? []).prefix(16))
+        resetCredits = try values.decodeIfPresent([UsageResetCredit].self, forKey: .resetCredits) ?? []
+        errors = try values.decodeIfPresent([UsageServiceError].self, forKey: .errors) ?? []
+        liveObservedAt = try values.decodeIfPresent(Date.self, forKey: .liveObservedAt)
+        liveObservationState = try values.decodeIfPresent(String.self, forKey: .liveObservationState)
+    }
+
+    var effectiveQuotaGroups: [UsageQuotaGroup] {
+        guard quotaGroups.isEmpty else { return quotaGroups }
+        guard !windows.isEmpty else { return [] }
+        return [UsageQuotaGroup(
+            key: "legacy-account-windows",
+            label: "Account quota",
+            semantics: "legacy_windows_fallback",
+            windows: windows,
+            runout: nil
+        )]
+    }
+
+    var hasStaleQuotaObservation: Bool {
+        [
+            "stale", "stale_last_good", "stale_last_good_no_current_windows",
+            "quota_observation_expired", "quota_observation_unavailable", "unavailable",
+        ].contains(liveObservationState?.lowercased() ?? "")
+    }
+}
+
 struct UsageProvider: Codable, Equatable, Sendable {
     let source: UsageSource?
     let quotaSource: UsageQuotaSource?
@@ -170,6 +226,7 @@ struct UsageProvider: Codable, Equatable, Sendable {
     let errors: [UsageServiceError]
     let liveObservedAt: Date?
     let liveObservationState: String?
+    let accountProfiles: [UsageClaudeAccountProfile]
 
     enum CodingKeys: String, CodingKey {
         case source, account, windows, runout, history, costs, breakdowns, errors
@@ -179,6 +236,7 @@ struct UsageProvider: Codable, Equatable, Sendable {
         case activeSessions = "active_sessions"
         case liveObservedAt = "live_observed_at"
         case liveObservationState = "live_observation_state"
+        case accountProfiles = "account_profiles"
     }
 
     init(from decoder: Decoder) throws {
@@ -197,6 +255,7 @@ struct UsageProvider: Codable, Equatable, Sendable {
         errors = try values.decodeIfPresent([UsageServiceError].self, forKey: .errors) ?? []
         liveObservedAt = try values.decodeIfPresent(Date.self, forKey: .liveObservedAt)
         liveObservationState = try values.decodeIfPresent(String.self, forKey: .liveObservationState)
+        accountProfiles = Array((try values.decodeIfPresent([UsageClaudeAccountProfile].self, forKey: .accountProfiles) ?? []).prefix(12))
     }
 
     init(
@@ -213,7 +272,8 @@ struct UsageProvider: Codable, Equatable, Sendable {
         breakdowns: UsageBreakdowns?,
         errors: [UsageServiceError],
         liveObservedAt: Date?,
-        liveObservationState: String?
+        liveObservationState: String?,
+        accountProfiles: [UsageClaudeAccountProfile]
     ) {
         self.source = source
         self.quotaSource = quotaSource
@@ -229,6 +289,7 @@ struct UsageProvider: Codable, Equatable, Sendable {
         self.errors = errors
         self.liveObservedAt = liveObservedAt
         self.liveObservationState = liveObservationState
+        self.accountProfiles = accountProfiles
     }
 }
 
@@ -238,6 +299,7 @@ extension UsageProvider {
             "stale", "stale_last_good", "stale_last_good_no_current_windows",
             "quota_observation_expired", "quota_observation_unavailable",
         ].contains(liveObservationState?.lowercased() ?? "")
+            || accountProfiles.contains(where: \.hasStaleQuotaObservation)
     }
 
     var hasMeaningfulUsageData: Bool {
@@ -251,6 +313,7 @@ extension UsageProvider {
             || activeSessions != nil
             || breakdowns != nil
             || liveObservedAt != nil
+            || !accountProfiles.isEmpty
     }
 }
 
@@ -310,7 +373,8 @@ extension UsageIntelligenceSnapshot {
             breakdowns: current.breakdowns,
             errors: providerErrors,
             liveObservedAt: current.liveObservedAt,
-            liveObservationState: "stale_last_good_no_current_windows"
+            liveObservationState: "stale_last_good_no_current_windows",
+            accountProfiles: current.accountProfiles
         )
         var providers = providers
         providers["claude"] = retained
@@ -331,7 +395,11 @@ extension UsageIntelligenceSnapshot {
 
 private extension UsageProvider {
     var hasQuotaWindows: Bool {
-        !windows.isEmpty || quotaGroups.contains { !$0.windows.isEmpty }
+        !windows.isEmpty
+            || quotaGroups.contains { !$0.windows.isEmpty }
+            || accountProfiles.contains { profile in
+                !profile.windows.isEmpty || profile.quotaGroups.contains { !$0.windows.isEmpty }
+            }
     }
 
     var explicitlyClearsQuota: Bool {
@@ -1349,6 +1417,19 @@ struct UsageCompactProviderSummary: Equatable, Identifiable, Sendable {
         UsageProviderCardState.cards(from: snapshot).map(summary)
     }
 
+    static func displaySummaries(from snapshot: UsageIntelligenceSnapshot?) -> [Self] {
+        UsageProviderCardState.cards(from: snapshot).flatMap(summaries)
+    }
+
+    static func summaries(for card: UsageProviderCardState) -> [Self] {
+        guard card.id.lowercased() == "claude", !card.provider.accountProfiles.isEmpty else {
+            return [summary(for: card)]
+        }
+        return card.provider.accountProfiles.enumerated().map { index, profile in
+            summary(profile: profile, provider: card.provider, includesProviderMetrics: index == 0)
+        }
+    }
+
     static func summary(for card: UsageProviderCardState) -> Self {
         let provider = card.provider
         let connection = connectionPresentation(provider)
@@ -1369,6 +1450,49 @@ struct UsageCompactProviderSummary: Equatable, Identifiable, Sendable {
             fable: fableGroup?.windows.first,
             todayTokens: provider.history?.todayTotalTokens,
             retainedUSDEstimateNanos: retainedUSD
+        )
+    }
+
+    private static func summary(
+        profile: UsageClaudeAccountProfile,
+        provider: UsageProvider,
+        includesProviderMetrics: Bool
+    ) -> Self {
+        let groups = profile.effectiveQuotaGroups
+        let group = groups.first { candidate in
+            let identity = "\(candidate.key ?? "") \(candidate.safeLabel)".lowercased()
+            return identity.contains("account")
+        } ?? groups.first { candidate in
+            candidate.windows.contains { $0.kind?.lowercased() == "session" }
+        } ?? groups.first
+        let fableGroup = groups.first(where: isFableGroup)
+        let windows = group.map { isFableGroup($0) ? [] : $0.windows } ?? profile.windows
+        let accountStatus = (profile.account?.status ?? "").lowercased()
+        let connected = profile.account?.authenticated == true || accountStatus == "active" || accountStatus == "authenticated"
+        let disconnected = profile.account?.authenticated == false
+            || ["inactive", "signed_out", "sign_in_required", "unauthenticated"].contains(accountStatus)
+        let observation = profile.liveObservationState?.lowercased() ?? ""
+        let observationUnavailable = ["unavailable", "quota_observation_unavailable"].contains(observation)
+        let observationStale = !observation.isEmpty && observation != "fresh" && !observationUnavailable
+        let connectionLabel = disconnected
+            ? "Sign-in needed"
+            : observationUnavailable || !profile.errors.isEmpty ? "Quota unavailable"
+            : observationStale ? "Stale"
+            : connected ? "Connected" : "Connection unavailable"
+        let estimate = provider.costs?.apiRateEstimate
+        let retainedUSD = estimate?.byCurrency?["USD"]
+            ?? (estimate?.currency?.uppercased() == "USD" ? estimate?.amountNanos : nil)
+        return Self(
+            id: "claude:\(profile.id)",
+            displayName: profile.label,
+            connectionLabel: connectionLabel,
+            connected: connectionLabel == "Connected" ? true : disconnected ? false : nil,
+            quotaGroupLabel: group?.safeLabel,
+            session: windows.first { $0.kind?.lowercased() == "session" },
+            weekly: windows.first { $0.kind?.lowercased() == "weekly" },
+            fable: fableGroup?.windows.first,
+            todayTokens: includesProviderMetrics ? provider.history?.todayTotalTokens : nil,
+            retainedUSDEstimateNanos: includesProviderMetrics ? retainedUSD : nil
         )
     }
 
@@ -1818,15 +1942,21 @@ struct UsagePopoverPeekPresentation: Equatable, Sendable {
         showRunoutETA: Bool = true,
         showUsed: Bool = false
     ) -> Self {
-        let summaries = Dictionary(
-            uniqueKeysWithValues: UsageCompactProviderSummary.summaries(from: state.snapshot)
-                .map { ($0.id.lowercased(), $0) }
-        )
-        let providers = ["claude", "codex"].map { identity -> UsagePopoverPeekProvider in
-            guard let summary = summaries[identity] else {
+        let expanded = UsageCompactProviderSummary.displaySummaries(from: state.snapshot)
+        let entries: [(String, UsageCompactProviderSummary?)] = ["claude", "codex"].flatMap { identity in
+            let matches = expanded.filter {
+                let candidate = $0.id.lowercased()
+                return candidate == identity || candidate.hasPrefix("\(identity):")
+            }
+            return matches.isEmpty
+                ? [(identity, nil)]
+                : matches.map { ($0.id, Optional($0)) }
+        }
+        let providers = entries.map { outputID, summary -> UsagePopoverPeekProvider in
+            guard let summary else {
                 return UsagePopoverPeekProvider(
-                    id: identity,
-                    displayName: identity.capitalized,
+                    id: outputID,
+                    displayName: outputID.capitalized,
                     connectionLabel: "Unavailable",
                     connected: nil,
                     hasSession: false,
@@ -1843,7 +1973,7 @@ struct UsagePopoverPeekPresentation: Equatable, Sendable {
                 )
             }
             return UsagePopoverPeekProvider(
-                id: identity,
+                id: summary.id,
                 displayName: summary.displayName,
                 connectionLabel: summary.connectionLabel,
                 connected: summary.connected,

@@ -46,6 +46,58 @@ final class UsageDashboardTests: XCTestCase {
         XCTAssertEqual(Set(codex.quotaGroups.map(\.id)).count, 2)
     }
 
+    func testClaudeAccountProfilesDecodeAndDriveDistinctCompactRows() throws {
+        let snapshot = try decoder().decode(UsageIntelligenceSnapshot.self, from: Data(#"""
+        {
+          "schema":"coordharness.usage-intelligence.v1",
+          "providers":{
+            "claude":{
+              "account":{"status":"active","plan":"max","authenticated":true},
+              "account_profiles":[
+                {"id":"default","label":"Personal Max","active":false,"isolated":false,"account":{"status":"active","plan":"max","authenticated":true},"quota_groups":[{"key":"account","label":"Account quota","windows":[{"kind":"session","remaining_percent":73},{"kind":"weekly","remaining_percent":29}]}]},
+                {"id":"p_0123456789ab","label":"Team","active":true,"isolated":true,"account":{"status":"active","plan":"team","authenticated":true},"quota_groups":[{"key":"account","label":"Account quota","windows":[{"kind":"session","remaining_percent":44},{"kind":"weekly","remaining_percent":81}]},{"key":"fable","label":"Fable only","windows":[{"kind":"weekly","remaining_percent":55}]}],"live_observation_state":"stale_last_good"}
+              ],
+              "costs":{"api_rate_estimate":{"amount_nanos":2500000000,"currency":"USD"}}
+            },
+            "codex":{"quota_groups":[{"key":"account","windows":[{"kind":"weekly","remaining_percent":62}]}]}
+          }
+        }
+        """#.utf8))
+
+        let claude = try XCTUnwrap(snapshot.providers["claude"])
+        XCTAssertEqual(claude.accountProfiles.map(\.label), ["Personal Max", "Team"])
+        XCTAssertEqual(claude.accountProfiles[0].effectiveQuotaGroups[0].windows.map(\.resolvedRemainingPercent), [73, 29])
+        XCTAssertEqual(claude.accountProfiles[1].effectiveQuotaGroups[0].windows.map(\.resolvedRemainingPercent), [44, 81])
+
+        XCTAssertTrue(claude.hasStaleQuotaObservation)
+        XCTAssertTrue(snapshot.isProducerStale)
+        XCTAssertEqual(UsageCompactProviderSummary.summaries(from: snapshot).map(\.id), ["claude", "codex"])
+        let summaries = UsageCompactProviderSummary.displaySummaries(from: snapshot)
+        XCTAssertEqual(summaries.map(\.id), ["claude:default", "claude:p_0123456789ab", "codex"])
+        XCTAssertEqual(summaries[0].displayName, "Personal Max")
+        XCTAssertEqual(summaries[0].session?.resolvedRemainingPercent, 73)
+        XCTAssertEqual(summaries[1].displayName, "Team")
+        XCTAssertEqual(summaries[1].weekly?.resolvedRemainingPercent, 81)
+        XCTAssertEqual(summaries[1].fable?.resolvedRemainingPercent, 55)
+        XCTAssertEqual(summaries[1].connectionLabel, "Stale")
+        XCTAssertEqual(summaries[0].retainedUSDEstimateNanos, 2_500_000_000)
+        XCTAssertNil(summaries[1].retainedUSDEstimateNanos, "Shared provider cost must not be duplicated per account")
+        let peek = UsagePopoverPeekPresentation.make(from: .success(snapshot, at: Date()))
+        XCTAssertEqual(peek.providers.map(\.displayName), ["Personal Max", "Team", "Codex"])
+        XCTAssertEqual(peek.providers.filter { $0.retainedUSDEstimateNanos != nil }.count, 1)
+
+        let manual = try decoder().decode(UsageIntelligenceSnapshot.self, from: Data(#"""
+        {"schema":"coordharness.usage-intelligence.v1","providers":{"claude":{"account_profiles":[{
+          "id":"p_0123456789ab","label":"Team","active":true,"isolated":true,
+          "account":{"status":"sign_in_required","plan":"team","authenticated":false},
+          "quota_groups":[],"windows":[],"errors":[],"live_observation_state":"unavailable"
+        }]}}}
+        """#.utf8))
+        let manualSummary = try XCTUnwrap(UsageCompactProviderSummary.displaySummaries(from: manual).first)
+        XCTAssertEqual(manualSummary.connectionLabel, "Sign-in needed")
+        XCTAssertEqual(manualSummary.connected, false)
+    }
+
     func testLiveProxyShapeFeedsProviderCardsQuotaGroupsAndSeparateHistories() throws {
         let snapshot = try decoder().decode(UsageIntelligenceSnapshot.self, from: Data(#"""
         {
@@ -1381,7 +1433,8 @@ final class UsageDashboardTests: XCTestCase {
         XCTAssertTrue(shared.contains("windows.append((\"W\", weekly))"))
         XCTAssertTrue(shared.contains("windows.append((\"F\", fable))"))
         XCTAssertFalse(shared.contains("selectedQuota("))
-        XCTAssertTrue(shared.contains("Text(\"Cost\")"))
+        XCTAssertTrue(shared.contains("let costLabel = provider.id.contains(\":\") ? \"Shared cost\" : \"Cost\""))
+        XCTAssertTrue(shared.contains("Text(costLabel)"))
         XCTAssertTrue(shared.contains(".font(.system(size: 8.5, weight: .regular).monospacedDigit())"))
         XCTAssertTrue(shared.contains("var barPalette: UsageBarPalette = .colored"))
         XCTAssertTrue(shared.contains(".background(.ultraThinMaterial"))

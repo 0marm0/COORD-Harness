@@ -11,6 +11,8 @@ fail() {
 usage() {
   cat <<'EOF'
 Usage: apps/install.sh [--db PATH] [--app-dir PATH] [--python PATH] [--no-launch]
+                        [--usage-dashboard-url URL]
+                        [--usage-upstream-schema SCHEMA]
                         [--enable-native-operator-writes]
                         [--install-reaper-agent] [--reaper-interval SECONDS]
 
@@ -18,6 +20,10 @@ Usage: apps/install.sh [--db PATH] [--app-dir PATH] [--python PATH] [--no-launch
   --app-dir PATH            Native app destination (default: ~/Applications)
   --python PATH             Python 3.11+ interpreter (default: python3 on PATH)
   --no-launch               Install without opening the menu-bar app
+  --usage-dashboard-url URL Optional loopback usage feed persisted for the board
+  --usage-upstream-schema SCHEMA
+                            Expected schema for that feed (default:
+                            coordharness.usage-intelligence.v1)
   --enable-native-operator-writes
                             Opt in to authenticated, loopback-only native task
                             reassignment. Provisions an owner-only token beside
@@ -67,6 +73,8 @@ LAUNCH_APPS=1
 INSTALL_REAPER_AGENT=0
 ENABLE_NATIVE_OPERATOR_WRITES=0
 REAPER_INTERVAL_S="${COORD_REAPER_INTERVAL_S:-300}"
+USAGE_DASHBOARD_URL="${COORD_USAGE_DASHBOARD_URL:-}"
+USAGE_UPSTREAM_SCHEMA="${COORD_USAGE_UPSTREAM_SCHEMA:-coordharness.usage-intelligence.v1}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -88,6 +96,16 @@ while [[ $# -gt 0 ]]; do
     --no-launch)
       LAUNCH_APPS=0
       shift
+      ;;
+    --usage-dashboard-url)
+      [[ $# -ge 2 ]] || fail "--usage-dashboard-url requires a URL"
+      USAGE_DASHBOARD_URL="$2"
+      shift 2
+      ;;
+    --usage-upstream-schema)
+      [[ $# -ge 2 ]] || fail "--usage-upstream-schema requires a schema identifier"
+      USAGE_UPSTREAM_SCHEMA="$2"
+      shift 2
       ;;
     --install-reaper-agent)
       INSTALL_REAPER_AGENT=1
@@ -167,6 +185,19 @@ if [[ ! -x "$VENV/bin/python" ]]; then
 fi
 "$VENV/bin/python" -m pip install --upgrade "$REPO_ROOT"
 [[ -x "$VENV/bin/coord-board" ]] || fail "coord-board was not installed into $VENV"
+if [[ -n "$USAGE_DASHBOARD_URL" ]]; then
+  "$VENV/bin/python" - "$USAGE_DASHBOARD_URL" "$USAGE_UPSTREAM_SCHEMA" <<'PY'
+import re
+import sys
+
+from coordharness.usage.dashboard_proxy import validate_usage_dashboard_url
+
+url, schema = sys.argv[1:]
+validate_usage_dashboard_url(url)
+if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,79}", schema) is None:
+    raise SystemExit("usage upstream schema must be a safe identifier")
+PY
+fi
 printf '%s\n' "$LABEL" > "$RUNTIME_ROOT/.coord-install-marker"
 
 echo "2/7  create or migrate selected database"
@@ -225,7 +256,8 @@ PY
 echo "4/7  install and start dedicated board LaunchAgent"
 "$VENV/bin/python" - "$PLIST" "$LABEL" "$VENV/bin/coord-board" "$DB_PATH" \
   "$RUNTIME_ROOT" "$LOG_DIR/coord-board.stdout.log" "$LOG_DIR/coord-board.stderr.log" \
-  "$ENABLE_NATIVE_OPERATOR_WRITES" "$NATIVE_OPERATOR_TOKEN_PATH" <<'PY'
+  "$ENABLE_NATIVE_OPERATOR_WRITES" "$NATIVE_OPERATOR_TOKEN_PATH" \
+  "$USAGE_DASHBOARD_URL" "$USAGE_UPSTREAM_SCHEMA" <<'PY'
 import pathlib
 import plistlib
 import sys
@@ -240,6 +272,8 @@ import sys
     stderr_path,
     enable_native_operator_writes,
     native_operator_token_path,
+    usage_dashboard_url,
+    usage_upstream_schema,
 ) = sys.argv[1:]
 payload = {
     "Label": label,
@@ -261,6 +295,13 @@ payload = {
     "StandardOutPath": stdout_path,
     "StandardErrorPath": stderr_path,
 }
+if usage_dashboard_url:
+    payload["EnvironmentVariables"].update(
+        {
+            "COORD_USAGE_DASHBOARD_URL": usage_dashboard_url,
+            "COORD_USAGE_UPSTREAM_SCHEMA": usage_upstream_schema,
+        }
+    )
 if enable_native_operator_writes == "1":
     payload["EnvironmentVariables"].update(
         {
@@ -291,7 +332,9 @@ launchctl kickstart -k "gui/$UID/$LABEL"
 echo "5/7  health-check local board"
 healthy=0
 health_payload=""
-for _attempt in {1..40}; do
+# Large databases can spend close to a minute opening their read-only startup replica.
+# Keep the readiness wait bounded, but long enough for that legitimate path.
+for _attempt in {1..240}; do
   service_state="$(launchctl print "gui/$UID/$LABEL" 2>/dev/null || true)"
   health_payload="$(curl --fail --silent --show-error --max-time 2 "$BOARD_URL/healthz" 2>/dev/null || true)"
   if [[ "$service_state" == *"state = running"* ]] \

@@ -505,6 +505,63 @@ def test_provider_usage_surface_renders_distinct_semantics_and_accessible_graphs
             browser.close()
 
 
+def test_usage_browser_renders_distinct_claude_account_bars_in_menu_strip_and_card(
+    tmp_path: Path,
+) -> None:
+    with _board(tmp_path) as url, playwright_api.sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page(viewport={"width": 1200, "height": 900})
+        try:
+            page.goto(f"{url}/#v=usage", wait_until="networkidle")
+            page.get_by_role("heading", name="Provider Usage", exact=True).wait_for()
+            page.evaluate(
+                """async () => {
+                    const payload = await (await fetch("/api/v1/usage-dashboard")).json();
+                    payload.providers.claude.account_profiles = [
+                      {id: "default", label: "Personal Max", active: false, isolated: false,
+                       account: {status: "active", plan: "max", authenticated: true},
+                       quota_groups: [{key: "account", label: "Account quota", windows: [
+                         {kind: "session", remaining_percent: 73}, {kind: "weekly", remaining_percent: 29}
+                       ]}], windows: [], reset_credits: [], errors: []},
+                      {id: "p_0123456789ab", label: "Team", active: true, isolated: true,
+                       account: {status: "active", plan: "team", authenticated: true},
+                       quota_groups: [{key: "account", label: "Account quota", windows: [
+                         {kind: "session", remaining_percent: 44}, {kind: "weekly", remaining_percent: 81}
+                       ]}, {key: "fable", label: "Fable only", windows: [
+                         {kind: "weekly", remaining_percent: 55}
+                       ]}], windows: [], reset_credits: [], errors: [], live_observation_state: "stale_last_good"}
+                    ];
+                    window.CoordUsageDashboard.render(payload);
+                }"""
+            )
+            profiles = page.locator("[data-provider=claude] .usage-account-profile")
+            assert profiles.count() == 2
+            assert "73% left" in (profiles.nth(0).text_content() or "")
+            assert "29% left" in (profiles.nth(0).text_content() or "")
+            assert "44% left" in (profiles.nth(1).text_content() or "")
+            assert "81% left" in (profiles.nth(1).text_content() or "")
+            assert "55% left" in (profiles.nth(1).text_content() or "")
+            assert "Stale" in (profiles.nth(1).text_content() or "")
+            strip_names = page.locator("#usage-strip .usage-strip-profile-name")
+            assert strip_names.all_text_contents()[:2] == ["Personal Max", "Team"]
+            assert page.locator("[data-provider=claude] .usage-shared-provider-metrics").count() == 1
+            assert page.locator(".usage-freshness strong").inner_text().lower() == "stale"
+            # The runtime does not expose raw last payloads; directly exercise the public renderer instead.
+            page.evaluate("""async () => {
+              const payload = await (await fetch("/api/v1/usage-dashboard")).json();
+              payload.providers.claude.account_profiles = [{
+                id: "p_0123456789ab", label: "Team", active: true, isolated: true,
+                account: {status: "sign_in_required", plan: "team", authenticated: false},
+                quota_groups: [], windows: [], reset_credits: [], errors: [],
+                live_observation_state: "unavailable"
+              }];
+              window.CoordUsageDashboard.render(payload);
+            }""")
+            assert "Sign-in needed" in page.locator("[data-provider=claude] .usage-account-profile").inner_text()
+        finally:
+            browser.close()
+
+
 def test_usage_interactions_preserve_truth_across_ranges_days_stale_and_errors(
     tmp_path: Path,
 ) -> None:

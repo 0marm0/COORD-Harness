@@ -837,7 +837,7 @@ final class UsagePeekRow: RowView {
     }
 
     private func providerColor(_ identity: String) -> NSColor {
-        identity.lowercased() == "claude"
+        identity.lowercased().hasPrefix("claude")
             ? NSColor(srgbRed: 0.95, green: 0.47, blue: 0.24, alpha: 1)
             : NSColor(srgbRed: 0.64, green: 0.43, blue: 0.96, alpha: 1)
     }
