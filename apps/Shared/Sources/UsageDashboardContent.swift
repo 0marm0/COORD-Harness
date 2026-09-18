@@ -67,11 +67,11 @@ enum UsageRouteContainerLayout {
 
 private enum UsageProviderVisualStyle {
     static func assetName(_ providerID: String) -> String {
-        providerID.lowercased() == "claude" ? "claude-menu" : "codex-menu"
+        providerID.lowercased().hasPrefix("claude") ? "claude-menu" : "codex-menu"
     }
 
     static func tint(_ providerID: String) -> Color {
-        providerID.lowercased() == "claude"
+        providerID.lowercased().hasPrefix("claude")
             ? Color(red: 0.95, green: 0.47, blue: 0.24)
             : Color(red: 0.64, green: 0.43, blue: 0.96)
     }
@@ -88,8 +88,8 @@ struct UsageCompactBoardStrip: View {
     @State private var expanded = false
 
     private var providers: [UsageCompactProviderSummary] {
-        UsageCompactProviderSummary.summaries(from: state.snapshot)
-            .filter { ["claude", "codex"].contains($0.id.lowercased()) }
+        UsageCompactProviderSummary.displaySummaries(from: state.snapshot)
+            .filter { $0.id.lowercased() == "codex" || $0.id.lowercased().hasPrefix("claude") }
     }
 
     private var totalTokensCost: String {
@@ -255,6 +255,7 @@ struct UsageCompactBoardStrip: View {
     private func expandedProvider(_ provider: UsageCompactProviderSummary) -> some View {
         let color = tint(provider)
         let barColor = quotaTint(color)
+        let costLabel = provider.id.contains(":") ? "Shared cost" : "Cost"
         var windows: [(String, UsageQuotaWindow?)] = [
             ("Session", provider.session), ("Weekly", provider.weekly), ("Fable", provider.fable),
         ]
@@ -268,15 +269,17 @@ struct UsageCompactBoardStrip: View {
                     .frame(width: 14, height: 14)
                 Text(provider.displayName).font(.caption.weight(.bold))
                 Spacer(minLength: 4)
-                HStack(alignment: .firstTextBaseline, spacing: 10) {
-                    Text("Cost")
-                        .font(.system(size: 8.5, weight: .regular))
-                    Text(UsageFormat.costNanos(provider.retainedUSDEstimateNanos, currency: "USD"))
-                        .font(.system(size: 8.5, weight: .regular).monospacedDigit())
+                if provider.retainedUSDEstimateNanos != nil {
+                    HStack(alignment: .firstTextBaseline, spacing: 10) {
+                        Text(costLabel)
+                            .font(.system(size: 8.5, weight: .regular))
+                        Text(UsageFormat.costNanos(provider.retainedUSDEstimateNanos, currency: "USD"))
+                            .font(.system(size: 8.5, weight: .regular).monospacedDigit())
+                    }
+                    .foregroundStyle(.secondary)
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel("\(costLabel) \(UsageFormat.costNanos(provider.retainedUSDEstimateNanos, currency: "USD"))")
                 }
-                .foregroundStyle(.secondary)
-                .accessibilityElement(children: .combine)
-                .accessibilityLabel("Cost \(UsageFormat.costNanos(provider.retainedUSDEstimateNanos, currency: "USD"))")
             }
             ForEach(windows, id: \.0) { label, window in
                 HStack(spacing: 7) {
@@ -447,7 +450,7 @@ private enum UsageDenseRouteLayout {
     static let codexTint = Color(red: 0.66, green: 0.42, blue: 1.00)
 
     static func tint(_ providerID: String) -> Color {
-        providerID.lowercased() == "claude" ? claudeTint : codexTint
+        providerID.lowercased().hasPrefix("claude") ? claudeTint : codexTint
     }
 }
 
@@ -1268,15 +1271,24 @@ private struct UsageProviderCard: View {
         }
     }
 
+    @ViewBuilder
     private var compactQuotaSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            if let group = compactSummary.quotaGroupLabel {
-                Text(group)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
+        if card.id.lowercased() == "claude", !provider.accountProfiles.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                ForEach(provider.accountProfiles) { profile in
+                    UsageAccountProfileQuotaCard(profile: profile, tint: providerTint)
+                }
             }
-            UsageCompactQuotaRow(label: "Session", window: compactSummary.session, tint: providerTint)
-            UsageCompactQuotaRow(label: "Weekly", window: compactSummary.weekly, tint: providerTint)
+        } else {
+            VStack(alignment: .leading, spacing: 8) {
+                if let group = compactSummary.quotaGroupLabel {
+                    Text(group)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+                UsageCompactQuotaRow(label: "Session", window: compactSummary.session, tint: providerTint)
+                UsageCompactQuotaRow(label: "Weekly", window: compactSummary.weekly, tint: providerTint)
+            }
         }
     }
 
@@ -1318,7 +1330,12 @@ private struct UsageProviderCard: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             }
-            if quotaGroups.isEmpty {
+            if card.id.lowercased() == "claude", !provider.accountProfiles.isEmpty {
+                Text("Account-specific quota bars are shown above. Provider cost and history remain shared and are shown once.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else if quotaGroups.isEmpty {
                 Text("Live quota and reset windows unavailable.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
@@ -1504,6 +1521,82 @@ private struct UsageProviderCard: View {
         }
         let total = provider.resetCredits.compactMap(\.count).reduce(0, +)
         return total > 0 ? "\(total.formatted()) reset credits reported" : "Reset credits reported"
+    }
+}
+
+private struct UsageAccountProfileQuotaCard: View {
+    let profile: UsageClaudeAccountProfile
+    let tint: Color
+
+    private var primaryGroup: UsageQuotaGroup? {
+        profile.effectiveQuotaGroups.first { group in
+            let identity = "\(group.key ?? "") \(group.safeLabel)".lowercased()
+            return identity.contains("account")
+        } ?? profile.effectiveQuotaGroups.first { group in
+            group.windows.contains { $0.kind?.lowercased() == "session" }
+        } ?? profile.effectiveQuotaGroups.first
+    }
+
+    private var session: UsageQuotaWindow? {
+        primaryGroup?.windows.first { $0.kind?.lowercased() == "session" }
+    }
+
+    private var weekly: UsageQuotaWindow? {
+        primaryGroup?.windows.first { $0.kind?.lowercased() == "weekly" }
+    }
+
+    private var fable: UsageQuotaWindow? {
+        profile.effectiveQuotaGroups.first { group in
+            let identity = "\(group.key ?? "") \(group.safeLabel) \(group.windows.compactMap(\.name).joined(separator: " "))"
+                .lowercased()
+            return identity.contains("fable")
+        }?.windows.first
+    }
+
+    private var statusLabel: String {
+        let status = (profile.account?.status ?? "").lowercased()
+        if profile.account?.authenticated == false
+            || ["inactive", "signed_out", "sign_in_required", "unauthenticated"].contains(status) {
+            return "Sign-in needed"
+        }
+        let observation = (profile.liveObservationState ?? "").lowercased()
+        if ["unavailable", "quota_observation_unavailable"].contains(observation) || !profile.errors.isEmpty {
+            return "Quota unavailable"
+        }
+        if !observation.isEmpty && observation != "fresh" {
+            return "Stale"
+        }
+        if profile.account?.authenticated == true || status == "active" || status == "authenticated" {
+            return "Connected"
+        }
+        return "Connection unavailable"
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(profile.label).font(.callout.weight(.bold))
+                Spacer(minLength: 8)
+                Text(statusLabel)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(statusLabel == "Connected" ? Color.secondary : Color.orange)
+            }
+            if let label = primaryGroup?.safeLabel {
+                Text(label).font(.caption2).foregroundStyle(.secondary)
+            }
+            UsageCompactQuotaRow(label: "Session", window: session, tint: tint)
+            UsageCompactQuotaRow(label: "Weekly", window: weekly, tint: tint)
+            if fable != nil {
+                UsageCompactQuotaRow(label: "Fable", window: fable, tint: tint)
+            }
+        }
+        .padding(10)
+        .overlay {
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color.primary.opacity(0.10), lineWidth: 1)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(profile.label), \(statusLabel)")
     }
 }
 

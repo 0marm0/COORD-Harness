@@ -14,7 +14,8 @@ enum ProviderMenuMark {
     )
 
     static func image(for identity: String) -> NSImage? {
-        cached[identity.lowercased()]
+        let baseIdentity = identity.lowercased().split(separator: ":", maxSplits: 1).first.map(String.init) ?? identity.lowercased()
+        return cached[baseIdentity]
     }
 
     private static func load(_ identity: String) -> NSImage? {
@@ -296,7 +297,7 @@ enum RingRenderer {
     }
 
     static func providerColor(_ identity: String) -> NSColor {
-        identity == "claude"
+        identity.lowercased().hasPrefix("claude")
             ? Tokens.Color.claudeOrange
             : NSColor(calibratedRed: 0.58, green: 0.40, blue: 0.96, alpha: 1)
     }

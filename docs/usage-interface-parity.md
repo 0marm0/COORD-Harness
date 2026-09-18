@@ -20,6 +20,12 @@ records a concrete not-applicable reason.
   a glass/background view while leaving the host window fixed is a failure.
 - Public fixtures are synthetic or privacy-redacted. No sibling-product names,
   paths, board rows, prompts, or private data may enter COORD.
+- A Claude provider may expose additive bounded `account_profiles`. When present, every profile remains visible with its own session, weekly, and named quota bars; `active` means the selected sign-in target, not the only measured account.
+- Account profiles never own or duplicate provider history, cost, breakdowns, or active-session telemetry. Those provider-level facts render once. An unauthenticated profile shows `Sign-in needed` and never inherits another profile’s quota.
+- Compact native and browser menu surfaces show distinct profile labels and bars while retaining Codex. Payloads without `account_profiles` preserve the legacy one-Claude-row presentation.
+- An installed board configured with an upstream profile feed persists its loopback URL and expected schema in the LaunchAgent so profile rows survive relaunches and reboots.
+- COORD accepts profile fields only through its strict public allowlist. Emails, organization/account identifiers, identity hashes, configuration paths, nested history, nested costs, and unknown fields do not cross the proxy.
+- Both native applications expose a persistent operator setting for the independent battery menu-bar item. Turning it off removes only that separate status item; turning it on recreates it without changing the primary app item or silently resetting after relaunch.
 
 ## Acceptance gate
 
@@ -36,6 +42,8 @@ records a concrete not-applicable reason.
 5. Run the focused tests in both repositories and COORD's privacy/publication
    checks. Record commands, binary timestamps, payload evidence, and screenshots
    in the same coord-native work receipt.
+6. Round-trip the battery-item preference through the persisted config and verify
+   idempotent status-item creation/removal in both native implementations.
 
 If either repository, installed app, or live endpoint cannot be exercised, park or
 block the parity row as partial. Do not close it on one repository's unit tests.
