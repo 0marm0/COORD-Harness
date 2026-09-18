@@ -101,8 +101,8 @@ FILENAME_LIKE_TLDS = {
 }
 
 # The private origin project's durable-id grammar: a capital-N date-stamped
-# serial, an owning-lane code, and a slug -- e.g. an id shaped like
-# "N0831-CLA-...". This hardcodes the *shape* only, never a real instance,
+# serial, an owning-lane code, and a slug. The expression below hardcodes only
+# that abstract shape, never a realistic or source-derived instance,
 # which is exactly what lets a stray report or fixture copied from that
 # project be caught before it reaches this public remote. Companion rule:
 # tests/test_public_generalization.py pins that a *stranger's* id grammar
