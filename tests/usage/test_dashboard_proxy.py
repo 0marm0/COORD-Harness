@@ -711,6 +711,70 @@ def test_allowlist_strips_sensitive_unknown_fields_at_every_nested_level() -> No
         assert secret not in serialized
 
 
+def test_claude_account_profiles_are_bounded_sanitized_and_preserve_separate_quota() -> None:
+    payload = _payload()
+    payload["providers"]["claude"]["account_profiles"] = [
+        {
+            "id": "default",
+            "label": "Personal Max",
+            "active": False,
+            "isolated": False,
+            "account": {"status": "active", "plan": "max", "authenticated": True, "email": "private@example.invalid"},
+            "windows": [],
+            "quota_groups": [{"key": "account", "label": "Account quota", "semantics": "provider_quota_meter", "windows": [{"kind": "session", "remaining_percent": 73}, {"kind": "weekly", "remaining_percent": 29}], "runout": {}}],
+            "reset_credits": [],
+            "errors": [],
+            "live_observation_state": "fresh",
+            "identity_hash": "must-not-cross",
+            "history": {"daily": [{"total_tokens": 99}]},
+            "costs": {"api_rate_estimate": {"amount_nanos": 99}},
+        },
+        {
+            "id": "p_0123456789ab",
+            "label": "Team",
+            "active": True,
+            "isolated": True,
+            "account": {"status": "inactive", "plan": "team", "authenticated": False},
+            "windows": [],
+            "quota_groups": [],
+            "reset_credits": [],
+            "errors": [{"code": "CLAUDE_PROFILE_IDENTITY_UNVERIFIED", "detail": "must-not-cross"}],
+            "live_observation_state": "unavailable",
+            "config_path": "/private/must-not-cross",
+        },
+    ]
+
+    actual = UsageDashboardProxy(
+        url=LOOPBACK_URL,
+        opener=lambda _request, _timeout: _Response(json.dumps(payload).encode("utf-8")),
+    ).get()["providers"]["claude"]["account_profiles"]
+
+    assert [profile["label"] for profile in actual] == ["Personal Max", "Team"]
+    assert [window["remaining_percent"] for window in actual[0]["quota_groups"][0]["windows"]] == [73, 29]
+    assert actual[1]["account"] == {"status": "inactive", "plan": "team", "authenticated": False}
+    assert actual[1]["quota_groups"] == []
+    assert actual[1]["errors"] == [{"code": "CLAUDE_PROFILE_IDENTITY_UNVERIFIED"}]
+    serialized = json.dumps(actual)
+    for private_value in ("private@example.invalid", "must-not-cross", "/private", "identity_hash", "history", "costs"):
+        assert private_value not in serialized
+
+
+@pytest.mark.parametrize("profiles", [[{}] * 13, [
+    {"id": "default", "label": "Personal Max", "active": False, "isolated": False, "account": {"status": "active", "plan": "max", "authenticated": True}, "windows": [], "quota_groups": [], "reset_credits": [], "errors": []},
+    {"id": "default", "label": "Team", "active": True, "isolated": True, "account": {"status": "inactive", "plan": "team", "authenticated": False}, "windows": [], "quota_groups": [], "reset_credits": [], "errors": []},
+], [
+    {"id": "123e4567-e89b-12d3-a456-426614174000", "label": "Team", "active": True, "isolated": True, "account": {"status": "inactive", "plan": "team", "authenticated": False}, "windows": [], "quota_groups": [], "reset_credits": [], "errors": []},
+]])
+def test_invalid_account_profile_sets_fail_soft(profiles: list[dict]) -> None:
+    payload = _payload()
+    payload["providers"]["claude"]["account_profiles"] = profiles
+    result = UsageDashboardProxy(
+        url=LOOPBACK_URL,
+        opener=lambda _request, _timeout: _Response(json.dumps(payload).encode("utf-8")),
+    ).get()
+    assert result["refresh"]["error_code"] == "invalid_contract"
+
+
 def test_invalid_timestamp_and_deep_json_fail_soft_without_handler_abort() -> None:
     invalid = _payload()
     invalid["generated_at"] = "not-a-time"

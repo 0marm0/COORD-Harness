@@ -34,6 +34,7 @@ MAX_RESPONSE_BYTES = 1_048_576
 MAX_DAILY_ROWS = 400
 MAX_WINDOWS = 32
 MAX_QUOTA_GROUPS = 16
+MAX_ACCOUNT_PROFILES = 12
 MAX_GROUP_WINDOWS = 32
 MAX_RESET_CREDITS = 32
 MAX_ACTIVE_SESSIONS = 50
@@ -51,6 +52,7 @@ _LIVE_OBSERVATION_STATES = frozenset(
     }
 )
 _SAFE_TOKEN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,79}$")
+_SAFE_PROFILE_ID = re.compile(r"^(?:default|p_[0-9a-f]{12})$")
 _SAFE_TEXT = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 ._:+()'%,;!?&$#=·—-]{0,239}$")
 _SAFE_CURRENCY = re.compile(r"^(?:[A-Z]{3}|unknown)$")
 _SAFE_TIME_ZONE = re.compile(r"^[A-Za-z0-9._+-]+(?:/[A-Za-z0-9._+-]+)*$")
@@ -569,7 +571,7 @@ def _sanitize_active_sessions(value: Any) -> dict[str, Any]:
     return clean
 
 
-def _sanitize_provider(value: Any) -> dict[str, Any]:
+def _sanitize_provider(value: Any, *, provider_key: str) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise UsageDashboardError("invalid_contract")
     windows = _bounded_list(value.get("windows"), field="windows", limit=MAX_WINDOWS)
@@ -592,6 +594,8 @@ def _sanitize_provider(value: Any) -> dict[str, Any]:
         clean["quota_groups"] = _sanitize_quota_groups(value["quota_groups"])
     if value.get("breakdowns") is not None:
         clean["breakdowns"] = _sanitize_breakdowns(value["breakdowns"])
+    if provider_key == "claude" and value.get("account_profiles") is not None:
+        clean["account_profiles"] = _sanitize_account_profiles(value["account_profiles"])
     if value.get("live_observed_at") is not None:
         clean["live_observed_at"] = _safe_timestamp(value["live_observed_at"])
     if value.get("live_snapshot_source") is not None:
@@ -603,6 +607,51 @@ def _sanitize_provider(value: Any) -> dict[str, Any]:
         if observation_state not in _LIVE_OBSERVATION_STATES:
             raise UsageDashboardError("invalid_contract")
         clean["live_observation_state"] = observation_state
+    return clean
+
+
+def _sanitize_account_profiles(value: Any) -> list[dict[str, Any]]:
+    profiles = _bounded_list(value, field="account_profiles", limit=MAX_ACCOUNT_PROFILES)
+    clean: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for profile in profiles:
+        if not isinstance(profile, dict):
+            raise UsageDashboardError("invalid_contract")
+        profile_id = _safe_string(profile.get("id"), pattern=_SAFE_PROFILE_ID)
+        if profile_id in seen:
+            raise UsageDashboardError("invalid_contract")
+        seen.add(profile_id)
+        active = profile.get("active")
+        isolated = profile.get("isolated")
+        if not isinstance(active, bool) or not isinstance(isolated, bool):
+            raise UsageDashboardError("invalid_contract")
+        windows = _bounded_list(
+            profile.get("windows"), field="account_profiles.windows", limit=MAX_WINDOWS
+        )
+        item: dict[str, Any] = {
+            "id": profile_id,
+            "label": _safe_text(profile.get("label"), maximum=80),
+            "active": active,
+            "isolated": isolated,
+            "account": _sanitize_account(profile.get("account")),
+            "windows": [_sanitize_quota_window(window) for window in windows],
+            "reset_credits": _sanitize_reset_credits(profile.get("reset_credits")),
+            "errors": _sanitize_error_list(
+                profile.get("errors"), field="account_profiles.errors"
+            ),
+        }
+        if profile.get("quota_groups") is not None:
+            item["quota_groups"] = _sanitize_quota_groups(profile["quota_groups"])
+        if profile.get("live_observed_at") is not None:
+            item["live_observed_at"] = _safe_timestamp(profile["live_observed_at"])
+        if profile.get("live_observation_state") is not None:
+            observation_state = _safe_string(
+                profile["live_observation_state"], pattern=_SAFE_TOKEN
+            )
+            if observation_state not in _LIVE_OBSERVATION_STATES:
+                raise UsageDashboardError("invalid_contract")
+            item["live_observation_state"] = observation_state
+        clean.append(item)
     return clean
 
 
@@ -671,7 +720,7 @@ def validate_usage_dashboard(
             else {}
         ),
         "providers": {
-            provider_key: _sanitize_provider(provider)
+            provider_key: _sanitize_provider(provider, provider_key=provider_key)
             for provider_key, provider in providers.items()
         },
         "errors": _sanitize_error_list(payload.get("errors"), field="errors"),

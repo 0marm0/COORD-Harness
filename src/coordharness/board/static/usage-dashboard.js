@@ -291,7 +291,31 @@
     return `<section class="usage-compact-summary" aria-label="Compact provider usage"><p>${escapeHTML(group && group.label || "Provider quota")}</p>${compactWindow("Session", session)}${compactWindow("Weekly", weekly)}<div class="usage-compact-metrics"><div><span>Today est.</span><strong>${escapeHTML(latestDailyCost(provider))}</strong><small>Daily cost estimate · not billed</small></div><div><span>Total Cost Est.</span><strong>${escapeHTML(usdEstimate)}</strong><small>Cumulative API-rate estimate · not billed</small></div></div></section>`;
   }
 
-  function stripProviderData(providerKey, provider) {
+  function accountProfilesSummary(provider, profiles) {
+    const profileCards = profiles.map(profile => {
+      const groups = Array.isArray(profile.quota_groups) && profile.quota_groups.length
+        ? profile.quota_groups
+        : (Array.isArray(profile.windows) && profile.windows.length ? [{key: "compatibility", label: "Account quota", windows: profile.windows}] : []);
+      const group = primaryQuotaGroup(groups, profile);
+      const windows = group && Array.isArray(group.windows) ? group.windows : [];
+      const session = windows.find(window => String(window && window.kind || "").toLowerCase() === "session");
+      const weekly = windows.find(window => String(window && window.kind || "").toLowerCase() === "weekly");
+      const fableGroup = groups.find(candidate => `${candidate && candidate.key || ""} ${candidate && candidate.label || ""}`.toLowerCase().includes("fable"));
+      const fable = fableGroup && Array.isArray(fableGroup.windows) ? fableGroup.windows[0] : null;
+      const account = profile.account && typeof profile.account === "object" ? profile.account : {};
+      const observation = String(profile.live_observation_state || "").toLowerCase();
+      const unavailable = ["unavailable", "quota_observation_unavailable"].includes(observation) || (Array.isArray(profile.errors) && profile.errors.length > 0);
+      const stale = observation && observation !== "fresh" && !unavailable;
+      const status = account.authenticated === false ? "Sign-in needed" : unavailable ? "Quota unavailable" : stale ? "Stale" : account.authenticated === true ? "Connected" : "Connection unavailable";
+      return `<article class="usage-account-profile" data-profile="${escapeHTML(profile.id || "unknown")}"><header><strong>${escapeHTML(profile.label || "Claude account")}</strong><span class="${status === "Connected" ? "connected" : ""}">${escapeHTML(status)}</span></header><p>${escapeHTML(group && group.label || "Account quota")}</p>${compactWindow("Session", session)}${compactWindow("Weekly", weekly)}${fable ? compactWindow("Fable", fable) : ""}</article>`;
+    }).join("");
+    const estimate = usdAmount(provider.costs && provider.costs.api_rate_estimate);
+    const usdEstimate = estimate === null ? "Unknown" : costValue(estimate, "USD");
+    return `<section class="usage-account-profiles" aria-label="Claude account quota profiles">${profileCards}</section><section class="usage-compact-metrics usage-shared-provider-metrics" aria-label="Shared provider cost estimates"><div><span>Today est.</span><strong>${escapeHTML(latestDailyCost(provider))}</strong><small>Daily cost estimate · not billed</small></div><div><span>Total Cost Est.</span><strong>${escapeHTML(usdEstimate)}</strong><small>Cumulative API-rate estimate · not billed</small></div></section>`;
+  }
+
+
+  function stripProviderData(providerKey, provider, displayName = providerKey, includeCost = true) {
     const groups = Array.isArray(provider.quota_groups) ? provider.quota_groups : [];
     const group = primaryQuotaGroup(groups, provider);
     const windows = group && Array.isArray(group.windows) ? group.windows : [];
@@ -306,6 +330,8 @@
     const estimate = usdAmount(provider.costs && provider.costs.api_rate_estimate);
     return {
       providerKey,
+      displayName,
+      includeCost,
       summaryWindows: [["S", session], ["W", weekly]].filter(([, window]) => window),
       windows: [["Session", session], ["Weekly", weekly], ["Fable", fable]].filter(([, window]) => window),
       remaining,
@@ -386,10 +412,20 @@
     const mount = $("#usage-strip");
     if (!mount) return;
     const providers = payload && payload.providers && typeof payload.providers === "object" ? payload.providers : {};
-    const rows = PROVIDERS.filter(key => providers[key] && typeof providers[key] === "object").map(key => stripProviderData(key, providers[key]));
+    const rows = PROVIDERS.filter(key => providers[key] && typeof providers[key] === "object").flatMap(key => {
+      const provider = providers[key];
+      const profiles = key === "claude" && Array.isArray(provider.account_profiles) ? provider.account_profiles : [];
+      if (!profiles.length) return [stripProviderData(key, provider)];
+      return profiles.map((profile, index) => stripProviderData(
+        key,
+        {...profile, costs: index === 0 ? provider.costs : null},
+        profile.label || "Claude account",
+        index === 0
+      ));
+    });
     const expanded = (() => { try { return localStorage.getItem("coord.usage-strip-expanded") === "1"; } catch (_error) { return false; } })();
-    const collapsedRows = rows.map(data => `<span class="usage-strip-provider usage-strip-${escapeHTML(data.providerKey)}" role="group" aria-label="${escapeHTML(data.providerKey)} quotas"><img src="/static/mark-${escapeHTML(data.providerKey)}.png" alt="">${data.summaryWindows.map(([label, window]) => stripMiniQuota(data, label, window)).join("")}</span>`).join("");
-    const expandedRows = rows.map(data => `<section class="usage-strip-expanded-provider"><header><img src="/static/mark-${escapeHTML(data.providerKey)}.png" alt=""><b>${escapeHTML(data.providerKey)}</b><span class="usage-strip-cost"><small>Cost</small><b>${escapeHTML(data.cost)}</b></span></header>${data.windows.map(([label, window]) => stripQuota(data, label, window)).join("")}</section>`).join("");
+    const collapsedRows = rows.map(data => `<span class="usage-strip-provider usage-strip-${escapeHTML(data.providerKey)}" role="group" aria-label="${escapeHTML(data.displayName)} quotas"><img src="/static/mark-${escapeHTML(data.providerKey)}.png" alt=""><small class="usage-strip-profile-name">${escapeHTML(data.displayName)}</small>${data.summaryWindows.map(([label, window]) => stripMiniQuota(data, label, window)).join("")}</span>`).join("");
+    const expandedRows = rows.map(data => `<section class="usage-strip-expanded-provider usage-strip-expanded-${escapeHTML(data.providerKey)}"><header><img src="/static/mark-${escapeHTML(data.providerKey)}.png" alt=""><b>${escapeHTML(data.displayName)}</b>${data.includeCost ? `<span class="usage-strip-cost"><small>Cost</small><b>${escapeHTML(data.cost)}</b></span>` : ""}</header>${data.windows.map(([label, window]) => stripQuota(data, label, window)).join("")}</section>`).join("");
     mount.innerHTML = `<details${expanded ? " open" : ""}><summary><span class="usage-strip-label">USAGE</span><span class="usage-strip-providers">${collapsedRows || '<span class="usage-strip-unavailable">Provider quota unavailable</span>'}</span>${systemSummaryMarkup()}</summary><div class="usage-strip-expanded">${expandedRows || '<section class="usage-strip-expanded-provider"><span class="usage-strip-unavailable">Provider quota unavailable</span></section>'}${systemDetailsMarkup()}</div></details>`;
     const details = mount.querySelector("details");
     details && details.addEventListener("toggle", () => { try { localStorage.setItem("coord.usage-strip-expanded", details.open ? "1" : "0"); } catch (_error) {} });
@@ -418,6 +454,19 @@
     const groups = Array.isArray(provider.quota_groups) && provider.quota_groups.length
       ? provider.quota_groups
       : (Array.isArray(provider.windows) && provider.windows.length ? [{key: "compatibility", label: "Account quota", semantics: "backward-compatible meter", windows: provider.windows, runout: provider.runout || {}}] : []);
+    const accountProfiles = providerKey === "claude" && Array.isArray(provider.account_profiles) ? provider.account_profiles : [];
+    const compactUsageMarkup = accountProfiles.length ? accountProfilesSummary(provider, accountProfiles) : compactProviderSummary(provider, groups);
+    const quotaGroupsMarkup = accountProfiles.length
+      ? accountProfiles.map(profile => {
+          const profileGroups = Array.isArray(profile.quota_groups) && profile.quota_groups.length
+            ? profile.quota_groups
+            : (Array.isArray(profile.windows) && profile.windows.length ? [{key: "compatibility", label: "Account quota", windows: profile.windows}] : []);
+          const groupMarkup = profileGroups.length
+            ? profileGroups.map(quotaGroup).join("")
+            : `<p class="usage-unknown">Sign-in needed; no quota windows observed.</p>`;
+          return `<section class="usage-account-profile-details"><h4>${escapeHTML(profile.label || "Claude account")}</h4>${groupMarkup}</section>`;
+        }).join("")
+      : (groups.length ? groups.map(quotaGroup).join("") : `<p class="usage-unknown">Provider quota meters unavailable.</p>`);
     const quotaSource = provider.quota_source && typeof provider.quota_source === "object" ? provider.quota_source : {};
     const quotaAuthority = quotaSource.canonical === true ? "canonical quota" : "noncanonical quota";
     const quotaSourceMarkup = known(quotaSource.label) || known(quotaSource.kind)
@@ -438,8 +487,8 @@
     const resetCreditRows = credits.map(credit => resetCreditInventory
       ? `<p><strong>${known(credit.count) ? integer(credit.count) : "Count unknown"}</strong> earned credit${credit.count === 1 ? "" : "s"} · current reset eligibility unavailable</p>`
       : `<p><strong>${known(credit.count) ? integer(credit.count) : "Count unknown"}</strong> · ${escapeHTML(credit.status || "status unknown")}</p>`).join("");
-    return `<article class="usage-provider usage-provider-${escapeHTML(providerKey)}" data-provider="${escapeHTML(providerKey)}"><header class="usage-provider-head"><div><p class="usage-kicker">Provider account usage</p><h2>${escapeHTML(providerKey)}</h2></div><strong class="usage-connection ${directlyConnected ? "connected" : ""}">${escapeHTML(connection)}</strong></header>${compactProviderSummary(provider, groups)}<details class="usage-disclosure"><summary>Details, provenance &amp; history</summary><div class="usage-detail-body"><div class="usage-detail-identity"><span class="usage-source ${provider.source && provider.source.canonical === true ? "canonical" : "custody"}">${escapeHTML(sourceLabel(provider))}</span><p class="usage-account">${escapeHTML(account.plan || "Plan unknown")} · ${escapeHTML(account.status || "account status unknown")}</p></div>${provider.source && provider.source.warning ? `<p class="usage-warning">${escapeHTML(neutralCompatibilityText(provider.source.warning))}</p>` : ""}${usageOverview(provider, observedDay)}
-      <section class="usage-section usage-quota-section" aria-label="Quota meters"><div class="usage-section-head"><div><h3>Quota limits</h3><p>Independent provider meters; session and weekly windows are never paired across groups.</p>${quotaSourceMarkup}</div></div><div class="usage-quota-groups">${groups.length ? groups.map(quotaGroup).join("") : '<p class="usage-unknown">Provider quota meters unavailable.</p>'}</div></section>
+    return `<article class="usage-provider usage-provider-${escapeHTML(providerKey)}" data-provider="${escapeHTML(providerKey)}"><header class="usage-provider-head"><div><p class="usage-kicker">Provider account usage</p><h2>${escapeHTML(providerKey)}</h2></div><strong class="usage-connection ${directlyConnected ? "connected" : ""}">${escapeHTML(connection)}</strong></header>${compactUsageMarkup}<details class="usage-disclosure"><summary>Details, provenance &amp; history</summary><div class="usage-detail-body"><div class="usage-detail-identity"><span class="usage-source ${provider.source && provider.source.canonical === true ? "canonical" : "custody"}">${escapeHTML(sourceLabel(provider))}</span><p class="usage-account">${escapeHTML(account.plan || "Plan unknown")} · ${escapeHTML(account.status || "account status unknown")}</p></div>${provider.source && provider.source.warning ? `<p class="usage-warning">${escapeHTML(neutralCompatibilityText(provider.source.warning))}</p>` : ""}${usageOverview(provider, observedDay)}
+      <section class="usage-section usage-quota-section" aria-label="Quota meters"><div class="usage-section-head"><div><h3>Quota limits</h3><p>Independent provider meters; session and weekly windows are never paired across groups.</p>${quotaSourceMarkup}</div></div><div class="usage-quota-groups">${quotaGroupsMarkup}</div></section>
       <section class="usage-section usage-history-section"><div class="usage-section-head"><div><h3>Usage and daily cost</h3><p>Token totals remain as metrics; charts show dollars per observed day. Source families are never merged.</p></div></div><div class="usage-history-grid">${historyPanel(providerKey, "retained", provider.source && provider.source.canonical === true ? "Canonical / retained" : "Retained custody", history, "retained history", currencies, provider.source && provider.source.canonical === true)}${historyPanel(providerKey, "reported", "Provider-reported account", reported, "provider-reported account", currencies, false)}</div>${known(envelope.total_tokens) ? `<p class="usage-envelope">Ever-observed custody envelope: <strong>${escapeHTML(tokens(envelope.total_tokens))}</strong>. Component maxima may not describe one coherent observation.</p>` : ""}</section>
       ${breakdownSection("Models", breakdowns.models)}${breakdownSection("Projects", breakdowns.projects)}
       <section class="usage-section"><div class="usage-section-head"><div><h3>Cost semantics</h3><p>Invoice evidence, provider-native values, and API-rate estimates are not interchangeable.</p></div></div><div class="usage-costs">${metric("Provider billed", cost(costs.provider_billed || {}), neutralCompatibilityText((costs.provider_billed || {}).semantics || "invoice/source only"))}${metric("Provider native", cost(costs.provider_native || {}), neutralCompatibilityText((costs.provider_native || {}).semantics || "provider-reported"))}${metric("API-rate estimate", cost(costs.api_rate_estimate || {}), neutralCompatibilityText((costs.api_rate_estimate || {}).semantics || "not subscription spend"))}</div></section>
@@ -755,7 +804,11 @@
       return;
     }
     const refresh = payload.refresh || {}, errors = Array.isArray(payload.errors) ? payload.errors : [], rawState = String(refresh.state || "unknown").toLowerCase(), providers = payload.providers || {};
-    const providerStale = Object.values(providers).some(provider => STALE_PROVIDER_STATES.has(String(provider && provider.live_observation_state || "").toLowerCase()));
+    const providerStale = Object.values(providers).some(provider => {
+      if (STALE_PROVIDER_STATES.has(String(provider && provider.live_observation_state || "").toLowerCase())) return true;
+      const profiles = Array.isArray(provider && provider.account_profiles) ? provider.account_profiles : [];
+      return profiles.some(profile => STALE_PROVIDER_STATES.has(String(profile && profile.live_observation_state || "").toLowerCase()));
+    });
     const state = rawState === "fresh" && providerStale ? "stale" : rawState;
     const observedDay = String(payload.generated_at || refresh.generated_at || "").slice(0, 10);
     const cards = PROVIDERS.filter(provider => providers[provider] && typeof providers[provider] === "object").map(provider => providerCard(provider, providers[provider], observedDay)).join("");
