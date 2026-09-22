@@ -5,9 +5,20 @@ import AppKit
 
 enum UsageWindowGeometry {
     static let preferredWidth: CGFloat = 460
-    static let preferredHeight: CGFloat = 880
+    // Sized to the space a top-edge menu-bar anchor actually leaves below it:
+    // on the operator's display `belowAnchor` is ~1080pt, so 1000 left the
+    // Codex daily-cost chart and its date axis clipped at the bottom edge.
+    // The clamps below still win on a shorter screen.
+    static let preferredHeight: CGFloat = 1060
     static let screenInset: CGFloat = 40
-    static let anchorGap: CGFloat = 12
+    /// Space kept free between the panel's bottom and the screen edge.
+    ///
+    /// A popover needs room for its arrow and shadow BEYOND the content height
+    /// it is given. Asking for the whole gap below the anchor leaves none, and
+    /// AppKit answers by placing the panel on a different edge -- it stops
+    /// hanging under the status item and appears beside it. The old 880 cap
+    /// bound first, so 12 was never actually reached; at 1060 it is.
+    static let anchorGap: CGFloat = 28
     static let minimumHeight: CGFloat = 360
 
     static func attachedContentSize(visibleFrame: CGRect?, anchorFrame: CGRect?) -> CGSize {
@@ -431,7 +442,7 @@ private enum UsageDenseRouteLayout {
     static let regularChartHeight: CGFloat = 92
     /// Space reserved for the daily-cost title and date axis outside the plot.
     static let chartChromeHeight: CGFloat = 36
-    static let claudeChartPlotHeight: CGFloat = 82
+    static let claudeChartPlotHeight: CGFloat = 100
     /// The final Codex panel uses the otherwise-unused vertical room in the usage route.
     static let codexChartPlotHeight: CGFloat = 120
     static let providerHorizontalPadding: CGFloat = 18
@@ -444,7 +455,7 @@ private enum UsageDenseRouteLayout {
     static let horizontalProviderMinimumWidth: CGFloat = 620
     static let totalCornerRadius: CGFloat = 9
     static let totalBackgroundOpacity: CGFloat = 0.045
-    static let visibleLabelOrder = ["Total Tokens Costs", "Claude", "Codex", "Today cost", "Quota tokens today", "Retained cost", "Priceable today", "Unpriced / overlap", "Daily cost"]
+    static let visibleLabelOrder = ["Total Tokens Costs", "Claude", "Codex", "Today cost", "Quota tokens today", "Retained cost", "Daily cost"]
 
     static let claudeTint = Color(red: 0.95, green: 0.47, blue: 0.24)
     static let codexTint = Color(red: 0.66, green: 0.42, blue: 1.00)
@@ -457,6 +468,66 @@ private enum UsageDenseRouteLayout {
 /// Installed COORD provider-usage surface. This is intentionally separate from
 /// the general shared dashboard so embedded non-menu callers can continue their
 /// adaptive transition without altering the installed route.
+extension UsageClaudeAccountProfile {
+    /// The group a profile's session/weekly meters belong to.
+    ///
+    /// Shared by the compact menu card and the full window so one account
+    /// cannot show different bars on the two surfaces.
+    var primaryQuotaGroup: UsageQuotaGroup? {
+        effectiveQuotaGroups.first { group in
+            let identity = "\(group.key ?? "") \(group.safeLabel)".lowercased()
+            return identity.contains("account")
+        } ?? effectiveQuotaGroups.first { group in
+            group.windows.contains { $0.kind?.lowercased() == "session" }
+        } ?? effectiveQuotaGroups.first
+    }
+
+    var sessionWindow: UsageQuotaWindow? {
+        primaryQuotaGroup?.windows.first { $0.kind?.lowercased() == "session" }
+    }
+
+    var weeklyWindow: UsageQuotaWindow? {
+        primaryQuotaGroup?.windows.first { $0.kind?.lowercased() == "weekly" }
+    }
+
+    var fableWindow: UsageQuotaWindow? {
+        effectiveQuotaGroups.first { group in
+            let identity = "\(group.key ?? "") \(group.safeLabel) \(group.windows.compactMap(\.name).joined(separator: " "))"
+                .lowercased()
+            return identity.contains("fable")
+        }?.windows.first
+    }
+
+    /// Named meters this profile actually reports, in presentation order.
+    ///
+    /// Deduplicated by window identity, first label wins. `fableWindow` falls
+    /// back to the profile's first group when no group names Fable, which for
+    /// an account with only session/weekly meters resolves to the SAME window
+    /// `weeklyWindow` already returned. Emitting it twice gave `ForEach` two
+    /// rows with one id — undefined in SwiftUI, and observed rendering
+    /// `Weekly 96%` twice under its own label on both accounts.
+    ///
+    /// A meter therefore appears only where it is genuinely a distinct meter
+    /// for this profile; nothing is special-cased by account name.
+    var namedQuotaWindows: [UsageNamedQuotaWindow] {
+        var seen = Set<String>()
+        return [("Session", sessionWindow), ("Weekly", weeklyWindow), ("Fable", fableWindow)]
+            .compactMap { pair in pair.1.map { UsageNamedQuotaWindow(label: pair.0, window: $0) } }
+            .filter { seen.insert($0.window.id).inserted }
+    }
+}
+
+/// One labeled quota meter, carrying an id that is unique across labels.
+///
+/// The id folds in the label so a future window-id collision renders two
+/// visibly different rows instead of silently duplicating one.
+struct UsageNamedQuotaWindow: Identifiable {
+    let label: String
+    let window: UsageQuotaWindow
+
+    var id: String { "\(label):\(window.id)" }
+}
+
 private struct UsageDenseRoute: View {
     let state: UsageDashboardState
     let cards: [UsageProviderCardState]
@@ -598,7 +669,7 @@ private struct UsageDenseTotalCostStrip: View {
         .multilineTextAlignment(.center)
         .frame(maxWidth: .infinity, alignment: .center)
         .padding(.horizontal, UsageDenseRouteLayout.outerPadding)
-        .padding(.vertical, 10)
+        .padding(.vertical, 7)
         // No box. A filled card behind the total sat on top of the sheet's own
         // background and read as a second panel around a single figure.
         .accessibilityElement(children: .combine)
@@ -616,8 +687,13 @@ private struct UsageDenseProviderSection: View {
     private var tint: Color { UsageDenseRouteLayout.tint(card.id) }
     private var isClaude: Bool { card.id.lowercased() == "claude" }
     private var providerContentSpacing: CGFloat { isClaude ? 8 : 11 }
-    private var factsSpacing: CGFloat { isClaude ? 10 : 16 }
-    private var quotaSpacing: CGFloat { isClaude ? 8 : 12 }
+    private var factsSpacing: CGFloat { isClaude ? 9 : 11 }
+    // Widened alongside `UsageDenseQuotaRow`. Each account now draws two meters
+    // rather than three, and the window is taller, so the height is there --
+    // banking it as an empty band under the chart helps nobody.
+    private var quotaSpacing: CGFloat { isClaude ? 3 : 5 }
+    // A heading belongs to what follows it, so it hugs its own bars.
+    private var profileLabelGap: CGFloat { 1 }
     private var metricSpacing: CGFloat { isClaude ? 12 : 18 }
     private var effectiveChartPlotHeight: CGFloat {
         switch card.id.lowercased() {
@@ -639,11 +715,25 @@ private struct UsageDenseProviderSection: View {
     private var todayCostPoint: UsageDailyCostTrendPoint? {
         dailyCostProjections.lazy.compactMap { $0.currentDayPoint() }.first
     }
-    private var todayCostLabel: String {
-        UsageDashboardCostFormat.display(
-            todayCostPoint?.nanos,
-            currency: todayCostPoint?.currency ?? card.provider.costs?.apiRateEstimate?.currency
+    /// "incl. $X est." whenever part of a figure was estimated rather than
+    /// measured. Carried beside the number rather than in a tooltip, because a
+    /// reader comparing two cards must see which one contains an estimate.
+    private func estimateCaption(_ nanos: Int64?) -> String? {
+        guard let nanos, nanos > 0 else { return nil }
+        let amount = UsageDashboardCostFormat.display(nanos, currency: card.provider.costs?.apiRateEstimate?.currency)
+        return "incl. \(amount) est."
+    }
+    private var retainedEstimateCaption: String? {
+        estimateCaption(card.provider.costs?.apiRateEstimate?.estimatedAmountNanos)
+    }
+    private var todayEstimateCaption: String? {
+        guard let today = card.provider.dayContext?.localDate else { return nil }
+        return estimateCaption(
+            card.provider.history?.daily.last(where: { $0.date.prefix(10) == today })?.estimatedApiRateEstimateNanos
         )
+    }
+    private var todayCostLabel: String {
+        UsageTodayCost.display(card.provider, fallback: todayCostPoint)
     }
     private var quotas: [(String, UsageQuotaWindow?)] {
         [("Session", summary.session), ("Weekly", summary.weekly), ("Fable", summary.fable)]
@@ -651,11 +741,25 @@ private struct UsageDenseProviderSection: View {
     private var quotaTodayTokens: Int64? {
         card.provider.history?.providerReportedAccount?.todayTotalTokens ?? summary.todayTokens
     }
-    private var priceableTodayTokens: Int64? { summary.todayTokens }
-    private var unpricedOrOverlapTodayTokens: Int64? {
-        guard let quota = card.provider.history?.providerReportedAccount?.todayTotalTokens,
-              let priceable = summary.todayTokens else { return nil }
-        return abs(quota - priceable)
+    /// How much of today's measured volume carried a published rate.
+    ///
+    /// This replaces a pair of tiles ("Priceable today" and
+    /// "Unpriced / overlap") that stated the same fact twice and read as two
+    /// unrelated token totals. What a reader needs is how far to trust the cost
+    /// above it, which is one number, so it sits with that cost as a caption.
+    /// It is omitted entirely when everything today was priced.
+    ///
+    /// The number comes from the rate card's own coverage accounting. An
+    /// earlier version divided our measured token count by the provider's
+    /// quota-reported count; those are two different accountings, and the
+    /// ratio reported "15% of today priced" for a Codex day the card had in
+    /// fact priced in full — the same conflation the two tiles were removed
+    /// for. No quota figure participates in this caption.
+    private var pricedCoverageCaption: String? {
+        guard let percent = card.provider.history?.pricingCoverage?.resolvedPercent else { return nil }
+        let rounded = Int(min(100, max(0, percent)).rounded())
+        guard rounded < 100 else { return nil }
+        return "\(rounded)% of today priced"
     }
 
     var body: some View {
@@ -701,9 +805,44 @@ private struct UsageDenseProviderSection: View {
         .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 
+    /// Profiles worth giving their own meters in the full window.
+    ///
+    /// Every signed-in account is measured independently, so the full window
+    /// shows each one's own bars rather than only the selected sign-in target.
+    private var quotaProfiles: [UsageClaudeAccountProfile] {
+        guard card.id.lowercased() == "claude" else { return [] }
+        return card.provider.accountProfiles
+    }
+
     private var facts: some View {
         VStack(alignment: .leading, spacing: factsSpacing) {
-            if quotas.allSatisfy({ $0.1 == nil }) {
+            if !quotaProfiles.isEmpty {
+                VStack(alignment: .leading, spacing: quotaSpacing + 2) {
+                    ForEach(quotaProfiles) { profile in
+                        VStack(alignment: .leading, spacing: quotaSpacing) {
+                            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                                Text(profile.label)
+                                    .font(.system(size: 9.5, weight: .semibold))
+                                    .foregroundStyle(.secondary)
+                                Spacer(minLength: 4)
+                            }
+                            .padding(.bottom, profileLabelGap - quotaSpacing)
+                            if profile.namedQuotaWindows.isEmpty {
+                                Text(
+                                    profile.account?.authenticated == false
+                                        ? "Sign-in needed" : "Quota unavailable"
+                                )
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundStyle(.orange)
+                            } else {
+                                ForEach(profile.namedQuotaWindows) { named in
+                                    UsageDenseQuotaRow(label: named.label, window: named.window, tint: tint)
+                                }
+                            }
+                        }
+                    }
+                }
+            } else if quotas.allSatisfy({ $0.1 == nil }) {
                 Text("Quota unavailable")
                     .font(.system(size: 10, weight: .medium))
                     .foregroundStyle(.secondary)
@@ -716,19 +855,13 @@ private struct UsageDenseProviderSection: View {
                 }
             }
             HStack(spacing: metricSpacing) {
-                UsageDenseMetric(label: "Today cost", value: todayCostLabel)
+                UsageDenseMetric(label: "Today cost", value: todayCostLabel, caption: todayEstimateCaption ?? pricedCoverageCaption)
                 // A bare "Tokens" label is ambiguous when the same view also
                 // shows a cumulative figure elsewhere: the label would carry
                 // today's number on one surface and a lifetime envelope on
                 // another. This one is today's, so it says so.
                 UsageDenseMetric(label: card.provider.history?.providerReportedAccount?.todayTotalTokens == nil ? "Tokens today" : "Quota tokens today", value: UsageFormat.tokens(quotaTodayTokens))
-                UsageDenseMetric(label: "Retained cost", value: UsageDashboardCostFormat.display(summary.retainedUSDEstimateNanos))
-            }
-            if unpricedOrOverlapTodayTokens != nil {
-                HStack(spacing: metricSpacing) {
-                    UsageDenseMetric(label: "Priceable today", value: UsageFormat.tokens(priceableTodayTokens))
-                    UsageDenseMetric(label: "Unpriced / overlap", value: UsageFormat.tokens(unpricedOrOverlapTodayTokens))
-                }
+                UsageDenseMetric(label: "Retained cost", value: UsageDashboardCostFormat.display(summary.retainedUSDEstimateNanos), caption: retainedEstimateCaption)
             }
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -780,21 +913,29 @@ private struct UsageDenseQuotaRow: View {
     let window: UsageQuotaWindow
     let tint: Color
 
+    // Surplus height is spent here, not banked. With only two meters per
+    // account there is room to spare, and at 3pt of bar and 8.5pt type the
+    // "19% in reserve" / "lasts to reset" line sat against the bar above it and
+    // could not be read. The sub-label carries a real number, so it gets its
+    // OWN gap (`paceGap`) rather than sharing the stack spacing with the title
+    // row, and it is sized to be read rather than skimmed.
+    private var paceGap: CGFloat { 2 }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
+        VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 5) {
-                Text(label).font(.system(size: 10, weight: .semibold)).lineLimit(1)
+                Text(label).font(.system(size: 10.5, weight: .semibold)).lineLimit(1)
                 Spacer(minLength: 3)
                 Text(window.resolvedRemainingPercent.map { String(format: "%.0f%%", $0) } ?? "—")
-                    .font(.system(size: 10, weight: .bold).monospacedDigit())
+                    .font(.system(size: 10.5, weight: .bold).monospacedDigit())
                     .foregroundStyle(window.resolvedRemainingPercent == nil ? Color.secondary : tint)
                 Text(window.countdownSeconds.map { "↻ \(UsageFormat.duration($0))" } ?? "↻ —")
-                    .font(.system(size: 9.5).monospacedDigit())
+                    .font(.system(size: 10).monospacedDigit())
                     .foregroundStyle(.secondary)
             }
             ProgressView(value: window.resolvedRemainingPercent ?? 0, total: 100)
                 .tint(tint)
-                .frame(height: 5)
+                .frame(height: 7)
             HStack(spacing: 5) {
                 Text(window.pace?.deltaLabel ?? "Pace unavailable")
                     .foregroundStyle(window.pace?.state == "deficit" ? tint : Color.secondary)
@@ -806,8 +947,9 @@ private struct UsageDenseQuotaRow: View {
                     Text("lasts to reset")
                 }
             }
-            .font(.system(size: 9).monospacedDigit())
+            .font(.system(size: 10.5, weight: .medium).monospacedDigit())
             .foregroundStyle(.secondary)
+            .padding(.top, paceGap)
         }
         .padding(.vertical, 2)
     }
@@ -816,6 +958,7 @@ private struct UsageDenseQuotaRow: View {
 private struct UsageDenseMetric: View {
     let label: String
     let value: String
+    var caption: String? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -823,8 +966,76 @@ private struct UsageDenseMetric: View {
             Text(value)
                 .font(.system(size: 11.5, weight: .bold).monospacedDigit())
                 .lineLimit(1)
+            if let caption {
+                Text(caption)
+                    .font(.system(size: 8.5, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// The cost for the producer's calendar date and no other.
+///
+/// A missing day is a real $0.00 only when the store is known current; otherwise it is not knowable, and printing
+/// "$0.00" or borrowing another day's figure would repeat the original bug,
+/// where Sep 19's $123.43 was read as a later day's.
+enum UsageTodayCost {
+    static func display(_ provider: UsageProvider, fallback: UsageDailyCostTrendPoint?) -> String {
+        let currency = provider.costs?.apiRateEstimate?.currency
+        guard let context = provider.dayContext, let today = context.localDate else {
+            // A producer that sends no calendar keeps the previous behaviour.
+            return UsageDashboardCostFormat.display(fallback?.nanos, currency: fallback?.currency ?? currency)
+        }
+        if let row = provider.history?.daily.last(where: { $0.date.prefix(10) == today }) {
+            if let nanos = row.apiRateEstimateNanos {
+                return UsageDashboardCostFormat.display(nanos, currency: currency)
+            }
+            if let nanos = row.providerNativeCostNanos {
+                return UsageDashboardCostFormat.display(nanos, currency: provider.costs?.providerNative?.currency)
+            }
+            return "Unpriced"
+        }
+        switch context.storeState {
+        case "fresh": return UsageDashboardCostFormat.display(0, currency: currency ?? "USD")
+        case "stale": return "Stale"
+        default: return "Unavailable"
+        }
+    }
+}
+
+/// Month boundaries along a daily series, for axis labels.
+///
+/// The month already under way at the left edge is not labelled: its first
+/// day is usually off the chart, so a label there would claim a boundary the
+/// chart does not show.
+enum UsageDenseMonthTicks {
+    struct Tick: Equatable {
+        let index: Int
+        let label: String
+    }
+
+    private static let symbols: [String] = {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.locale = Locale(identifier: "en_US_POSIX")
+        return calendar.shortMonthSymbols
+    }()
+
+    /// `days` are `yyyy-MM-dd` keys in plotted order.
+    static func ticks(days: [String]) -> [Tick] {
+        var ticks: [Tick] = []
+        var previous: Int?
+        for (index, day) in days.enumerated() {
+            let parts = day.split(separator: "-")
+            guard parts.count == 3, let month = Int(parts[1]), (1...12).contains(month) else { continue }
+            if let previous, previous != month {
+                ticks.append(Tick(index: index, label: symbols[month - 1]))
+            }
+            previous = month
+        }
+        return ticks
     }
 }
 
@@ -849,9 +1060,12 @@ private struct UsageDenseDailyCostChart: View {
         return [
             "Date: \(point.day)",
             "Cost: \(UsageDashboardCostFormat.display(point.nanos, currency: point.currency))",
+            (point.estimatedNanos ?? 0) > 0
+                ? "Estimated, not in local transcripts: \(UsageDashboardCostFormat.display(point.estimatedNanos, currency: point.currency))"
+                : nil,
             "Tokens: \(tokens)",
             "Models: \(modelDetail(for: point))",
-        ].joined(separator: "\n")
+        ].compactMap { $0 }.joined(separator: "\n")
     }
 
     var body: some View {
@@ -871,11 +1085,28 @@ private struct UsageDenseDailyCostChart: View {
                 GeometryReader { proxy in
                     HStack(alignment: .bottom, spacing: barGap) {
                         ForEach(Array(points.enumerated()), id: \.offset) { _, point in
-                            RoundedRectangle(cornerRadius: 1)
-                                .fill(tint.opacity(projection.sourceKind == .providerReported ? 0.50 : 0.82))
-                                .frame(maxWidth: .infinity)
-                                .frame(height: max(1, plotHeight * CGFloat(Double(point.nanos) / Double(peak))))
-                                .help(hoverDetail(for: point))
+                            // The estimated slice sits on top in a lighter shade of
+                            // the same colour, so the bar's height is still the day's
+                            // whole cost but the part no transcript recorded is never
+                            // mistaken for a measurement.
+                            let barHeight = max(1, plotHeight * CGFloat(Double(point.nanos) / Double(peak)))
+                            let estimatedShare = point.nanos > 0
+                                ? CGFloat(Double(point.estimatedNanos ?? 0) / Double(point.nanos))
+                                : 0
+                            VStack(spacing: 0) {
+                                if estimatedShare > 0 {
+                                    Rectangle()
+                                        .fill(tint.opacity(0.32))
+                                        .frame(height: barHeight * estimatedShare)
+                                }
+                                Rectangle()
+                                    .fill(tint.opacity(projection.sourceKind == .providerReported ? 0.50 : 0.82))
+                                    .frame(height: barHeight * (1 - estimatedShare))
+                            }
+                            .frame(maxWidth: .infinity)
+                            .frame(height: barHeight)
+                            .clipShape(RoundedRectangle(cornerRadius: 1))
+                            .help(hoverDetail(for: point))
                         }
                     }
                     .frame(width: proxy.size.width, height: proxy.size.height, alignment: .bottom)
@@ -914,14 +1145,30 @@ private struct UsageDenseDailyCostChart: View {
                 .frame(height: plotHeight)
                 .overlay(alignment: .bottom) { Divider().opacity(0.35) }
                 .accessibilityLabel("\(projection.providerID) daily estimated cost")
-                .accessibilityValue("\(points.count) observed days; peak \(UsageDashboardCostFormat.display(peakPoint.nanos, currency: peakPoint.currency))")
-                HStack {
-                    Text(points.first?.day ?? "Unknown")
-                    Spacer()
-                    Text(points.last?.day ?? "Unknown")
+                .accessibilityValue("\(points.count) observed days from \(points.first?.day ?? "Unknown") to \(points.last?.day ?? "Unknown"); peak \(UsageDashboardCostFormat.display(peakPoint.nanos, currency: peakPoint.currency))")
+                // Month names where each month begins, drawn against the same slot
+                // geometry as the bars so a label sits under the bar it names. Two
+                // bare endpoint dates said where the history starts and stops but
+                // not where anything in between happened. The exact span is kept
+                // in the accessibility value above.
+                GeometryReader { geometry in
+                    let slotCount = CGFloat(max(points.count, 1))
+                    ForEach(UsageDenseMonthTicks.ticks(days: points.map(\.day)), id: \.index) { tick in
+                        Text(tick.label)
+                            .font(.system(size: 8))
+                            .foregroundStyle(.secondary)
+                            .fixedSize()
+                            .position(
+                                x: min(
+                                    max((CGFloat(tick.index) + 0.5) / slotCount * geometry.size.width, 8),
+                                    geometry.size.width - 8
+                                ),
+                                y: 5
+                            )
+                    }
                 }
-                .font(.system(size: 8))
-                .foregroundStyle(.secondary)
+                .frame(height: 11)
+                .accessibilityHidden(true)
             }
         }
     }
@@ -950,6 +1197,17 @@ private struct UsageDenseDailyHoverCard: View {
                 Text(UsageFormat.tokens(point.totalTokens))
             }
             .font(.system(size: 9, weight: .semibold).monospacedDigit())
+            if let estimated = point.estimatedNanos, estimated > 0 {
+                // Model detail below is measured-only, so the estimated slice is
+                // named here rather than left to look like missing attribution.
+                HStack(spacing: 8) {
+                    Text("Estimated")
+                    Spacer(minLength: 4)
+                    Text(UsageDashboardCostFormat.display(estimated, currency: point.currency))
+                }
+                .font(.system(size: 8.5, weight: .medium).monospacedDigit())
+                .foregroundStyle(.white.opacity(0.82))
+            }
             if topModels.isEmpty {
                 Text("No per-day model detail")
                     .font(.system(size: 8.5, weight: .medium))
@@ -1528,30 +1786,10 @@ private struct UsageAccountProfileQuotaCard: View {
     let profile: UsageClaudeAccountProfile
     let tint: Color
 
-    private var primaryGroup: UsageQuotaGroup? {
-        profile.effectiveQuotaGroups.first { group in
-            let identity = "\(group.key ?? "") \(group.safeLabel)".lowercased()
-            return identity.contains("account")
-        } ?? profile.effectiveQuotaGroups.first { group in
-            group.windows.contains { $0.kind?.lowercased() == "session" }
-        } ?? profile.effectiveQuotaGroups.first
-    }
-
-    private var session: UsageQuotaWindow? {
-        primaryGroup?.windows.first { $0.kind?.lowercased() == "session" }
-    }
-
-    private var weekly: UsageQuotaWindow? {
-        primaryGroup?.windows.first { $0.kind?.lowercased() == "weekly" }
-    }
-
-    private var fable: UsageQuotaWindow? {
-        profile.effectiveQuotaGroups.first { group in
-            let identity = "\(group.key ?? "") \(group.safeLabel) \(group.windows.compactMap(\.name).joined(separator: " "))"
-                .lowercased()
-            return identity.contains("fable")
-        }?.windows.first
-    }
+    private var primaryGroup: UsageQuotaGroup? { profile.primaryQuotaGroup }
+    private var session: UsageQuotaWindow? { profile.sessionWindow }
+    private var weekly: UsageQuotaWindow? { profile.weeklyWindow }
+    private var fable: UsageQuotaWindow? { profile.fableWindow }
 
     private var statusLabel: String {
         let status = (profile.account?.status ?? "").lowercased()

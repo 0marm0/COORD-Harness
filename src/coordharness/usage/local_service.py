@@ -18,6 +18,25 @@ from typing import Any
 
 from .local_cost_cache import LocalCostCacheImport, read_local_cost_cache
 from .local_history import LocalHistoryImport, discover_local_cli_history
+from .pricing import RateCard, RateCardError
+from .provider_anchor import (
+    REASON_SERIES_INVALID,
+    REASON_SERIES_UNAVAILABLE,
+    AnchorPlan,
+    apply_anchor_plan,
+    not_applicable_plan,
+    plan_codex_anchor,
+    unavailable_plan,
+)
+from .provider_series import (
+    CodexUsageSeriesSource,
+    ProviderSeriesUnavailable,
+    SeriesObservation,
+    default_cache_path,
+)
+from .rate_card_refresh import default_override_path, load_effective_rate_card
+from .scan_refresh import DEFAULT_STALE_AFTER_SECONDS, StoreFreshness, assess_store
+from .scan_store import read_store_history
 
 
 JsonlRunner = Callable[[Sequence[str], Sequence[Mapping[str, Any]], float], list[Mapping[str, Any]]]
@@ -241,7 +260,16 @@ def _default_jsonl_runner(
         send(requests[1])
         for request in requests[2:]:
             send(request)
-        read({2, 3}, require_all=False)
+        # The ids actually asked for, so a caller that sends one request is not
+        # held to the full timeout waiting on an id it never sent.
+        read(
+            {
+                int(request["id"])
+                for request in requests[2:]
+                if isinstance(request.get("id"), int) and not isinstance(request["id"], bool)
+            },
+            require_all=False,
+        )
         return responses
     finally:
         if process.poll() is None:
@@ -505,18 +533,241 @@ def probe_codex_account(
     )
 
 
+def fetch_codex_account_usage(
+    home: Path | str,
+    *,
+    timeout_seconds: float = 8.0,
+    runner: JsonlRunner = _default_jsonl_runner,
+) -> Mapping[str, Any]:
+    """Ask the official Codex app-server for the account's daily token series.
+
+    The same executable, sandbox directory, clean environment and bounded JSONL
+    runner as ``probe_codex_account``, with one request: ``account/usage/read``.
+    It is separate from the quota probe on purpose -- the probe runs on every
+    dashboard refresh under a two-second budget, while this series changes
+    slowly and is fetched in the background (``provider_series``).
+
+    Raises ``ProviderSeriesUnavailable`` with a machine-readable code.
+    """
+
+    home_path = Path(home)
+    executable = shutil.which("codex", path=_clean_env(home_path)["PATH"])
+    if not executable and runner is _default_jsonl_runner:
+        raise ProviderSeriesUnavailable("codex_cli_unavailable")
+    if runner is _default_jsonl_runner and _probe_cwd() is None:
+        raise ProviderSeriesUnavailable("codex_probe_platform_unsupported")
+    command = [executable or "codex", "app-server"]
+    requests = [
+        {
+            "id": 1,
+            "method": "initialize",
+            "params": {
+                "clientInfo": {"name": "coord-local-usage", "version": "1"},
+                "capabilities": {},
+            },
+        },
+        {"method": "initialized", "params": {}},
+        {"id": 2, "method": "account/usage/read", "params": {}},
+    ]
+    timeout = max(0.5, min(float(timeout_seconds), 20.0))
+    try:
+        if runner is _default_jsonl_runner:
+            responses = _default_jsonl_runner(command, requests, timeout, env=_clean_env(home_path))
+        else:
+            responses = runner(command, requests, timeout)
+    except TimeoutError as error:
+        raise ProviderSeriesUnavailable("codex_app_server_timeout") from error
+    except (OSError, subprocess.SubprocessError, ValueError) as error:
+        raise ProviderSeriesUnavailable("codex_app_server_unavailable") from error
+    for response in responses:
+        if response.get("id") != 2:
+            continue
+        if "error" in response:
+            raise ProviderSeriesUnavailable("codex_account_usage_rpc_error")
+        result = response.get("result")
+        if isinstance(result, Mapping):
+            return result
+    raise ProviderSeriesUnavailable("codex_account_usage_timeout")
+
+
+def _cost_component(
+    imported: LocalHistoryImport,
+    card: RateCard | None,
+    cost_import: LocalCostCacheImport,
+) -> dict[str, Any]:
+    """Price the whole import from the rate card, falling back to the cache.
+
+    The rate card wins whenever it is loadable, so the figure tracks the local
+    transcripts rather than a third-party cache's freshness. The cache is only
+    consulted when the card itself is unavailable.
+    """
+
+    if card is None:
+        return cost_import.cost_component()
+    total = 0
+    priced_tokens = unpriced_tokens = 0
+    for row in imported.rows:
+        priced = card.price(
+            row.model,
+            {
+                "input_tokens": row.input_tokens,
+                "output_tokens": row.output_tokens,
+                "cache_read_tokens": row.cache_read_tokens,
+                "cache_create_5m_tokens": row.cache_create_5m_tokens,
+                "cache_create_1h_tokens": row.cache_create_1h_tokens,
+                "cache_create_other_tokens": row.cache_create_other_tokens,
+            },
+        )
+        if priced.priced:
+            total += priced.amount_nanos or 0
+            priced_tokens += priced.priced_tokens
+        else:
+            unpriced_tokens += priced.unpriced_tokens
+    if priced_tokens == 0 and unpriced_tokens == 0:
+        return {"amount_nanos": None, "semantics": "unknown"}
+    if priced_tokens == 0:
+        # No model on record carries a published rate. Reporting 0 here would
+        # read as a free period; the truth is that the amount is unknown.
+        return {
+            "amount_nanos": None,
+            "semantics": "all_local_tokens_unpriceable",
+            "unpriced_tokens": unpriced_tokens,
+            "priced_tokens": 0,
+            "pricing_key": card.pricing_key,
+        }
+    return {
+        "amount_nanos": total,
+        "currency": card.currency,
+        "priced_tokens": priced_tokens,
+        "unpriced_tokens": unpriced_tokens,
+        "coverage_state": imported.coverage_state,
+        "pricing_key": card.pricing_key,
+        "rate_card_version": card.rate_card_version,
+        "rate_card_digest": card.digest,
+        # How many models the user-local override card re-prices or adds over
+        # the vendored card; 0 means the vendored card is in force unchanged.
+        "rate_card_override_models": int(card.source.get("override_models", 0) or 0),
+        "semantics": "self_computed_api_list_price_estimate",
+        "source": {
+            "kind": "harness_rate_card",
+            "canonical": False,
+            "label": "API list-price estimate",
+            "warning": (
+                "Priced locally from this machine's CLI transcripts at API list "
+                "rates; not provider-billed spend."
+            ),
+        },
+    }
+
+
+def _unpriced_model_reasons(imported: LocalHistoryImport, card: RateCard) -> dict[str, str]:
+    """Every measured model the card cannot price, with the card's reason."""
+
+    reasons: dict[str, str] = {}
+    for model in {row.model for row in imported.rows}:
+        resolved, reason = card.resolve(model)
+        if resolved is None and reason is not None:
+            reasons[model] = reason
+    return reasons
+
+
+def _legacy_coverage(
+    imported: LocalHistoryImport, daily: Sequence[Mapping[str, Any]]
+) -> dict[str, Any] | None:
+    """Describe the imported stretch, or say nothing when there is none.
+
+    ``None`` rather than a zeroed block, so a dashboard with no legacy import
+    renders exactly as it did before one existed.
+    """
+
+    if not imported.legacy_rows:
+        return None
+    legacy_days = [row for row in daily if row.get("provenance") == "legacy_import"]
+    provenance = dict(imported.legacy_provenance or {})
+    return {
+        **provenance,
+        "days": len(legacy_days),
+        "total_tokens": sum(row["total_tokens"] for row in legacy_days),
+        "api_rate_estimate_nanos": sum(
+            row["api_rate_estimate_nanos"] or 0 for row in legacy_days
+        ),
+        "self_computed_days": len(daily) - len(legacy_days),
+        "semantics": provenance.get(
+            "semantics", "third_party_list_price_estimate_known_to_overstate"
+        ),
+    }
+
+
 def _history(
     imported: LocalHistoryImport,
     now: datetime,
     api_costs: Mapping[tuple[str, str], int] | None = None,
+    card: RateCard | None = None,
 ) -> dict[str, Any]:
+    """Aggregate local rows by day, pricing each (day, model) from the rate card.
+
+    ``api_costs`` remains accepted as an optional corroboration overlay, but the
+    rate card is authoritative: a third-party cache that stops updating must not
+    be able to present a busy day as a free one.
+    """
+
     api_costs = api_costs or {}
+    priceable_by_day: dict[str, int] = {}
+    unpriced_by_day: dict[str, int] = {}
+    unpriced_models: dict[str, str] = {}
     by_day: dict[str, dict[str, Any]] = {}
     models_by_day: dict[str, dict[str, dict[str, Any]]] = {}
-    for row in imported.rows:
+    # Legacy days come from another tool's ledger and are never repriced here:
+    # they carry their own cost, and the rate card has nothing to say about a
+    # day this machine holds no transcripts for. They also never collide with
+    # a self-computed day -- the store suppresses one that does -- so a day
+    # bucket is wholly one kind or the other and can be labelled as such.
+    #
+    # WHY by row ORIGIN rather than by date: days are now derived per reader
+    # zone from UTC slots, while a legacy row keeps the (UTC) day its source
+    # recorded. West of UTC, the first measured hours can fall on a legacy
+    # row's date, and pricing those measured rows as if they were legacy (no
+    # card, no own cost) would drop them from the dollars.
+    legacy_days = {row.usage_date for row in imported.legacy_rows}
+    measured_days = {row.usage_date for row in imported.rows}
+    tagged = tuple((row, False) for row in imported.rows) + tuple(
+        (row, True) for row in imported.legacy_rows
+    )
+    for row, is_legacy in tagged:
         cost_key = (row.usage_date, row.model)
-        cost_observed = cost_key in api_costs or row.api_rate_estimate_nanos is not None
-        api_cost = api_costs.get(cost_key, row.api_rate_estimate_nanos or 0)
+        metrics_for_pricing = {
+            "input_tokens": row.input_tokens,
+            "output_tokens": row.output_tokens,
+            "cache_read_tokens": row.cache_read_tokens,
+            "cache_create_5m_tokens": row.cache_create_5m_tokens,
+            "cache_create_1h_tokens": row.cache_create_1h_tokens,
+            "cache_create_other_tokens": row.cache_create_other_tokens,
+        }
+        priced = (
+            card.price(row.model, metrics_for_pricing)
+            if card is not None and not is_legacy
+            else None
+        )
+        if is_legacy:
+            cost_observed = row.api_rate_estimate_nanos is not None
+            api_cost = row.api_rate_estimate_nanos or 0
+        elif priced is not None and priced.priced:
+            cost_observed = True
+            api_cost = priced.amount_nanos or 0
+            priceable_by_day[row.usage_date] = (
+                priceable_by_day.get(row.usage_date, 0) + priced.priced_tokens
+            )
+        elif priced is not None:
+            cost_observed = False
+            api_cost = 0
+            unpriced_by_day[row.usage_date] = (
+                unpriced_by_day.get(row.usage_date, 0) + priced.unpriced_tokens
+            )
+            if priced.reason is not None:
+                unpriced_models.setdefault(row.model, priced.reason)
+        else:
+            cost_observed = cost_key in api_costs or row.api_rate_estimate_nanos is not None
+            api_cost = api_costs.get(cost_key, row.api_rate_estimate_nanos or 0)
         bucket = by_day.setdefault(
             row.usage_date,
             {
@@ -527,6 +778,10 @@ def _history(
                 "cache_create_other_tokens": 0,
                 "api_rate_estimate_nanos": 0,
                 "_api_cost_observed": False,
+                # A day holding ANY imported row is labelled legacy, even when
+                # measured hours share its date: the conservative label, so an
+                # imported figure is never presented as one this machine made.
+                "_legacy": row.usage_date in legacy_days,
             },
         )
         bucket["input_tokens"] += row.input_tokens
@@ -588,8 +843,13 @@ def _history(
     for day, values in sorted(by_day.items()):
         day_values = dict(values)
         api_cost_observed = bool(day_values.pop("_api_cost_observed"))
+        day_is_legacy = bool(day_values.pop("_legacy"))
         if not api_cost_observed:
             day_values["api_rate_estimate_nanos"] = None
+        # Every day says which accounting produced it, so a chart or hover can
+        # mark the imported stretch instead of drawing one continuous series
+        # that implies one method throughout.
+        day_values["provenance"] = "legacy_import" if day_is_legacy else "self_computed"
         model_rows = []
         for model, metrics in sorted(
             models_by_day.get(day, {}).items(),
@@ -619,11 +879,31 @@ def _history(
             if datetime.fromisoformat(row["date"]).date() >= start
         )
 
+    today_key = today.isoformat()
+    priced_today = priceable_by_day.get(today_key, 0)
+    unpriced_today = unpriced_by_day.get(today_key, 0)
+    observed_today = priced_today + unpriced_today
+    del measured_days
     return {
-        "daily": daily[-400:],
-        "today_total_tokens": by_day.get(today.isoformat(), {}).get("total_tokens", 0)
-        if daily
-        else None,
+        # Full history; the caller caps the served rows AFTER anchoring, so
+        # every total is taken over every day rather than the served window.
+        "daily": daily,
+        "pricing_coverage": {
+            "priceable_tokens_today": priced_today,
+            "unpriced_tokens_today": unpriced_today,
+            "priced_coverage_percent": (
+                round(priced_today / observed_today * 100, 3) if observed_today else None
+            ),
+            "priceable_tokens_all_time": sum(priceable_by_day.values()),
+            "unpriced_tokens_all_time": sum(unpriced_by_day.values()),
+            "unpriced_models": [
+                {"label": _public_model_label(model), "reason": reason}
+                for model, reason in sorted(unpriced_models.items())
+            ],
+            "semantics": "rate_card_priced_vs_unpriceable_local_tokens",
+        },
+        "legacy_coverage": _legacy_coverage(imported, daily),
+        "today_total_tokens": by_day.get(today_key, {}).get("total_tokens", 0) if daily else None,
         "rolling_7d_total_tokens": total(seven) if daily else None,
         "calendar_week_total_tokens": total(week) if daily else None,
         "all_time_total_tokens": sum(row["total_tokens"] for row in daily) if daily else None,
@@ -644,28 +924,145 @@ class _UncachedLocalUsageService:
         history_loader: Callable[..., LocalHistoryImport] | None = None,
         cost_cache_root: Path | str | None = None,
         cost_cache_loader: CostCacheLoader | None = None,
+        rate_card_loader: Callable[[], RateCard] | None = None,
+        scan_store_path: Path | str | None = None,
+        codex_series: Callable[[], SeriesObservation] | None = None,
     ) -> None:
+        # Background network work (the provider series fetch here, the rate
+        # card refresh in the cached service) runs only for the real user: a
+        # service pointed at a fixture home must never reach the network.
+        self._serves_real_user = home is None
         self.home = Path(home) if home is not None else Path.home()
         self._now = now or (lambda: datetime.now(timezone.utc))
         self._claude_probe = claude_probe or (lambda: probe_claude_account(self.home))
         self._codex_probe = codex_probe or (lambda: probe_codex_account(self.home))
-        self._history_loader = history_loader or discover_local_cli_history
+        # Derived from this service's home rather than from the real user's, so
+        # a service pointed at a fixture home can never be served the operator's
+        # own scan store.
+        self._scan_store_path = (
+            Path(scan_store_path)
+            if scan_store_path is not None
+            else self.home / ".coordharness" / "usage-scan.sqlite"
+        )
+        self._history_loader = history_loader or self._local_history
         self._cost_cache_root = (
             Path(cost_cache_root)
             if cost_cache_root is not None
             else self.home / "Library" / "Caches" / "CodexBar" / "cost-usage"
         )
         self._cost_cache_loader = cost_cache_loader or read_local_cost_cache
+        # The EFFECTIVE card: the user-local override (``rate_card_refresh``)
+        # layered over the vendored one. With no override file this is the
+        # vendored card exactly -- same pricing_key, same digest.
+        self._rate_card_override_path = default_override_path(self.home)
+        self._rate_card_loader = rate_card_loader or (
+            lambda: load_effective_rate_card(self._rate_card_override_path)
+        )
+        if codex_series is None:
+            source = CodexUsageSeriesSource(
+                fetch=(
+                    (lambda: fetch_codex_account_usage(self.home))
+                    if self._serves_real_user
+                    else None
+                ),
+                cache_path=default_cache_path(self._scan_store_path),
+                now=self._now,
+                on_update=self._on_provider_series_update,
+            )
+            codex_series = source.current
+        self._codex_series = codex_series
+
+    def _on_provider_series_update(self) -> None:
+        """A new provider series arrived; the cached service drops its snapshot."""
+
+    def _local_history(self, root: Path | str, *, provider: str) -> LocalHistoryImport:
+        """Serve the persistent scan store when it has this root, else scan live.
+
+        The live scan is bounded by bytes and files, so on a machine with years
+        of transcripts it can only ever see the last few days; the store is the
+        same parse made once and kept. An absent or empty store is not an empty
+        history, so it falls through rather than reporting zero.
+        """
+
+        # While the first scan of an empty store runs, the store holds whichever
+        # files happened to be parsed first -- usually the oldest -- so serving
+        # it would show weeks-old history and nothing from today. The bounded
+        # live scan is the honest answer until that first pass completes.
+        stored = (
+            None
+            if self._store_is_building()
+            else read_store_history(root, provider=provider, store_path=self._scan_store_path)
+        )
+        return stored if stored is not None else discover_local_cli_history(root, provider=provider)
+
+    def _store_is_building(self) -> bool:
+        """Whether a first scan of an empty store is in progress (none here)."""
+
+        return False
+
+    def _history_store_freshness(self, observed: datetime) -> StoreFreshness:
+        """Describe the store as found; the cached service adds its refresher."""
+
+        return assess_store(
+            self._scan_store_path,
+            observed,
+            stale_after_seconds=DEFAULT_STALE_AFTER_SECONDS,
+        )
+
+    def _rate_card(self) -> tuple[RateCard | None, str | None]:
+        """Load the vendored rate card, degrading to an explicit error code."""
+
+        try:
+            return self._rate_card_loader(), None
+        except RateCardError:
+            return None, "rate_card_unavailable"
 
     def _probe_account_status(self) -> dict[str, ProviderProbe]:
         return {"claude": self._claude_probe(), "codex": self._codex_probe()}
 
+    def _anchor_plan(
+        self, provider: str, imported: LocalHistoryImport, card: RateCard | None, observed: datetime
+    ) -> AnchorPlan:
+        """Provider-anchored estimate for Codex; Claude has nothing to anchor to."""
+
+        if provider != "codex":
+            return not_applicable_plan()
+        if card is None:
+            return unavailable_plan("rate_card_unavailable")
+        try:
+            observation = self._codex_series()
+        except Exception:  # noqa: BLE001 - a series fault degrades to measured-only
+            observation = SeriesObservation(series=None, reason=REASON_SERIES_UNAVAILABLE)
+        if observation.series is None:
+            return unavailable_plan(observation.reason or REASON_SERIES_UNAVAILABLE)
+        try:
+            return plan_codex_anchor(
+                imported.slot_rows,
+                card,
+                observation.series,
+                excluded_utc_days={row.usage_date for row in imported.legacy_rows},
+                series_observed_at=observation.observed_at,
+                now=observed,
+            )
+        except ValueError:
+            return unavailable_plan(REASON_SERIES_INVALID, observed_at=observation.observed_at)
+
+    def _after_pricing(self, unpriced_models: Mapping[str, str]) -> None:
+        """Hook for the cached service's rate-card refresher; nothing here."""
+
     def dashboard(self) -> dict[str, Any]:
+        # Re-read the system timezone rules: days are derived from UTC slots
+        # at serve time, so a machine that changed zone is answered in its new
+        # zone by the next refresh, with no rescan and no restart.
+        if hasattr(time, "tzset"):
+            time.tzset()
         observed = self._now().astimezone(timezone.utc)
         local = observed.astimezone()
         probes = self._probe_account_status()
+        card, card_error = self._rate_card()
         providers: dict[str, Any] = {}
         all_errors: list[dict[str, str]] = []
+        unpriced_models: dict[str, str] = {}
         for provider in ("claude", "codex"):
             root = self.home / (".claude" if provider == "claude" else ".codex")
             imported = self._history_loader(root, provider=provider)
@@ -676,10 +1073,29 @@ class _UncachedLocalUsageService:
             )
             probe = probes[provider]
             errors = list(probe.errors)
+            if card_error is not None:
+                errors.append(card_error)
             if imported.parse_error_count:
                 errors.append(f"{provider}_history_partial")
             windows = _with_local_pace(probe.windows, observed)
             runout = _runout(windows, observed)
+            history = _history(imported, local, cost_import.costs, card)
+            cost = _cost_component(imported, card, cost_import)
+            if card is not None:
+                unpriced_models.update(_unpriced_model_reasons(imported, card))
+                plan = self._anchor_plan(provider, imported, card, observed)
+                apply_anchor_plan(
+                    history,
+                    cost,
+                    plan,
+                    measured_nanos=cost.get("amount_nanos"),
+                    legacy_nanos=sum(
+                        row.api_rate_estimate_nanos or 0 for row in imported.legacy_rows
+                    ),
+                )
+                if plan.state == "unavailable":
+                    errors.append(f"{provider}_provider_anchor_unavailable")
+            history["daily"] = history["daily"][-400:]
             source_warning = "Local CLI history can be incomplete or compacted"
             provider_doc: dict[str, Any] = {
                 "source": {
@@ -697,7 +1113,7 @@ class _UncachedLocalUsageService:
                 "windows": windows,
                 "reset_credits": [],
                 "runout": runout,
-                "history": _history(imported, local, cost_import.costs),
+                "history": history,
                 "costs": {
                     "provider_billed": {
                         "amount_nanos": None,
@@ -705,7 +1121,7 @@ class _UncachedLocalUsageService:
                         "semantics": "unknown",
                     },
                     "provider_native": {"amount_nanos": None, "semantics": "unknown"},
-                    "api_rate_estimate": cost_import.cost_component(),
+                    "api_rate_estimate": cost,
                 },
                 "active_sessions": {"status": "unavailable", "count": None, "providers": []},
                 "live_observation_state": "fresh" if windows else "quota_observation_unavailable",
@@ -736,12 +1152,16 @@ class _UncachedLocalUsageService:
                 }
             providers[provider] = provider_doc
             all_errors.extend({"code": code} for code in errors)
+        self._after_pricing(unpriced_models)
         generated = _utc_iso(observed)
         return {
             "schema": "coordharness.usage-intelligence.v1",
             "generated_at": generated,
             "stale_after": _utc_iso(observed + timedelta(seconds=30)),
             "refresh": {"state": "fresh", "generated_at": generated},
+            # Without this a reader cannot tell "no usage today" from "the store
+            # has not been scanned today"; both would render as a zero.
+            "history_store": self._history_store_freshness(observed).to_payload(),
             "calendar": {
                 "time_zone": str(getattr(local.tzinfo, "key", None) or local.tzname() or "UTC"),
                 "local_date": local.date().isoformat(),
