@@ -1,0 +1,439 @@
+{
+  "rate_card_version": 1,
+  "pricing_key": "coord-list-price-v4",
+  "currency": "USD",
+  "unit": "usd_per_million_tokens",
+  "source": {
+    "kind": "models.dev",
+    "url": "https://models.dev/api.json",
+    "fetched_at": "2026-09-22T20:03:21Z"
+  },
+  "notes": [
+    "List price at API rates. Subscription plans are not billed this way; these figures are an API-equivalent estimate, not provider-billed spend.",
+    "Anthropic 1h cache write is derived as 2x the base input rate; 5m cache write is the published cache_write rate.",
+    "OpenAI publishes a higher rate above a 272k-token context. It is not applied: across all 307,173 local Codex requests measured on 2026-09-22 the largest context was 261,153 tokens, so no request reached it.",
+    "codex-auto-review is a Codex internal label, not a published model, and carries no list price of its own. Operator decision (2026-09-21): price it as gpt-5.6-sol, Codex's default model. This is a declared assumption, not an observed rate.",
+    "The card mirrors every Anthropic and OpenAI model the catalog publishes a text input/output rate for, rather than only the models seen in one sample. Cherry-picking left claude-opus-4-7 out and silently unpriced 26% of one historical sample's tokens."
+  ],
+  "aliases": {
+    "opus": "claude-opus-5",
+    "sonnet": "claude-sonnet-5",
+    "haiku": "claude-haiku-4-5-20251001",
+    "codex-auto-review": "gpt-5.6-sol"
+  },
+  "unpriced": {
+    "<synthetic>": "Claude Code synthetic message; no model call"
+  },
+  "models": {
+    "claude-fable-5": {
+      "provider": "anthropic",
+      "input": 10,
+      "output": 50,
+      "cache_read": 1,
+      "cache_write_5m": 12.5,
+      "cache_write_1h": 20
+    },
+    "claude-fable-5-1": {
+      "provider": "anthropic",
+      "input": 10,
+      "output": 50,
+      "cache_read": 0.25,
+      "cache_write_5m": 12.5,
+      "cache_write_1h": 20
+    },
+    "claude-haiku-4-5": {
+      "provider": "anthropic",
+      "input": 1,
+      "output": 5,
+      "cache_read": 0.1,
+      "cache_write_5m": 1.25,
+      "cache_write_1h": 2
+    },
+    "claude-haiku-4-5-20251001": {
+      "provider": "anthropic",
+      "input": 1,
+      "output": 5,
+      "cache_read": 0.1,
+      "cache_write_5m": 1.25,
+      "cache_write_1h": 2
+    },
+    "claude-opus-4-5": {
+      "provider": "anthropic",
+      "input": 5,
+      "output": 25,
+      "cache_read": 0.5,
+      "cache_write_5m": 6.25,
+      "cache_write_1h": 10
+    },
+    "claude-opus-4-5-20251101": {
+      "provider": "anthropic",
+      "input": 5,
+      "output": 25,
+      "cache_read": 0.5,
+      "cache_write_5m": 6.25,
+      "cache_write_1h": 10
+    },
+    "claude-opus-4-6": {
+      "provider": "anthropic",
+      "input": 5,
+      "output": 25,
+      "cache_read": 0.5,
+      "cache_write_5m": 6.25,
+      "cache_write_1h": 10
+    },
+    "claude-opus-4-7": {
+      "provider": "anthropic",
+      "input": 5,
+      "output": 25,
+      "cache_read": 0.5,
+      "cache_write_5m": 6.25,
+      "cache_write_1h": 10
+    },
+    "claude-opus-4-8": {
+      "provider": "anthropic",
+      "input": 5,
+      "output": 25,
+      "cache_read": 0.5,
+      "cache_write_5m": 6.25,
+      "cache_write_1h": 10
+    },
+    "claude-opus-5": {
+      "provider": "anthropic",
+      "input": 5,
+      "output": 25,
+      "cache_read": 0.5,
+      "cache_write_5m": 6.25,
+      "cache_write_1h": 10
+    },
+    "claude-opus-5-5": {
+      "provider": "anthropic",
+      "input": 4,
+      "output": 20,
+      "cache_read": 0.2,
+      "cache_write_5m": 5,
+      "cache_write_1h": 8
+    },
+    "claude-sonnet-4-5": {
+      "provider": "anthropic",
+      "input": 3,
+      "output": 15,
+      "cache_read": 0.3,
+      "cache_write_5m": 3.75,
+      "cache_write_1h": 6
+    },
+    "claude-sonnet-4-5-20250929": {
+      "provider": "anthropic",
+      "input": 3,
+      "output": 15,
+      "cache_read": 0.3,
+      "cache_write_5m": 3.75,
+      "cache_write_1h": 6
+    },
+    "claude-sonnet-4-6": {
+      "provider": "anthropic",
+      "input": 3,
+      "output": 15,
+      "cache_read": 0.3,
+      "cache_write_5m": 3.75,
+      "cache_write_1h": 6
+    },
+    "claude-sonnet-5": {
+      "provider": "anthropic",
+      "input": 2,
+      "output": 10,
+      "cache_read": 0.2,
+      "cache_write_5m": 2.5,
+      "cache_write_1h": 4
+    },
+    "gpt-3.5-turbo": {
+      "provider": "openai",
+      "input": 0.5,
+      "output": 1.5,
+      "cache_read": 0
+    },
+    "gpt-4": {
+      "provider": "openai",
+      "input": 30,
+      "output": 60,
+      "cache_read": 0
+    },
+    "gpt-4-turbo": {
+      "provider": "openai",
+      "input": 10,
+      "output": 30,
+      "cache_read": 0
+    },
+    "gpt-4.1": {
+      "provider": "openai",
+      "input": 2,
+      "output": 8,
+      "cache_read": 0.5
+    },
+    "gpt-4.1-mini": {
+      "provider": "openai",
+      "input": 0.4,
+      "output": 1.6,
+      "cache_read": 0.1
+    },
+    "gpt-4.1-nano": {
+      "provider": "openai",
+      "input": 0.1,
+      "output": 0.4,
+      "cache_read": 0.025
+    },
+    "gpt-4o": {
+      "provider": "openai",
+      "input": 2.5,
+      "output": 10,
+      "cache_read": 1.25
+    },
+    "gpt-4o-2024-05-13": {
+      "provider": "openai",
+      "input": 5,
+      "output": 15,
+      "cache_read": 0
+    },
+    "gpt-4o-2024-08-06": {
+      "provider": "openai",
+      "input": 2.5,
+      "output": 10,
+      "cache_read": 1.25
+    },
+    "gpt-4o-2024-11-20": {
+      "provider": "openai",
+      "input": 2.5,
+      "output": 10,
+      "cache_read": 1.25
+    },
+    "gpt-4o-mini": {
+      "provider": "openai",
+      "input": 0.15,
+      "output": 0.6,
+      "cache_read": 0.075
+    },
+    "gpt-5": {
+      "provider": "openai",
+      "input": 1.25,
+      "output": 10,
+      "cache_read": 0.125
+    },
+    "gpt-5-mini": {
+      "provider": "openai",
+      "input": 0.25,
+      "output": 2,
+      "cache_read": 0.025
+    },
+    "gpt-5-nano": {
+      "provider": "openai",
+      "input": 0.05,
+      "output": 0.4,
+      "cache_read": 0.005
+    },
+    "gpt-5-pro": {
+      "provider": "openai",
+      "input": 15,
+      "output": 120,
+      "cache_read": 0
+    },
+    "gpt-5.1": {
+      "provider": "openai",
+      "input": 1.25,
+      "output": 10,
+      "cache_read": 0.125
+    },
+    "gpt-5.2": {
+      "provider": "openai",
+      "input": 1.75,
+      "output": 14,
+      "cache_read": 0.175
+    },
+    "gpt-5.2-chat-latest": {
+      "provider": "openai",
+      "input": 1.75,
+      "output": 14,
+      "cache_read": 0.175
+    },
+    "gpt-5.2-pro": {
+      "provider": "openai",
+      "input": 21,
+      "output": 168,
+      "cache_read": 0
+    },
+    "gpt-5.3-chat-latest": {
+      "provider": "openai",
+      "input": 1.75,
+      "output": 14,
+      "cache_read": 0.175
+    },
+    "gpt-5.3-codex": {
+      "provider": "openai",
+      "input": 1.75,
+      "output": 14,
+      "cache_read": 0.175
+    },
+    "gpt-5.3-codex-spark": {
+      "provider": "openai",
+      "input": 1.75,
+      "output": 14,
+      "cache_read": 0.175
+    },
+    "gpt-5.4": {
+      "provider": "openai",
+      "input": 2.5,
+      "output": 15,
+      "cache_read": 0.25
+    },
+    "gpt-5.4-mini": {
+      "provider": "openai",
+      "input": 0.75,
+      "output": 4.5,
+      "cache_read": 0.075
+    },
+    "gpt-5.4-nano": {
+      "provider": "openai",
+      "input": 0.2,
+      "output": 1.25,
+      "cache_read": 0.02
+    },
+    "gpt-5.4-pro": {
+      "provider": "openai",
+      "input": 30,
+      "output": 180,
+      "cache_read": 0
+    },
+    "gpt-5.5": {
+      "provider": "openai",
+      "input": 5,
+      "output": 30,
+      "cache_read": 0.5
+    },
+    "gpt-5.5-pro": {
+      "provider": "openai",
+      "input": 30,
+      "output": 180,
+      "cache_read": 0
+    },
+    "gpt-5.6": {
+      "provider": "openai",
+      "input": 4,
+      "output": 20,
+      "cache_read": 0.4,
+      "cache_write_5m": 5,
+      "cache_write_1h": 5
+    },
+    "gpt-5.6-luna": {
+      "provider": "openai",
+      "input": 0.2,
+      "output": 1.2,
+      "cache_read": 0.02,
+      "cache_write_5m": 0.25,
+      "cache_write_1h": 0.25
+    },
+    "gpt-5.6-sol": {
+      "provider": "openai",
+      "input": 4,
+      "output": 20,
+      "cache_read": 0.4,
+      "cache_write_5m": 5,
+      "cache_write_1h": 5
+    },
+    "gpt-5.6-terra": {
+      "provider": "openai",
+      "input": 2,
+      "output": 12,
+      "cache_read": 0.2,
+      "cache_write_5m": 2.5,
+      "cache_write_1h": 2.5
+    },
+    "gpt-6-astra": {
+      "provider": "openai",
+      "input": 10,
+      "output": 50,
+      "cache_read": 1,
+      "cache_write_5m": 12.5,
+      "cache_write_1h": 12.5
+    },
+    "gpt-6-luna": {
+      "provider": "openai",
+      "input": 0.1,
+      "output": 0.5,
+      "cache_read": 0.01,
+      "cache_write_5m": 0.125,
+      "cache_write_1h": 0.125
+    },
+    "gpt-6-sol": {
+      "provider": "openai",
+      "input": 2,
+      "output": 10,
+      "cache_read": 0.2,
+      "cache_write_5m": 2.5,
+      "cache_write_1h": 2.5
+    },
+    "gpt-image-2": {
+      "provider": "openai",
+      "input": 5,
+      "output": 30,
+      "cache_read": 1.25
+    },
+    "gpt-realtime-2.1": {
+      "provider": "openai",
+      "input": 4,
+      "output": 24,
+      "cache_read": 0.4
+    },
+    "o1": {
+      "provider": "openai",
+      "input": 15,
+      "output": 60,
+      "cache_read": 7.5
+    },
+    "o1-pro": {
+      "provider": "openai",
+      "input": 150,
+      "output": 600,
+      "cache_read": 0
+    },
+    "o3": {
+      "provider": "openai",
+      "input": 2,
+      "output": 8,
+      "cache_read": 0.5
+    },
+    "o3-mini": {
+      "provider": "openai",
+      "input": 1.1,
+      "output": 4.4,
+      "cache_read": 0.55
+    },
+    "o3-pro": {
+      "provider": "openai",
+      "input": 20,
+      "output": 80,
+      "cache_read": 0
+    },
+    "o4-mini": {
+      "provider": "openai",
+      "input": 1.1,
+      "output": 4.4,
+      "cache_read": 0.275
+    },
+    "text-embedding-3-large": {
+      "provider": "openai",
+      "input": 0.13,
+      "output": 0,
+      "cache_read": 0
+    },
+    "text-embedding-3-small": {
+      "provider": "openai",
+      "input": 0.02,
+      "output": 0,
+      "cache_read": 0
+    },
+    "text-embedding-ada-002": {
+      "provider": "openai",
+      "input": 0.1,
+      "output": 0,
+      "cache_read": 0
+    }
+  }
+}

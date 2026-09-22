@@ -79,6 +79,26 @@ struct UsageCalendarDay: Codable, Equatable, Hashable, Sendable, CustomStringCon
     var description: String { rawValue }
 }
 
+/// The producer's calendar date and history-store freshness.
+///
+/// "Today" has to be the producer's day, and a day with no row has to be told
+/// apart from a store that simply has not scanned yet: the first is a real
+/// $0.00, the second is not knowable and must say so.
+struct UsageDayContext: Equatable, Sendable {
+    let localDate: String?
+    let storeState: String?
+}
+
+private struct UsageCalendarField: Decodable {
+    let localDate: String?
+
+    enum CodingKeys: String, CodingKey { case localDate = "local_date" }
+}
+
+private struct UsageHistoryStoreField: Decodable {
+    let state: String?
+}
+
 struct UsageIntelligenceSnapshot: Codable, Equatable, Sendable {
     let schema: String
     let generatedAt: Date?
@@ -101,8 +121,21 @@ struct UsageIntelligenceSnapshot: Codable, Equatable, Sendable {
         generatedAt = try values.decodeIfPresent(Date.self, forKey: .generatedAt)
         staleAfter = try values.decodeIfPresent(Date.self, forKey: .staleAfter)
         refresh = try values.decodeIfPresent(UsageRefresh.self, forKey: .refresh)
-        providers = try values.decodeIfPresent([String: UsageProvider].self, forKey: .providers) ?? [:]
+        let decodedProviders = try values.decodeIfPresent([String: UsageProvider].self, forKey: .providers) ?? [:]
         errors = try values.decodeIfPresent([UsageServiceError].self, forKey: .errors) ?? []
+        // Optional and advisory: a producer that omits either block, or sends
+        // one this build cannot read, still decodes. It just loses the ability
+        // to tell a quiet day from a store that has not caught up.
+        let context = try? decoder.container(keyedBy: DayContextKeys.self)
+        let calendar = (try? context?.decodeIfPresent(UsageCalendarField.self, forKey: .calendar)) ?? nil
+        let store = (try? context?.decodeIfPresent(UsageHistoryStoreField.self, forKey: .historyStore)) ?? nil
+        let dayContext = UsageDayContext(localDate: calendar?.localDate, storeState: store?.state)
+        providers = decodedProviders.mapValues { $0.with(dayContext: dayContext) }
+    }
+
+    private enum DayContextKeys: String, CodingKey {
+        case calendar
+        case historyStore = "history_store"
     }
 
     init(
@@ -227,6 +260,14 @@ struct UsageProvider: Codable, Equatable, Sendable {
     let liveObservedAt: Date?
     let liveObservationState: String?
     let accountProfiles: [UsageClaudeAccountProfile]
+    /// Stamped from the enclosing snapshot, never encoded with the provider.
+    private(set) var dayContext: UsageDayContext? = nil
+
+    func with(dayContext: UsageDayContext?) -> UsageProvider {
+        var copy = self
+        copy.dayContext = dayContext
+        return copy
+    }
 
     enum CodingKeys: String, CodingKey {
         case source, account, windows, runout, history, costs, breakdowns, errors
@@ -865,6 +906,7 @@ struct UsageHistory: Codable, Equatable, Sendable {
     let semantics: String?
     let everObservedEnvelope: UsageTokenEnvelope?
     let providerReportedAccount: UsageProviderReportedHistory?
+    let pricingCoverage: UsagePricingCoverage?
 
     enum CodingKeys: String, CodingKey {
         case daily, semantics
@@ -874,6 +916,7 @@ struct UsageHistory: Codable, Equatable, Sendable {
         case allTimeTotalTokens = "all_time_total_tokens"
         case everObservedEnvelope = "ever_observed_envelope"
         case providerReportedAccount = "provider_reported_account"
+        case pricingCoverage = "pricing_coverage"
     }
 
     init(from decoder: Decoder) throws {
@@ -886,6 +929,39 @@ struct UsageHistory: Codable, Equatable, Sendable {
         semantics = try values.decodeIfPresent(String.self, forKey: .semantics)
         everObservedEnvelope = try values.decodeIfPresent(UsageTokenEnvelope.self, forKey: .everObservedEnvelope)
         providerReportedAccount = try values.decodeIfPresent(UsageProviderReportedHistory.self, forKey: .providerReportedAccount)
+        pricingCoverage = try values.decodeIfPresent(UsagePricingCoverage.self, forKey: .pricingCoverage)
+    }
+}
+
+/// How much of the observed volume carried a published rate.
+///
+/// This is the rate card's own accounting — priced against unpriced tokens
+/// out of the SAME measured series. It is not the provider's quota-reported
+/// volume, and the two must never be divided into each other: on 2026-09-21
+/// Codex priced 100% of the 8,333,619 tokens it observed today while the
+/// provider reported 54,478,751 for the same day, and that ratio rendered as
+/// a false "15% of today priced".
+struct UsagePricingCoverage: Codable, Equatable, Sendable {
+    let priceableTokensToday: Int64?
+    let unpricedTokensToday: Int64?
+    let pricedCoveragePercent: Double?
+    let semantics: String?
+
+    enum CodingKeys: String, CodingKey {
+        case semantics
+        case priceableTokensToday = "priceable_tokens_today"
+        case unpricedTokensToday = "unpriced_tokens_today"
+        case pricedCoveragePercent = "priced_coverage_percent"
+    }
+
+    /// Coverage as a whole percent, preferring the payload's own figure and
+    /// falling back to the token counts when only those crossed the proxy.
+    var resolvedPercent: Double? {
+        if let pricedCoveragePercent { return pricedCoveragePercent }
+        guard let priced = priceableTokensToday, let unpriced = unpricedTokensToday else { return nil }
+        let observed = priced + unpriced
+        guard observed > 0 else { return nil }
+        return Double(priced) / Double(observed) * 100
     }
 }
 
@@ -1035,6 +1111,9 @@ struct UsageDailyCostTrendPoint: Equatable, Sendable {
     let currency: String?
     let totalTokens: Int64?
     let modelBreakdowns: [UsageDailyModelBreakdown]?
+    /// The estimated slice of `nanos`, clamped so it can never exceed the bar.
+    let estimatedNanos: Int64?
+    let estimatedTokens: Int64?
 
     init(
         day: String,
@@ -1042,8 +1121,12 @@ struct UsageDailyCostTrendPoint: Equatable, Sendable {
         costKind: String,
         currency: String?,
         totalTokens: Int64? = nil,
-        modelBreakdowns: [UsageDailyModelBreakdown]? = nil
+        modelBreakdowns: [UsageDailyModelBreakdown]? = nil,
+        estimatedNanos: Int64? = nil,
+        estimatedTokens: Int64? = nil
     ) {
+        self.estimatedNanos = estimatedNanos.map { min(max($0, 0), max(nanos, 0)) }
+        self.estimatedTokens = estimatedTokens
         self.day = day
         self.nanos = nanos
         self.costKind = costKind
@@ -1074,7 +1157,9 @@ struct UsageDailyCostTrendProjection: Equatable, Sendable {
                         costKind: "API-rate estimate",
                         currency: costs?.apiRateEstimate?.currency,
                         totalTokens: row.totalTokens,
-                        modelBreakdowns: row.modelBreakdowns
+                        modelBreakdowns: row.modelBreakdowns,
+                        estimatedNanos: row.estimatedApiRateEstimateNanos,
+                        estimatedTokens: row.estimatedTokens
                     )
                 }
                 if let nanos = row.providerNativeCostNanos, nanos >= 0 {
@@ -1140,10 +1225,16 @@ struct UsageDaily: Codable, Equatable, Identifiable, Sendable {
     let cacheCreateOtherTokens: Int64?
     let providerNativeCostNanos: Int64?
     let apiRateEstimateNanos: Int64?
+    /// The part of `apiRateEstimateNanos` that is estimated rather than
+    /// measured, and the tokens behind it. Nil when the day has no estimate.
+    let estimatedApiRateEstimateNanos: Int64?
+    let estimatedTokens: Int64?
     let modelBreakdowns: [UsageDailyModelBreakdown]?
 
     enum CodingKeys: String, CodingKey {
         case date
+        case estimatedApiRateEstimateNanos = "estimated_api_rate_estimate_nanos"
+        case estimatedTokens = "estimated_tokens"
         case totalTokens = "total_tokens"
         case inputTokens = "input_tokens"
         case outputTokens = "output_tokens"
@@ -1220,11 +1311,22 @@ struct UsageCost: Codable, Equatable, Sendable {
     let currency: String?
     let byCurrency: [String: Int64]?
     let semantics: String?
+    /// The headline's composition. `estimatedAmountNanos` is nil when no
+    /// estimate was made, and never a zero standing in for "unknown": an
+    /// estimate must always be shown as one, never folded into a measurement.
+    let measuredAmountNanos: Int64?
+    let estimatedAmountNanos: Int64?
+    let legacyAmountNanos: Int64?
+    let estimateState: String?
 
     enum CodingKeys: String, CodingKey {
         case amountNanos = "amount_nanos"
         case currency, semantics
         case byCurrency = "by_currency"
+        case measuredAmountNanos = "measured_amount_nanos"
+        case estimatedAmountNanos = "estimated_amount_nanos"
+        case legacyAmountNanos = "legacy_amount_nanos"
+        case estimateState = "estimate_state"
     }
 
     private static let currencyLimit = 8
@@ -1234,6 +1336,10 @@ struct UsageCost: Codable, Equatable, Sendable {
         amountNanos = try values.decodeIfPresent(Int64.self, forKey: .amountNanos)
         currency = normalizedUsageCurrency(try values.decodeIfPresent(String.self, forKey: .currency))
         semantics = try values.decodeIfPresent(String.self, forKey: .semantics)
+        measuredAmountNanos = try values.decodeIfPresent(Int64.self, forKey: .measuredAmountNanos)
+        estimatedAmountNanos = try values.decodeIfPresent(Int64.self, forKey: .estimatedAmountNanos)
+        legacyAmountNanos = try values.decodeIfPresent(Int64.self, forKey: .legacyAmountNanos)
+        estimateState = try values.decodeIfPresent(String.self, forKey: .estimateState)
 
         let decoded = try values.decodeIfPresent([String: Int64].self, forKey: .byCurrency) ?? [:]
         var retained: [String: Int64] = [:]

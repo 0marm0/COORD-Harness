@@ -10,6 +10,7 @@ from coordharness.usage.dashboard_proxy import UsageDashboardProxy
 from coordharness.usage.local_account_actions import LocalAccountActionService
 from coordharness.usage.local_history import discover_local_cli_history
 from coordharness.usage.local_profiles import LocalProfileRegistry, LocalRoutingPolicyStore
+from coordharness.usage.pricing import RateCard, RateCardError
 from coordharness.usage.local_provider_management import LocalProviderManagementService
 from coordharness.usage.local_service import (
     LocalUsageService,
@@ -127,7 +128,9 @@ def test_clean_home_history_import_is_bounded_partial_and_nonidentifying(tmp_pat
     assert claude.coverage_state == codex.coverage_state == "partial"
     assert claude.rows[0].input_tokens == 10
     assert claude.rows[0].cache_create_other_tokens == 4
-    assert codex.rows[0].input_tokens == 30
+    # Codex reports input_tokens inclusive of the cached prefix, so the import
+    # subtracts it: 30 reported - 5 cached = 25 non-cached input.
+    assert codex.rows[0].input_tokens == 25
     assert codex.rows[0].cache_read_tokens == 5
     assert claude.records_accepted == codex.records_accepted == 1
     provenance = json.dumps([claude.provenance(), codex.provenance()])
@@ -188,12 +191,12 @@ def test_redacted_real_shape_fixture_emits_per_day_model_detail(tmp_path: Path) 
         "history"
     ]["daily"][0]
 
-    assert day["total_tokens"] == 44
+    assert day["total_tokens"] == 38
     assert [item["label"] for item in day["model_breakdowns"]] == [
         "model-beta",
         "model-alpha",
     ]
-    assert [item["total_tokens"] for item in day["model_breakdowns"]] == [29, 15]
+    assert [item["total_tokens"] for item in day["model_breakdowns"]] == [25, 13]
 
 
 def test_missing_model_attribution_keeps_daily_totals_with_public_fallback(
@@ -227,13 +230,13 @@ def test_missing_model_attribution_keeps_daily_totals_with_public_fallback(
         "history"
     ]["daily"][0]
 
-    assert day["total_tokens"] == 42
+    assert day["total_tokens"] == 37
     assert day["model_breakdowns"] == [
         {
             "key": day["model_breakdowns"][0]["key"],
             "label": "Unknown model",
-            "total_tokens": 42,
-            "input_tokens": 30,
+            "total_tokens": 37,
+            "input_tokens": 25,
             "output_tokens": 7,
             "cache_read_tokens": 5,
             "cache_create_5m_tokens": 0,
@@ -253,15 +256,25 @@ def _install_cost_cache_fixtures(home: Path) -> None:
         (cache_root / f"{provider}-v1.json").write_bytes(source.read_bytes())
 
 
+def _unavailable_rate_card() -> RateCard:
+    raise RateCardError("no rate card in this test")
+
+
 def test_local_cost_caches_add_today_cost_without_replacing_history(tmp_path: Path) -> None:
+    """The cache remains a fallback for a harness whose rate card will not load."""
+
     home = _home(tmp_path)
     _install_cost_cache_fixtures(home)
     service = LocalUsageService(
-        home=home, now=lambda: NOW, claude_probe=_claude, codex_probe=_codex
+        home=home,
+        now=lambda: NOW,
+        claude_probe=_claude,
+        codex_probe=_codex,
+        rate_card_loader=_unavailable_rate_card,
     )
     document = UsageDashboardProxy(url="", local_provider=service.dashboard).get()
 
-    expected = {"claude": (37, 1_250_000_000), "codex": (42, 2_500_000_000)}
+    expected = {"claude": (37, 1_250_000_000), "codex": (37, 2_500_000_000)}
     for provider, (tokens, cost) in expected.items():
         provider_doc = document["providers"][provider]
         day = provider_doc["history"]["daily"][0]
@@ -305,7 +318,7 @@ def test_no_upstream_dashboard_uses_only_local_state_and_honest_quota(tmp_path: 
         document["providers"]["claude"]["live_observation_state"] == "quota_observation_unavailable"
     )
     assert document["providers"]["codex"]["windows"][0]["remaining_percent"] == 80
-    assert document["providers"]["codex"]["history"]["rolling_7d_total_tokens"] == 42
+    assert document["providers"]["codex"]["history"]["rolling_7d_total_tokens"] == 37
     pace = document["providers"]["codex"]["windows"][0]["pace"]
     assert pace == {
         "state": "reserve",
@@ -325,17 +338,17 @@ def test_no_upstream_dashboard_uses_only_local_state_and_honest_quota(tmp_path: 
     assert claude_day["model_breakdowns"][0]["label"] == "claude-test"
     assert claude_day["model_breakdowns"][0]["total_tokens"] == 37
     assert codex_day["model_breakdowns"][0]["label"] == "gpt-test"
-    assert codex_day["model_breakdowns"][0]["total_tokens"] == 42
+    assert codex_day["model_breakdowns"][0]["total_tokens"] == 37
     assert claude_day["api_rate_estimate_nanos"] is None
     assert codex_day["api_rate_estimate_nanos"] is None
-    assert document["providers"]["claude"]["costs"]["api_rate_estimate"] == {
-        "amount_nanos": None,
-        "semantics": "unknown",
-    }
-    assert document["providers"]["codex"]["costs"]["api_rate_estimate"] == {
-        "amount_nanos": None,
-        "semantics": "unknown",
-    }
+    # These fixture models carry no published rate, so the amount is unknown
+    # rather than zero -- a missing price is not a free period.
+    for provider in ("claude", "codex"):
+        estimate = document["providers"][provider]["costs"]["api_rate_estimate"]
+        assert estimate["amount_nanos"] is None
+        assert estimate["semantics"] == "all_local_tokens_unpriceable"
+        assert estimate["priced_tokens"] == 0
+        assert estimate["unpriced_tokens"] > 0
     serialized = json.dumps(document)
     for private in (str(home), "/private/project", "private prompt", "private answer", "secret"):
         assert private not in serialized

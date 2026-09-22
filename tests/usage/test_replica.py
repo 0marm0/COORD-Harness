@@ -164,7 +164,7 @@ def test_encrypted_sparsebundle_resolves_to_real_backing_mount(
     volumes = tmp_path / "Volumes"
     backing = volumes / "Backup SSD"
     mount = volumes / "UsageBackupV2"
-    image = backing / "ClaudeUsageVault-v2.sparsebundle"
+    image = backing / "UsageVault-v2.sparsebundle"
     image.mkdir(parents=True)
     mount.mkdir()
     payload = plistlib.dumps(

@@ -941,7 +941,7 @@ a `--help` a reader never runs. `coord --help` prints the same list.
 | Talk | `note` | append-only, addressed to a lane or one live session, carries no authority |
 | Review | `request-audit`, `verdict`, `sign-off` | ask for review · record the other lane's verdict · human override |
 | Finish | `done` | proof-gated; refuses without the declared, staged artifact |
-| Operate | `doctor`, `onboard`, `route`, `demo` | read-only health · setup verification · usage-based routing advice · seed a fictional board |
+| Operate | `doctor`, `onboard`, `route`, `usage-scan`, `demo` | read-only health · setup verification · usage-based routing advice · parse local CLI transcripts into the usage scan store · seed a fictional board |
 
 `park` and `block` are **MCP-only** tool names; on the CLI they are
 `coord release --status paused|blocked`. A park additionally requires a non-empty `next_step`

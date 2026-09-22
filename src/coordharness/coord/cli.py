@@ -753,6 +753,63 @@ def main(argv=None) -> int:
     p.add_argument("--skip-mcp-probe", action="store_true")
 
     p = _add_subparser(
+        sub,
+        "usage-scan",
+        help="parse this machine's Claude and Codex CLI transcripts into the usage scan store",
+    )
+    p.add_argument("--provider", choices=("claude", "codex", "all"), default="all")
+    p.add_argument("--home", default=None,
+                   help="user home holding .claude/ and .codex/ (default: this user's)")
+    p.add_argument("--store", default=None,
+                   help="scan store path (default: ~/.coordharness/usage-scan.sqlite)")
+    # A backfill of a multi-gigabyte transcript tree is meant to be run in
+    # chunks: only files this run actually parses count against the cap, and
+    # the next run picks up where this one stopped.
+    p.add_argument("--max-files", type=int, default=None,
+                   help="parse at most this many new or changed files, then stop; "
+                        "re-run to continue")
+    p.add_argument("--rebuild", action="store_true",
+                   help="discard what is stored for the provider and scan it again")
+    p.add_argument("--quiet", action="store_true", help="suppress per-provider progress on stderr")
+
+    p = _add_subparser(
+        sub,
+        "usage-rate-card-refresh",
+        help="fetch the public models.dev catalog into the user-local override rate card",
+    )
+    p.add_argument("--override", default=None,
+                   help="override card path (default: ~/.coordharness/rate_card.json)")
+    p.add_argument("--dry-run", action="store_true",
+                   help="fetch and validate, report what would change, write nothing")
+
+    p = _add_subparser(
+        sub,
+        "usage-legacy-import",
+        help="import days a transcript scan cannot reach from a third-party ledger "
+             "as frozen rows",
+    )
+    p.add_argument("--provider", default="codex", choices=("codex", "claude"),
+                   help="which ledger to import (default: codex). codex imports every "
+                        "day before the transcripts begin; claude imports exactly the "
+                        "days inside the transcript range that hold no records")
+    p.add_argument("--ledger", default=None,
+                   help="legacy high-water ledger JSON to import (required unless "
+                        "--drop); there is no default location")
+    p.add_argument("--store", default=None,
+                   help="scan store path (default: ~/.coordharness/usage-scan.sqlite)")
+    p.add_argument("--before", default=None,
+                   help="codex only: import only days strictly before this ISO date "
+                        "(default: the first day the scan store already covers)")
+    p.add_argument("--day", action="append", default=None, metavar="ISO_DATE",
+                   help="claude only: import exactly this day; repeatable. Default: "
+                        "every ledger day the scan store holds no records for")
+    p.add_argument("--drop", action="store_true",
+                   help="withdraw the imported legacy rows instead; self-computed rows "
+                        "are never touched")
+    p.add_argument("--dry-run", action="store_true",
+                   help="report what would be imported without writing")
+
+    p = _add_subparser(
         sub, "demo", help="seed a disposable database with a fictional board"
     )
     p.add_argument("--quiet", action="store_true",
@@ -821,6 +878,175 @@ def main(argv=None) -> int:
         )
         _emit(report)
         return 0 if report["status"] == "PASS" else 2
+
+    if args.cmd == "usage-scan":
+        from coordharness.usage.scan_store import PROVIDERS, scan_providers
+
+        if not args.quiet and not logging.getLogger().handlers:
+            # A backfill runs for minutes with nothing else to show for itself.
+            # stdout stays the JSON document, so progress goes to stderr, and
+            # only when this command is the one asking for it.
+            handler = logging.StreamHandler(sys.stderr)
+            handler.setFormatter(logging.Formatter("%(message)s"))
+            scan_logger = logging.getLogger("coordharness.usage.scan")
+            scan_logger.addHandler(handler)
+            scan_logger.setLevel(logging.INFO)
+        from datetime import datetime, timezone
+
+        from coordharness.usage.scan_refresh import scan_lock, write_marker
+        from coordharness.usage.scan_store import default_store_path
+
+        store_path = default_store_path(Path(args.store).expanduser() if args.store else None)
+        # Blocking, unlike the board's background refresher: someone asked for
+        # this scan, so it waits its turn rather than racing a running one over
+        # the same store.
+        with scan_lock(store_path, blocking=True):
+            results = scan_providers(
+                Path(args.home).expanduser() if args.home else Path.home(),
+                providers=PROVIDERS if args.provider == "all" else (args.provider,),
+                store_path=store_path,
+                max_files=args.max_files,
+                rebuild=args.rebuild,
+            )
+            # Only a pass that covered every provider to the end vouches for the
+            # whole store; a capped or single-provider run leaves the recorded
+            # freshness where it was.
+            if args.provider == "all" and not any(result.truncated for result in results):
+                write_marker(
+                    store_path,
+                    [result.summary() for result in results],
+                    datetime.now(timezone.utc),
+                )
+        _emit({"ok": True, "results": [result.summary() for result in results]})
+        # A run stopped by --max-files has not finished the backlog, and a
+        # caller scripting the backfill needs to see that in the exit code
+        # rather than in the JSON it may not read.
+        return 0 if not any(result.truncated for result in results) else 3
+
+    if args.cmd == "usage-rate-card-refresh":
+        # On demand, so it ignores the 24-hour cadence and the opt-out
+        # environment: someone asked for exactly this fetch. A refused or
+        # failed fetch leaves the override in force untouched.
+        from coordharness.usage.rate_card_refresh import (
+            default_override_path,
+            load_effective_rate_card,
+            refresh_override,
+        )
+
+        override = (
+            Path(args.override).expanduser() if args.override else default_override_path()
+        )
+        result = refresh_override(override, dry_run=args.dry_run)
+        effective = load_effective_rate_card(override)
+        _emit(
+            {
+                "ok": result.status == "updated",
+                "result": result.summary(),
+                "override_path": str(override),
+                "effective_pricing_key": effective.pricing_key,
+                "effective_rate_card_digest": effective.digest,
+                "effective_models": len(effective.rates),
+            }
+        )
+        return 0 if result.status == "updated" else 2
+
+    if args.cmd == "usage-legacy-import":
+        from coordharness.usage.legacy_ledger import (
+            LAYOUTS,
+            LegacyLedgerError,
+            legacy_ledger_days,
+            read_legacy_ledger,
+        )
+        from coordharness.usage.scan_store import UsageScanStore
+
+        provider = args.provider
+        layout = LAYOUTS[provider]
+        store_path = Path(args.store).expanduser() if args.store else None
+        with UsageScanStore(store_path) as store:
+            if args.drop:
+                dropped = store.drop_legacy(provider, source=layout.source)
+                _emit({"ok": True, "provider": provider, "dropped_rows": dropped,
+                       "legacy": store.legacy_counts(provider)})
+                return 0
+            # The day basis of each ledger. The Codex ledger's days are UTC
+            # days (they equal the provider's UTC buckets exactly), so its
+            # cutoff is the first measured UTC day. The Claude ledger's days
+            # are the local days its producer recorded in, so its gap days are
+            # the LOCAL days the store holds no records for.
+            from datetime import timezone as _utc_zone
+
+            computed = store.totals(
+                provider, tz=_utc_zone.utc if provider == "codex" else None
+            )
+            selector: dict[str, object] = {}
+            if provider == "codex":
+                # Without an explicit cutoff the transcripts decide it: the
+                # first day the scan store covers is the first day this project
+                # can compute for itself, and legacy rows must stop short of it.
+                before = args.before
+                if before is None:
+                    if not computed:
+                        _emit({"ok": False,
+                               "error": "scan store holds no Codex days; run usage-scan "
+                                        "first, or pass --before"})
+                        return 2
+                    before = min(row.usage_date for row in computed)
+                selector["before"] = before
+            else:
+                # Claude's gap is interior, not a floor: the store covers
+                # 2026-02-27..2026-09-21 but holds no records at all for three
+                # days inside that range. So the selector is the set difference
+                # against the ledger, computed here rather than assumed, and a
+                # day the store later learns to compute drops out of it on its
+                # own. `--day` is the override for a caller naming days itself.
+                if args.day:
+                    days = sorted(set(args.day))
+                elif not computed:
+                    _emit({"ok": False,
+                           "error": "scan store holds no Claude days; run usage-scan "
+                                    "first, or pass --day"})
+                    return 2
+                else:
+                    covered = {row.usage_date for row in computed}
+                    try:
+                        available = legacy_ledger_days(
+                            Path(args.ledger).expanduser() if args.ledger else None,
+                            layout=layout,
+                        )
+                    except LegacyLedgerError as error:
+                        _emit({"ok": False, "error": str(error)})
+                        return 2
+                    days = sorted(set(available) - covered)
+                if not days:
+                    _emit({"ok": True, "provider": provider, "rows": 0,
+                           "note": "every ledger day is already self-computed",
+                           "legacy": store.legacy_counts(provider)})
+                    return 0
+                selector["only_days"] = days
+            try:
+                read = read_legacy_ledger(
+                    Path(args.ledger).expanduser() if args.ledger else None,
+                    layout=layout,
+                    **selector,
+                )
+            except LegacyLedgerError as error:
+                _emit({"ok": False, "error": str(error)})
+                return 2
+            payload: dict[str, object] = {
+                "ok": True,
+                "provider": provider,
+                "dry_run": bool(args.dry_run),
+                "rows": len(read.rows),
+                "provenance": read.provenance(),
+            }
+            if not args.dry_run:
+                result = store.import_legacy(
+                    provider, source=read.source, rows=read.rows
+                )
+                payload["imported"] = result.summary()
+                payload["legacy"] = store.legacy_counts(provider)
+            _emit(payload)
+            return 0
 
     if args.cmd == "demo":
         from .. import demo as demo_module

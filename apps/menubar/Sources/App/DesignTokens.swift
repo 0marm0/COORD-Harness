@@ -6,7 +6,14 @@ enum Tokens {
 
     enum Layout {
         static let popoverWidth: CGFloat   = 404
-        static let maxPopoverHeight: CGFloat = 820
+        // Headroom for a second measured Claude account: the full usage card
+        // carries its own session/weekly/named bars per profile, which the old
+        // 820 cap pushed into a scroll. 980 still clipped the Codex chart's
+        // date axis, and `availablePopoverHeight()` reports ~1070 below a
+        // top-edge anchor on this display, so the cap was the binding limit
+        // rather than the screen. Still clamped by `availablePopoverHeight()`,
+        // so a short display is unaffected.
+        static let maxPopoverHeight: CGFloat = 1050
 
         static let runningRowH: CGFloat = 46
         static let nextRowH: CGFloat    = 24
