@@ -54,7 +54,7 @@ final class UsageDashboardTests: XCTestCase {
             "claude":{
               "account":{"status":"active","plan":"max","authenticated":true},
               "account_profiles":[
-                {"id":"default","label":"Personal Max","active":false,"isolated":false,"account":{"status":"active","plan":"max","authenticated":true},"quota_groups":[{"key":"account","label":"Account quota","windows":[{"kind":"session","remaining_percent":73},{"kind":"weekly","remaining_percent":29}]}]},
+                {"id":"default","label":"Account A","active":false,"isolated":false,"account":{"status":"active","plan":"max","authenticated":true},"quota_groups":[{"key":"account","label":"Account quota","windows":[{"kind":"session","remaining_percent":73},{"kind":"weekly","remaining_percent":29}]}]},
                 {"id":"p_0123456789ab","label":"Team","active":true,"isolated":true,"account":{"status":"active","plan":"team","authenticated":true},"quota_groups":[{"key":"account","label":"Account quota","windows":[{"kind":"session","remaining_percent":44},{"kind":"weekly","remaining_percent":81}]},{"key":"fable","label":"Fable only","windows":[{"kind":"weekly","remaining_percent":55}]}],"live_observation_state":"stale_last_good"}
               ],
               "costs":{"api_rate_estimate":{"amount_nanos":2500000000,"currency":"USD"}}
@@ -65,7 +65,7 @@ final class UsageDashboardTests: XCTestCase {
         """#.utf8))
 
         let claude = try XCTUnwrap(snapshot.providers["claude"])
-        XCTAssertEqual(claude.accountProfiles.map(\.label), ["Personal Max", "Team"])
+        XCTAssertEqual(claude.accountProfiles.map(\.label), ["Account A", "Team"])
         XCTAssertEqual(claude.accountProfiles[0].effectiveQuotaGroups[0].windows.map(\.resolvedRemainingPercent), [73, 29])
         XCTAssertEqual(claude.accountProfiles[1].effectiveQuotaGroups[0].windows.map(\.resolvedRemainingPercent), [44, 81])
 
@@ -74,7 +74,7 @@ final class UsageDashboardTests: XCTestCase {
         XCTAssertEqual(UsageCompactProviderSummary.summaries(from: snapshot).map(\.id), ["claude", "codex"])
         let summaries = UsageCompactProviderSummary.displaySummaries(from: snapshot)
         XCTAssertEqual(summaries.map(\.id), ["claude:default", "claude:p_0123456789ab", "codex"])
-        XCTAssertEqual(summaries[0].displayName, "Personal Max")
+        XCTAssertEqual(summaries[0].displayName, "Account A")
         XCTAssertEqual(summaries[0].session?.resolvedRemainingPercent, 73)
         XCTAssertEqual(summaries[1].displayName, "Team")
         XCTAssertEqual(summaries[1].weekly?.resolvedRemainingPercent, 81)
@@ -83,7 +83,7 @@ final class UsageDashboardTests: XCTestCase {
         XCTAssertEqual(summaries[0].retainedUSDEstimateNanos, 2_500_000_000)
         XCTAssertNil(summaries[1].retainedUSDEstimateNanos, "Shared provider cost must not be duplicated per account")
         let peek = UsagePopoverPeekPresentation.make(from: .success(snapshot, at: Date()))
-        XCTAssertEqual(peek.providers.map(\.displayName), ["Personal Max", "Team", "Codex"])
+        XCTAssertEqual(peek.providers.map(\.displayName), ["Account A", "Team", "Codex"])
         XCTAssertEqual(peek.providers.filter { $0.retainedUSDEstimateNanos != nil }.count, 1)
 
         let manual = try decoder().decode(UsageIntelligenceSnapshot.self, from: Data(#"""
@@ -96,6 +96,127 @@ final class UsageDashboardTests: XCTestCase {
         let manualSummary = try XCTUnwrap(UsageCompactProviderSummary.displaySummaries(from: manual).first)
         XCTAssertEqual(manualSummary.connectionLabel, "Sign-in needed")
         XCTAssertEqual(manualSummary.connected, false)
+    }
+
+    /// A profile whose Fable lookup resolves to the window it already showed
+    /// as Weekly must render two rows, not three-with-a-duplicate.
+    ///
+    /// `fableWindow` falls back to the profile's first group when no group
+    /// names Fable, so an account with only session/weekly meters resolved the
+    /// SAME window twice. `ForEach` then saw one id on two rows -- undefined
+    /// in SwiftUI -- and drew `Weekly` twice under its own label on both of
+    /// the operator's accounts.
+    func testNamedQuotaWindowsDeduplicateARepeatedWindowAndKeepIdsUnique() throws {
+        let snapshot = try decoder().decode(UsageIntelligenceSnapshot.self, from: Data(#"""
+        {
+          "schema":"coordharness.usage-intelligence.v1",
+          "providers":{
+            "claude":{
+              "account_profiles":[
+                {"id":"default","label":"Account A","active":true,"isolated":false,
+                 "quota_groups":[{"key":"account","label":"Account quota","windows":[
+                   {"kind":"session","remaining_percent":8},
+                   {"kind":"weekly","remaining_percent":4}
+                 ]}]},
+                {"id":"p_0123456789ab","label":"Team","active":false,"isolated":true,
+                 "quota_groups":[{"key":"account","label":"Account quota","windows":[
+                   {"kind":"session","remaining_percent":0},
+                   {"kind":"weekly","remaining_percent":74}
+                 ]}]},
+                {"id":"p_ffffffffffff","label":"With Fable","active":false,"isolated":true,
+                 "quota_groups":[
+                   {"key":"account","label":"Account quota","windows":[
+                     {"kind":"session","remaining_percent":50},
+                     {"kind":"weekly","remaining_percent":60}
+                   ]},
+                   {"key":"fable","label":"Fable only","windows":[
+                     {"kind":"weekly","name":"Fable","remaining_percent":55}
+                   ]}
+                 ]}
+              ]
+            }
+          }
+        }
+        """#.utf8))
+
+        let profiles = try XCTUnwrap(snapshot.providers["claude"]).accountProfiles
+        XCTAssertEqual(profiles.map(\.label), ["Account A", "Team", "With Fable"])
+
+        // Neither account names a Fable group, so each yields exactly Session
+        // and Weekly -- no second Weekly, and nothing keyed off the account
+        // name to get there.
+        for profile in profiles.prefix(2) {
+            XCTAssertEqual(
+                profile.namedQuotaWindows.map(\.label),
+                ["Session", "Weekly"],
+                "\(profile.label) must not repeat a window under a second label"
+            )
+        }
+        XCTAssertEqual(profiles[0].namedQuotaWindows.map { $0.window.resolvedRemainingPercent }, [8, 4])
+        XCTAssertEqual(profiles[1].namedQuotaWindows.map { $0.window.resolvedRemainingPercent }, [0, 74])
+
+        // A genuinely distinct Fable meter still renders, so the dedupe drops
+        // repetition rather than information.
+        XCTAssertEqual(profiles[2].namedQuotaWindows.map(\.label), ["Session", "Weekly", "Fable"])
+        XCTAssertEqual(profiles[2].namedQuotaWindows.map { $0.window.resolvedRemainingPercent }, [50, 60, 55])
+
+        // The id `ForEach` uses must stay unique per row on every profile, and
+        // must fold in the label so a future window-id collision renders two
+        // visibly different rows instead of silently duplicating one.
+        for profile in profiles {
+            let ids = profile.namedQuotaWindows.map(\.id)
+            XCTAssertEqual(Set(ids).count, ids.count, "\(profile.label) produced duplicate ForEach ids")
+            for named in profile.namedQuotaWindows {
+                XCTAssertTrue(named.id.hasPrefix("\(named.label):"))
+            }
+        }
+    }
+
+    /// The priced-coverage caption states the rate card's own coverage, never
+    /// our measured tokens divided by the provider's quota-reported tokens.
+    func testPricingCoverageDecodesAndNeverComesFromTheQuotaRatio() throws {
+        let snapshot = try decoder().decode(UsageIntelligenceSnapshot.self, from: Data(#"""
+        {
+          "schema":"coordharness.usage-intelligence.v1",
+          "providers":{
+            "codex":{
+              "history":{
+                "daily":[{"date":"2026-09-21","total_tokens":8333619}],
+                "today_total_tokens":8333619,
+                "provider_reported_account":{"daily":[],"today_total_tokens":54478751},
+                "pricing_coverage":{
+                  "priceable_tokens_today":8333619,
+                  "unpriced_tokens_today":0,
+                  "priced_coverage_percent":100.0,
+                  "semantics":"rate_card_priced_vs_unpriceable_local_tokens"
+                }
+              }
+            },
+            "claude":{
+              "history":{
+                "daily":[{"date":"2026-09-21","total_tokens":1000}],
+                "today_total_tokens":1000,
+                "pricing_coverage":{"priceable_tokens_today":750,"unpriced_tokens_today":250}
+              }
+            }
+          }
+        }
+        """#.utf8))
+
+        let codex = try XCTUnwrap(snapshot.providers["codex"])
+        let coverage = try XCTUnwrap(codex.history?.pricingCoverage)
+        XCTAssertEqual(coverage.pricedCoveragePercent, 100.0)
+        XCTAssertEqual(coverage.resolvedPercent, 100.0)
+        // The quota ratio this caption used to use: 8,333,619 / 54,478,751 is
+        // ~15%, on a day the card priced in full. The two accountings must
+        // never be divided into each other.
+        let quotaRatio = 8_333_619.0 / 54_478_751.0 * 100
+        XCTAssertLessThan(quotaRatio, 20)
+        XCTAssertNotEqual(coverage.resolvedPercent, quotaRatio)
+
+        // Only the token counts crossing the proxy is still enough.
+        let claude = try XCTUnwrap(snapshot.providers["claude"])
+        XCTAssertEqual(try XCTUnwrap(claude.history?.pricingCoverage).resolvedPercent, 75.0)
     }
 
     func testLiveProxyShapeFeedsProviderCardsQuotaGroupsAndSeparateHistories() throws {
@@ -1085,24 +1206,33 @@ final class UsageDashboardTests: XCTestCase {
     func testUsageWindowGeometryShowsFullRouteWhenPossibleAndFitsSmallScreens() {
         let operatorVisible = NSRect(x: 0, y: 0, width: 1_728, height: 1_092)
         let operatorAnchor = NSRect(x: 1_000, y: 1_092, width: 24, height: 24)
+        // Attached uses the space below the anchor (1_092 - 0 - 12 = 1_080),
+        // which is more than `preferredHeight`, so the preference wins.
         XCTAssertEqual(
             UsageWindowGeometry.attachedHeight(visibleFrame: operatorVisible, anchorFrame: operatorAnchor),
-            880
+            1_060
         )
 
+        // Detached has no anchor and clamps to the screen inset instead
+        // (1_092 - 40 = 1_052), so it lands just under the preference. The two
+        // paths measuring different space is the point: neither may exceed
+        // what its own situation actually leaves.
         let detached = UsageWindowGeometry.detachedContentSize(
             currentSize: NSSize(width: 404, height: 620),
             visibleFrame: operatorVisible
         )
         XCTAssertEqual(detached.width, 460)
-        XCTAssertEqual(detached.height, 880)
+        XCTAssertEqual(detached.height, 1_052)
 
         let resized = UsageWindowGeometry.detachedContentSize(
             currentSize: NSSize(width: 720, height: 940),
             visibleFrame: operatorVisible
         )
         XCTAssertEqual(resized.width, 720)
-        XCTAssertEqual(resized.height, 940)
+        // A window shorter than the preferred height is grown toward it where
+        // the screen allows, so a second account's meters do not land in a
+        // scroll.
+        XCTAssertEqual(resized.height, 1_052)
 
         let smallVisible = NSRect(x: 0, y: 0, width: 1_280, height: 700)
         let compactHeight = UsageWindowGeometry.attachedHeight(visibleFrame: smallVisible, anchorFrame: nil)
@@ -1672,7 +1802,7 @@ final class UsageDashboardTests: XCTestCase {
         // "Tokens" became "Tokens today" and moved ahead of the cost: a bare
         // label carrying today's figure here and a lifetime envelope
         // elsewhere is how one number reads as two.
-        let visibleLabelOrder = ["Total Tokens Costs", "Today cost", "Quota tokens today", "Retained cost", "Priceable today", "Unpriced / overlap", "Daily cost"]
+        let visibleLabelOrder = ["Total Tokens Costs", "Today cost", "Quota tokens today", "Retained cost", "Daily cost"]
         let denseRouteStart = try XCTUnwrap(coordContent.range(of: "private struct UsageDenseRoute: View"))
         let denseRouteEnd = try XCTUnwrap(coordContent.range(of: "private struct UsageDailyTrendOverview", range: denseRouteStart.upperBound..<coordContent.endIndex))
         let denseRouteSource = String(coordContent[denseRouteStart.lowerBound..<denseRouteEnd.lowerBound])
@@ -1707,7 +1837,7 @@ final class UsageDashboardTests: XCTestCase {
         let dense = String(content[denseStart.lowerBound..<denseEnd.lowerBound])
 
         XCTAssertTrue(content.contains("preferredWidth: CGFloat = 460"))
-        XCTAssertTrue(content.contains("preferredHeight: CGFloat = 880"))
+        XCTAssertTrue(content.contains("preferredHeight: CGFloat = 1060"))
         XCTAssertTrue(content.contains("screenInset: CGFloat = 40"))
         XCTAssertTrue(content.contains("visibleFrame.height"))
         XCTAssertTrue(popover.contains("UsageWindowGeometry.attachedContentSize("))
@@ -1746,7 +1876,7 @@ final class UsageDashboardTests: XCTestCase {
         XCTAssertTrue(dense.contains("point.totalTokens.map(UsageFormat.tokens)"))
         XCTAssertTrue(dense.contains("No per-day model detail"))
         XCTAssertTrue(dense.contains("Models: \\(modelDetail(for: point))"))
-        XCTAssertTrue(dense.contains("UsageDenseMetric(label: \"Today cost\", value: todayCostLabel)"))
+        XCTAssertTrue(dense.contains("UsageDenseMetric(label: \"Today cost\", value: todayCostLabel, caption: todayEstimateCaption ?? pricedCoverageCaption)"))
         XCTAssertFalse(dense.contains("UsageDenseMetric(label: \"Today\", value: UsageFormat.tokens"))
         XCTAssertEqual(dense.components(separatedBy: "\"Session\"").count - 1, 1)
         XCTAssertEqual(dense.components(separatedBy: "\"Weekly\"").count - 1, 1)
@@ -1762,7 +1892,7 @@ final class UsageDashboardTests: XCTestCase {
         XCTAssertTrue(dense.contains("Text(point.day)"), "Hover card must show the selected day.")
         XCTAssertTrue(dense.contains(".allowsHitTesting(false)"))
 
-        XCTAssertTrue(content.contains("claudeChartPlotHeight: CGFloat = 82"))
+        XCTAssertTrue(content.contains("claudeChartPlotHeight: CGFloat = 100"))
         XCTAssertTrue(content.contains("codexChartPlotHeight: CGFloat = 120"))
         XCTAssertTrue(dense.contains("case \"claude\": return UsageDenseRouteLayout.claudeChartPlotHeight"))
         XCTAssertTrue(dense.contains("case \"codex\": return UsageDenseRouteLayout.codexChartPlotHeight"))
@@ -1772,9 +1902,131 @@ final class UsageDashboardTests: XCTestCase {
         XCTAssertTrue(dense.contains("GeometryReader"))
         XCTAssertTrue(dense.contains(".frame(height: plotHeight)"))
         XCTAssertTrue(dense.contains("providerContentSpacing: CGFloat { isClaude ? 8 : 11 }"))
-        XCTAssertTrue(dense.contains("factsSpacing: CGFloat { isClaude ? 10 : 16 }"))
+        // Two meters per account instead of three, in a taller window: the
+        // height is there, and banking it as an empty band under the chart
+        // helps nobody. It goes to the sub-labels' own gap and type size, which
+        // is what made them legible -- the row gaps themselves were dialed back
+        // after the operator found the first pass too airy.
+        XCTAssertTrue(dense.contains("factsSpacing: CGFloat { isClaude ? 9 : 11 }"))
+        XCTAssertTrue(dense.contains("quotaSpacing: CGFloat { isClaude ? 3 : 5 }"))
+        // An account label is a heading for the bars under it, so it keeps a
+        // tighter gap than a row boundary rather than floating between them.
+        XCTAssertTrue(dense.contains("profileLabelGap: CGFloat { 1 }"))
+        XCTAssertTrue(content.contains(".padding(.top, paceGap)"))
+        XCTAssertTrue(content.contains(".font(.system(size: 10.5, weight: .medium).monospacedDigit())"))
         XCTAssertTrue(dense.contains("ScrollView"), "Taller Codex content must remain scrollable rather than clip.")
     }
+    func testDailyCostAxisLabelsEachMonthWhereItBeginsAndNotTheOneAlreadyUnderWay() {
+        // A history that opens mid-February: the first visible boundary is
+        // March, and February gets no label because its first day is off the
+        // chart. Gaps in the series must not invent or drop a boundary.
+        let days = ["2026-02-27", "2026-02-28", "2026-03-01", "2026-03-15", "2026-04-02", "2026-06-30", "2026-07-01"]
+
+        let ticks = UsageDenseMonthTicks.ticks(days: days)
+
+        XCTAssertEqual(ticks.map(\.label), ["Mar", "Apr", "Jun", "Jul"])
+        XCTAssertEqual(ticks.map(\.index), [2, 4, 5, 6])
+    }
+
+    func testDailyCostAxisIgnoresMalformedDaysRatherThanMislabelling() {
+        let ticks = UsageDenseMonthTicks.ticks(days: ["2026-03-31", "garbage", "2026-13-01", "2026-04-01"])
+
+        XCTAssertEqual(ticks, [UsageDenseMonthTicks.Tick(index: 3, label: "Apr")])
+    }
+
+    private func todaySnapshot(
+        localDate: String?,
+        storeState: String?,
+        daily: String
+    ) throws -> UsageProvider {
+        let calendar = localDate.map { #","calendar":{"local_date":"\#($0)"}"# } ?? ""
+        let store = storeState.map { #","history_store":{"state":"\#($0)"}"# } ?? ""
+        let json = #"""
+        {"schema":"coordharness.usage-intelligence.v1","providers":{"claude":{
+          "costs":{"api_rate_estimate":{"amount_nanos":1,"currency":"USD"}},
+          "history":{"daily":[\#(daily)]}}}\#(calendar)\#(store)}
+        """#
+        let snapshot = try decoder().decode(UsageIntelligenceSnapshot.self, from: Data(json.utf8))
+        return try XCTUnwrap(snapshot.providers["claude"])
+    }
+
+    func testEstimatedCostIsDecodedSeparatelyAndReachesTheChartPoint() throws {
+        let json = #"""
+        {"schema":"coordharness.usage-intelligence.v1","providers":{"codex":{
+          "costs":{"api_rate_estimate":{"amount_nanos":59708232403000,"currency":"USD",
+            "measured_amount_nanos":23339418768160,"estimated_amount_nanos":10996711300522,
+            "legacy_amount_nanos":25372102334300,"estimate_state":"applied"}},
+          "history":{"daily":[
+            {"date":"2026-09-20","total_tokens":10,"api_rate_estimate_nanos":4000000000},
+            {"date":"2026-09-21","total_tokens":10,"api_rate_estimate_nanos":22709288067,
+             "estimated_api_rate_estimate_nanos":17651002067,"estimated_tokens":42344108}]}}}}
+        """#
+        let snapshot = try decoder().decode(UsageIntelligenceSnapshot.self, from: Data(json.utf8))
+        let codex = try XCTUnwrap(snapshot.providers["codex"])
+        let cost = try XCTUnwrap(codex.costs?.apiRateEstimate)
+
+        XCTAssertEqual(cost.measuredAmountNanos, 23_339_418_768_160)
+        XCTAssertEqual(cost.estimatedAmountNanos, 10_996_711_300_522)
+        XCTAssertEqual(cost.legacyAmountNanos, 25_372_102_334_300)
+        XCTAssertEqual(cost.estimateState, "applied")
+
+        let history = try XCTUnwrap(UsageHistoryPresentation.sources(for: codex).first)
+        let points = UsageDailyCostTrendProjection.make(providerID: "codex", history: history, costs: codex.costs).points
+        XCTAssertEqual(points.map(\.estimatedNanos), [nil, 17_651_002_067])
+        XCTAssertEqual(points.last?.estimatedTokens, 42_344_108)
+    }
+
+    func testAnEstimateLargerThanItsDayIsClampedSoTheBarCannotInvert() {
+        let point = UsageDailyCostTrendPoint(
+            day: "2026-09-21", nanos: 100, costKind: "API-rate estimate", currency: "USD", estimatedNanos: 250
+        )
+        XCTAssertEqual(point.estimatedNanos, 100)
+        let negative = UsageDailyCostTrendPoint(
+            day: "2026-09-21", nanos: 100, costKind: "API-rate estimate", currency: "USD", estimatedNanos: -5
+        )
+        XCTAssertEqual(negative.estimatedNanos, 0)
+    }
+
+    func testTodayCostIsTheProducersDayAndNeverAnEarlierOne() throws {
+        // Yesterday carries a cost and today has no row. Printing yesterday's
+        // figure as today's is the bug this whole rule exists to prevent.
+        let yesterdayOnly = #"{"date":"2026-09-21","total_tokens":10,"api_rate_estimate_nanos":850080000000}"#
+
+        let fresh = try todaySnapshot(localDate: "2026-09-22", storeState: "fresh", daily: yesterdayOnly)
+        XCTAssertEqual(fresh.dayContext, UsageDayContext(localDate: "2026-09-22", storeState: "fresh"))
+        XCTAssertEqual(UsageTodayCost.display(fresh, fallback: nil), "$0.00")
+
+        let stale = try todaySnapshot(localDate: "2026-09-22", storeState: "stale", daily: yesterdayOnly)
+        XCTAssertEqual(UsageTodayCost.display(stale, fallback: nil), "Stale")
+
+        let unknownStore = try todaySnapshot(localDate: "2026-09-22", storeState: nil, daily: yesterdayOnly)
+        XCTAssertEqual(UsageTodayCost.display(unknownStore, fallback: nil), "Unavailable")
+    }
+
+    func testTodayCostReadsTodaysRowAndSaysWhenItHasNoPrice() throws {
+        let priced = try todaySnapshot(
+            localDate: "2026-09-22",
+            storeState: "stale",
+            daily: #"{"date":"2026-09-22","total_tokens":10,"api_rate_estimate_nanos":116020000000}"#
+        )
+        // A row for today wins even when the store is stale: it is a real
+        // measurement of today, just possibly not the last one.
+        XCTAssertEqual(UsageTodayCost.display(priced, fallback: nil), "$116.02")
+
+        let unpriced = try todaySnapshot(
+            localDate: "2026-09-22",
+            storeState: "fresh",
+            daily: #"{"date":"2026-09-22","total_tokens":10}"#
+        )
+        XCTAssertEqual(UsageTodayCost.display(unpriced, fallback: nil), "Unpriced")
+    }
+
+    func testTodayCostWithoutAProducerCalendarKeepsThePreviousBehaviour() throws {
+        let legacy = try todaySnapshot(localDate: nil, storeState: "fresh", daily: "")
+        XCTAssertNil(legacy.dayContext?.localDate)
+        XCTAssertEqual(UsageTodayCost.display(legacy, fallback: nil), "Unknown")
+    }
+
     private func fixture(named name: String = "usage-dashboard-v1") throws -> UsageIntelligenceSnapshot {
         let url = try XCTUnwrap(Bundle(for: Self.self).url(forResource: name, withExtension: "json"))
         return try decoder().decode(UsageIntelligenceSnapshot.self, from: Data(contentsOf: url))

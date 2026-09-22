@@ -52,6 +52,7 @@ _LIVE_OBSERVATION_STATES = frozenset(
     }
 )
 _SAFE_TOKEN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,79}$")
+_SAFE_DIGEST = re.compile(r"^[0-9a-f]{64}$")
 _SAFE_PROFILE_ID = re.compile(r"^(?:default|p_[0-9a-f]{12})$")
 _SAFE_TEXT = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 ._:+()'%,;!?&$#=·—-]{0,239}$")
 _SAFE_CURRENCY = re.compile(r"^(?:[A-Z]{3}|unknown)$")
@@ -359,6 +360,13 @@ _DAILY_INTEGER_FIELDS = (
     "cache_create_other_tokens",
     "provider_native_cost_nanos",
     "api_rate_estimate_nanos",
+    # The two parts of `api_rate_estimate_nanos` on a provider-anchored day:
+    # measured from local transcripts, and the provider-anchored estimate. A
+    # chart shades the second; stripping either here would let the whole bar
+    # read as measured.
+    "measured_api_rate_estimate_nanos",
+    "estimated_api_rate_estimate_nanos",
+    "estimated_tokens",
 )
 _HISTORY_INTEGER_FIELDS = (
     "today_total_tokens",
@@ -375,6 +383,12 @@ def _sanitize_daily(value: Any) -> list[dict[str, Any]]:
         if not isinstance(row, dict):
             raise UsageDashboardError("invalid_contract")
         item: dict[str, Any] = {"date": _safe_date(row.get("date"))}
+        # Which accounting produced this day. A day imported frozen from a
+        # third-party ledger is not the same kind of fact as one computed from
+        # this machine's transcripts, and the chart must be able to say so
+        # rather than drawing one continuous series over both.
+        if row.get("provenance") is not None:
+            item["provenance"] = _safe_string(row["provenance"], pattern=_SAFE_TOKEN)
         for field in _DAILY_INTEGER_FIELDS:
             _optional_int(row, item, field)
         if item.get("total_tokens") is None:
@@ -421,6 +435,108 @@ def _sanitize_history(value: Any, *, allow_extensions: bool = True) -> dict[str,
         clean["provider_reported_account"] = _sanitize_history(
             value["provider_reported_account"], allow_extensions=False
         )
+    if allow_extensions and value.get("legacy_coverage") is not None:
+        clean["legacy_coverage"] = _sanitize_legacy_coverage(value["legacy_coverage"])
+    if allow_extensions and value.get("pricing_coverage") is not None:
+        clean["pricing_coverage"] = _sanitize_pricing_coverage(value["pricing_coverage"])
+    if allow_extensions and value.get("provider_anchor") is not None:
+        clean["provider_anchor"] = _sanitize_provider_anchor(value["provider_anchor"])
+    return clean
+
+
+_ANCHOR_INTEGER_FIELDS = (
+    "lifetime_tokens",
+    "pre_window_provider_tokens",
+    "provider_tokens",
+    "local_tokens",
+    "off_transcript_tokens",
+    "overlap_excess_tokens",
+    "unpriceable_off_transcript_tokens",
+    "days",
+    "days_provider_above_local",
+    "days_local_above_provider",
+    "measured_cost_nanos",
+    "estimated_cost_nanos",
+)
+
+
+def _sanitize_provider_anchor(value: Any) -> dict[str, Any]:
+    """Forward how a provider's cost was reconciled with the provider's own count.
+
+    This block is what says an estimate exists, why one does not, and what it
+    rests on. Every field is a bounded scalar; `state` is required so a reader
+    can never mistake an absent block for an applied one.
+    """
+
+    if not isinstance(value, dict):
+        raise UsageDashboardError("invalid_contract")
+    clean: dict[str, Any] = {"state": _safe_string(value.get("state"), pattern=_SAFE_TOKEN)}
+    for field in ("semantics", "reason", "estimate_basis", "allocation_basis", "day_basis"):
+        if value.get(field) is not None:
+            clean[field] = _safe_string(value[field], pattern=_SAFE_TOKEN)
+    _optional_timestamp(value, clean, "series_observed_at")
+    for field in ("window_start", "window_end"):
+        if value.get(field) is not None:
+            clean[field] = _safe_date(value[field])
+    for field in _ANCHOR_INTEGER_FIELDS:
+        _optional_int(value, clean, field)
+    return clean
+
+
+def _sanitize_pricing_coverage(value: Any) -> dict[str, Any]:
+    """Forward how much of the observed volume the rate card could price.
+
+    A UI that wants to say how far to trust a cost needs the card's OWN
+    coverage, not a ratio against the provider's quota-reported volume: those
+    are different accountings and dividing them produced a caption reading
+    "15% of today priced" for a day priced in full. Only the bounded scalars a
+    caption needs cross; the rate-card identity and the unpriced-model list
+    stay on this side.
+    """
+
+    if not isinstance(value, dict):
+        raise UsageDashboardError("invalid_contract")
+    clean: dict[str, Any] = {}
+    for field in ("priceable_tokens_today", "unpriced_tokens_today"):
+        _optional_int(value, clean, field)
+    percent = value.get("priced_coverage_percent")
+    if percent is not None:
+        if not isinstance(percent, (int, float)) or isinstance(percent, bool):
+            raise UsageDashboardError("invalid_contract")
+        clean["priced_coverage_percent"] = round(min(100.0, max(0.0, float(percent))), 3)
+    if value.get("semantics") is not None:
+        clean["semantics"] = _safe_string(value["semantics"], pattern=_SAFE_TOKEN)
+    return clean
+
+
+def _sanitize_legacy_coverage(value: Any) -> dict[str, Any]:
+    """Forward how much of the history is imported rather than self-computed.
+
+    Only the fields a label needs cross: the internal source keys and the
+    upstream pricing identity stay on this side of the proxy. The warning does
+    cross, because a UI that shows the longer history without it would be
+    presenting another tool's known-overstating estimate as our own figure.
+    """
+
+    if not isinstance(value, dict):
+        raise UsageDashboardError("invalid_contract")
+    clean: dict[str, Any] = {
+        "semantics": _safe_string(value.get("semantics"), pattern=_SAFE_TOKEN),
+        "days": _safe_int(value.get("days")),
+        "self_computed_days": _safe_int(value.get("self_computed_days")),
+        "total_tokens": _safe_int(value.get("total_tokens")),
+    }
+    for field in ("first_day", "last_day"):
+        if value.get(field) is not None:
+            clean[field] = _safe_date(value[field])
+    _optional_int(value, clean, "api_rate_estimate_nanos")
+    if value.get("cost_bias") is not None:
+        clean["cost_bias"] = _safe_string(value["cost_bias"], pattern=_SAFE_TOKEN)
+    if value.get("warning") is not None:
+        clean["warning"] = _safe_text(value["warning"])
+    for flag in ("canonical", "self_computed", "frozen"):
+        if value.get(flag) is not None:
+            clean[flag] = bool(value[flag])
     return clean
 
 
@@ -439,6 +555,36 @@ def _sanitize_cost_component(value: Any) -> dict[str, Any]:
         clean["semantics"] = _safe_string(value["semantics"], pattern=_SAFE_TOKEN)
     if value.get("source") is not None:
         clean["source"] = _sanitize_source(value["source"])
+    # Pricing provenance: how a cost was derived, and how much of the observed
+    # volume carried a published rate. Bounded scalars only -- no paths, no
+    # account identifiers.
+    for field in ("priced_tokens", "unpriced_tokens", "rate_card_version"):
+        _optional_int(value, clean, field)
+    # The headline's composition. `amount_nanos` is measured + estimated +
+    # legacy; these say how much of it is which, so no surface downstream of
+    # this proxy can present the estimate as measured.
+    for field in (
+        "measured_amount_nanos",
+        "estimated_amount_nanos",
+        "legacy_amount_nanos",
+        "rate_card_override_models",
+    ):
+        _optional_int(value, clean, field)
+    for field in (
+        "pricing_key",
+        "coverage_state",
+        "estimate_state",
+        "estimate_reason",
+        "estimate_basis",
+        "amount_semantics",
+    ):
+        if value.get(field) is not None:
+            clean[field] = _safe_string(value[field], pattern=_SAFE_TOKEN)
+    _optional_timestamp(value, clean, "provider_series_observed_at")
+    if value.get("rate_card_digest") is not None:
+        clean["rate_card_digest"] = _safe_string(
+            value["rate_card_digest"], pattern=_SAFE_DIGEST, maximum=64
+        )
     _optional_timestamp(value, clean, "observed_at")
     for field in ("coverage_start", "coverage_end"):
         if value.get(field) is not None:
@@ -697,6 +843,31 @@ def _sanitize_calendar(value: Any) -> dict[str, Any]:
     }
 
 
+def _sanitize_history_store(value: Any) -> dict[str, Any]:
+    """Forward how current the history behind the figures is.
+
+    This is what lets a reader tell "no usage today" from "the store has not
+    been scanned today". Dropping it here would silently put both back to
+    rendering as a zero, so the field is allowlisted explicitly and asserted to
+    survive the proxy in tests.
+    """
+
+    if not isinstance(value, dict):
+        raise UsageDashboardError("invalid_contract")
+    clean: dict[str, Any] = {"state": _safe_string(value.get("state"), pattern=_SAFE_TOKEN)}
+    _optional_timestamp(value, clean, "last_scan_at")
+    _optional_int(value, clean, "age_seconds")
+    _optional_int(value, clean, "stale_after_seconds")
+    if "refreshing" in value:
+        if not isinstance(value["refreshing"], bool):
+            raise UsageDashboardError("invalid_contract")
+        clean["refreshing"] = value["refreshing"]
+    for field in ("serving", "semantics", "error_code"):
+        if value.get(field) is not None:
+            clean[field] = _safe_string(value[field], pattern=_SAFE_TOKEN)
+    return clean
+
+
 def validate_usage_dashboard(
     payload: Any, *, expected_contract: str = USAGE_CONTRACT
 ) -> dict[str, Any]:
@@ -717,6 +888,11 @@ def validate_usage_dashboard(
         **(
             {"calendar": _sanitize_calendar(payload["calendar"])}
             if payload.get("calendar") is not None
+            else {}
+        ),
+        **(
+            {"history_store": _sanitize_history_store(payload["history_store"])}
+            if payload.get("history_store") is not None
             else {}
         ),
         "providers": {

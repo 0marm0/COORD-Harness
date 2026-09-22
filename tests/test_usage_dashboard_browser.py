@@ -518,7 +518,7 @@ def test_usage_browser_renders_distinct_claude_account_bars_in_menu_strip_and_ca
                 """async () => {
                     const payload = await (await fetch("/api/v1/usage-dashboard")).json();
                     payload.providers.claude.account_profiles = [
-                      {id: "default", label: "Personal Max", active: false, isolated: false,
+                      {id: "default", label: "Account A", active: false, isolated: false,
                        account: {status: "active", plan: "max", authenticated: true},
                        quota_groups: [{key: "account", label: "Account quota", windows: [
                          {kind: "session", remaining_percent: 73}, {kind: "weekly", remaining_percent: 29}
@@ -543,7 +543,7 @@ def test_usage_browser_renders_distinct_claude_account_bars_in_menu_strip_and_ca
             assert "55% left" in (profiles.nth(1).text_content() or "")
             assert "Stale" in (profiles.nth(1).text_content() or "")
             strip_names = page.locator("#usage-strip .usage-strip-profile-name")
-            assert strip_names.all_text_contents()[:2] == ["Personal Max", "Team"]
+            assert strip_names.all_text_contents()[:2] == ["Account A", "Team"]
             assert page.locator("[data-provider=claude] .usage-shared-provider-metrics").count() == 1
             assert page.locator(".usage-freshness strong").inner_text().lower() == "stale"
             # The runtime does not expose raw last payloads; directly exercise the public renderer instead.

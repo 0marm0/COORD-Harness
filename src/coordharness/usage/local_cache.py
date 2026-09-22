@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from copy import deepcopy
 from datetime import datetime, timezone
 import threading
@@ -9,6 +10,8 @@ import time
 from typing import Any
 
 from .local_service import ProviderProbe, _UncachedLocalUsageService
+from .rate_card_refresh import RateCardRefresher, RefreshResult, unpriced_for_want_of_rate
+from .scan_refresh import DEFAULT_STALE_AFTER_SECONDS, ScanStoreRefresher, StoreFreshness
 
 
 def _iso(value: datetime) -> str:
@@ -24,8 +27,15 @@ class LocalUsageService(_UncachedLocalUsageService):
         cache_ttl_seconds: float = 30.0,
         first_read_wait_seconds: float = 0.2,
         monotonic: Any = time.monotonic,
+        store_auto_refresh: bool = True,
+        store_stale_after_seconds: float = DEFAULT_STALE_AFTER_SECONDS,
+        rate_card_auto_refresh: bool | None = None,
         **kwargs: Any,
     ) -> None:
+        # An injected history loader means the scan store is not the history
+        # source, so there is nothing for a refresher to keep current.
+        store_backed = kwargs.get("history_loader") is None
+        card_backed = kwargs.get("rate_card_loader") is None
         super().__init__(*args, **kwargs)
         ttl = float(cache_ttl_seconds)
         wait = float(first_read_wait_seconds)
@@ -42,6 +52,36 @@ class LocalUsageService(_UncachedLocalUsageService):
         self._refreshing = False
         self._refresh_generation = 0
         self._last_refresh_error: str | None = None
+        # The only thing that keeps a standalone install's scan store current.
+        # It is created here, but walks nothing until the first dashboard read.
+        self._store_refresher: ScanStoreRefresher | None = (
+            ScanStoreRefresher(
+                home=self.home,
+                store_path=self._scan_store_path,
+                stale_after_seconds=store_stale_after_seconds,
+                now=self._now,
+                on_complete=self._invalidate_cached_document,
+            )
+            if store_auto_refresh and store_backed
+            else None
+        )
+        # Keeps the user-local override card current (see rate_card_refresh).
+        # Off unless this service serves the real user with the default card
+        # loader: a fixture home must never trigger a network fetch. The
+        # operator opt-out is the COORD_USAGE_RATE_CARD_REFRESH=0 environment.
+        auto_card = (
+            rate_card_auto_refresh
+            if rate_card_auto_refresh is not None
+            else self._serves_real_user
+        )
+        self._rate_card_refresher: RateCardRefresher | None = (
+            RateCardRefresher(
+                override_path=self._rate_card_override_path,
+                on_complete=self._on_rate_card_refreshed,
+            )
+            if auto_card and card_backed
+            else None
+        )
 
     def dashboard(self, *, force_refresh: bool = False) -> dict[str, Any]:
         """Return quickly while at most one background refresh does local I/O.
@@ -51,6 +91,11 @@ class LocalUsageService(_UncachedLocalUsageService):
         are returned as stale while one background refresh replaces them.
         """
 
+        if self._store_refresher is not None:
+            # Starts a background incremental scan when the store is older than
+            # its threshold; never waits for one. This request is answered from
+            # whatever the store holds now.
+            self._store_refresher.request_refresh()
         with self._cache_condition:
             observed = self._monotonic()
             if self._is_fresh(observed) and not force_refresh:
@@ -113,6 +158,37 @@ class LocalUsageService(_UncachedLocalUsageService):
                 ),
             )
         return result
+
+    def _store_is_building(self) -> bool:
+        return self._store_refresher is not None and self._store_refresher.building
+
+    def _after_pricing(self, unpriced_models: Mapping[str, str]) -> None:
+        """Start a background rate-card refresh when a model went unpriced."""
+
+        if self._rate_card_refresher is not None:
+            self._rate_card_refresher.maybe_refresh(unpriced_for_want_of_rate(unpriced_models))
+
+    def _on_rate_card_refreshed(self, _result: RefreshResult) -> None:
+        self._invalidate_cached_document()
+
+    def _on_provider_series_update(self) -> None:
+        self._invalidate_cached_document()
+
+    def _history_store_freshness(self, observed: datetime) -> StoreFreshness:
+        if self._store_refresher is None:
+            return super()._history_store_freshness(observed)
+        return self._store_refresher.freshness()
+
+    def _invalidate_cached_document(self) -> None:
+        """A scan just completed: the next read rebuilds from the new store."""
+
+        condition = getattr(self, "_cache_condition", None)
+        if condition is None:
+            # A background source finished before construction completed;
+            # there is no snapshot yet to invalidate.
+            return
+        with condition:
+            self._cached_at = None
 
     def _refresh_worker(self) -> None:
         document: dict[str, Any] | None = None

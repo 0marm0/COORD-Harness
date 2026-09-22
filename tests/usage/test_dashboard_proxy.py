@@ -716,7 +716,7 @@ def test_claude_account_profiles_are_bounded_sanitized_and_preserve_separate_quo
     payload["providers"]["claude"]["account_profiles"] = [
         {
             "id": "default",
-            "label": "Personal Max",
+            "label": "Account A",
             "active": False,
             "isolated": False,
             "account": {"status": "active", "plan": "max", "authenticated": True, "email": "private@example.invalid"},
@@ -749,7 +749,7 @@ def test_claude_account_profiles_are_bounded_sanitized_and_preserve_separate_quo
         opener=lambda _request, _timeout: _Response(json.dumps(payload).encode("utf-8")),
     ).get()["providers"]["claude"]["account_profiles"]
 
-    assert [profile["label"] for profile in actual] == ["Personal Max", "Team"]
+    assert [profile["label"] for profile in actual] == ["Account A", "Team"]
     assert [window["remaining_percent"] for window in actual[0]["quota_groups"][0]["windows"]] == [73, 29]
     assert actual[1]["account"] == {"status": "inactive", "plan": "team", "authenticated": False}
     assert actual[1]["quota_groups"] == []
@@ -760,7 +760,7 @@ def test_claude_account_profiles_are_bounded_sanitized_and_preserve_separate_quo
 
 
 @pytest.mark.parametrize("profiles", [[{}] * 13, [
-    {"id": "default", "label": "Personal Max", "active": False, "isolated": False, "account": {"status": "active", "plan": "max", "authenticated": True}, "windows": [], "quota_groups": [], "reset_credits": [], "errors": []},
+    {"id": "default", "label": "Account A", "active": False, "isolated": False, "account": {"status": "active", "plan": "max", "authenticated": True}, "windows": [], "quota_groups": [], "reset_credits": [], "errors": []},
     {"id": "default", "label": "Team", "active": True, "isolated": True, "account": {"status": "inactive", "plan": "team", "authenticated": False}, "windows": [], "quota_groups": [], "reset_credits": [], "errors": []},
 ], [
     {"id": "123e4567-e89b-12d3-a456-426614174000", "label": "Team", "active": True, "isolated": True, "account": {"status": "inactive", "plan": "team", "authenticated": False}, "windows": [], "quota_groups": [], "reset_credits": [], "errors": []},
