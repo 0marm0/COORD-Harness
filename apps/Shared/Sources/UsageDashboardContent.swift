@@ -855,13 +855,13 @@ private struct UsageDenseProviderSection: View {
                 }
             }
             HStack(spacing: metricSpacing) {
-                UsageDenseMetric(label: "Today cost", value: todayCostLabel, caption: todayEstimateCaption ?? pricedCoverageCaption)
+                UsageDenseMetric(label: "Today cost", value: todayCostLabel, caption: pricedCoverageCaption)
                 // A bare "Tokens" label is ambiguous when the same view also
                 // shows a cumulative figure elsewhere: the label would carry
                 // today's number on one surface and a lifetime envelope on
                 // another. This one is today's, so it says so.
                 UsageDenseMetric(label: card.provider.history?.providerReportedAccount?.todayTotalTokens == nil ? "Tokens today" : "Quota tokens today", value: UsageFormat.tokens(quotaTodayTokens))
-                UsageDenseMetric(label: "Retained cost", value: UsageDashboardCostFormat.display(summary.retainedUSDEstimateNanos), caption: retainedEstimateCaption)
+                UsageDenseMetric(label: "Retained cost", value: UsageDashboardCostFormat.display(summary.retainedUSDEstimateNanos))
             }
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -1096,7 +1096,7 @@ private struct UsageDenseDailyCostChart: View {
                             VStack(spacing: 0) {
                                 if estimatedShare > 0 {
                                     Rectangle()
-                                        .fill(tint.opacity(0.32))
+                                        .fill(tint.opacity(projection.sourceKind == .providerReported ? 0.50 : 0.82))
                                         .frame(height: barHeight * estimatedShare)
                                 }
                                 Rectangle()
