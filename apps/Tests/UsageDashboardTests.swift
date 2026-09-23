@@ -1876,7 +1876,7 @@ final class UsageDashboardTests: XCTestCase {
         XCTAssertTrue(dense.contains("point.totalTokens.map(UsageFormat.tokens)"))
         XCTAssertTrue(dense.contains("No per-day model detail"))
         XCTAssertTrue(dense.contains("Models: \\(modelDetail(for: point))"))
-        XCTAssertTrue(dense.contains("UsageDenseMetric(label: \"Today cost\", value: todayCostLabel, caption: todayEstimateCaption ?? pricedCoverageCaption)"))
+        XCTAssertTrue(dense.contains("UsageDenseMetric(label: \"Today cost\", value: todayCostLabel, caption: pricedCoverageCaption)"))
         XCTAssertFalse(dense.contains("UsageDenseMetric(label: \"Today\", value: UsageFormat.tokens"))
         XCTAssertEqual(dense.components(separatedBy: "\"Session\"").count - 1, 1)
         XCTAssertEqual(dense.components(separatedBy: "\"Weekly\"").count - 1, 1)
