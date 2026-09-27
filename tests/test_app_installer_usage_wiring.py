@@ -6,6 +6,7 @@ import plistlib
 import re
 import subprocess
 import sys
+import os
 from pathlib import Path
 
 
@@ -97,3 +98,31 @@ def test_installer_allows_bounded_slow_database_startup() -> None:
     source = INSTALL_SH.read_text(encoding="utf-8")
     assert "for _attempt in {1..240}; do" in source
     assert 'curl --fail --silent --show-error --max-time 2 "$BOARD_URL/healthz"' in source
+
+
+def test_reinstall_preserves_existing_native_companion_route(tmp_path: Path) -> None:
+    source = INSTALL_SH.read_text(encoding="utf-8")
+    snippet = source.split('echo "3/7  persist shared native configuration"', 1)[1]
+    snippet = snippet.split('"$VENV/bin/python" - "$CONFIG_PATH"', 1)[0]
+    shim = tmp_path / "defaults"
+    shim.write_text(
+        '#!/bin/bash\nfile="$STORE/$2.$3"\n'
+        'if [[ "$1" == read ]]; then cat "$file"; else printf "%s" "$5" > "$file"; fi\n',
+        encoding="utf-8",
+    )
+    shim.chmod(0o755)
+    domain = "org.coordharness.menubar"
+    (tmp_path / f"{domain}.coordharness.baseURL").write_text("http://127.0.0.1:7871")
+    (tmp_path / f"{domain}.coordharness.coordDBPath").write_text("/companion/coord.db")
+    env = {
+        **os.environ,
+        "PATH": f"{tmp_path}:{os.environ['PATH']}",
+        "STORE": str(tmp_path),
+        "DB_EXPLICIT": "0",
+        "BOARD_URL": "http://127.0.0.1:7870",
+        "DB_PATH": "/coord/coord.db",
+    }
+    result = subprocess.run(["bash", "-c", snippet], env=env, capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    assert (tmp_path / f"{domain}.coordharness.baseURL").read_text() == "http://127.0.0.1:7871"
+    assert (tmp_path / f"{domain}.coordharness.coordDBPath").read_text() == "/companion/coord.db"
