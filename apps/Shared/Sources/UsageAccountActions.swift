@@ -239,10 +239,11 @@ struct UsageAccountActionClient: UsageAccountActionServing, Sendable {
     let session: URLSession
     let timeout: TimeInterval
 
-    init(baseURL: URL?, session: URLSession? = nil, timeout: TimeInterval = 5) {
+    // Leave response/decoding headroom above the board's 10-second upstream budget.
+    init(baseURL: URL?, session: URLSession? = nil, timeout: TimeInterval = 15) {
         self.baseURL = baseURL
         self.session = session ?? Self.privateSession()
-        self.timeout = max(0.2, min(timeout, 10))
+        self.timeout = max(0.2, min(timeout, 20))
     }
 
     func status() async throws -> UsageAccountActionResponse {

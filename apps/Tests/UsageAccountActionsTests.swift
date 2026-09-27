@@ -88,6 +88,7 @@ final class UsageAccountActionsTests: XCTestCase {
         )
         UsageAccountURLProtocolStub.handler = { request in
             XCTAssertEqual(request.httpMethod, "POST")
+            XCTAssertEqual(request.timeoutInterval, 15)
             XCTAssertEqual(request.url?.absoluteString, EndpointTestFixtures.loopbackUsageActions)
             XCTAssertEqual(
                 request.value(forHTTPHeaderField: "Origin"),

@@ -320,7 +320,9 @@ class UsageAccountActionForwarder:
         self,
         *,
         transport: Transport | None = None,
-        timeout_seconds: float = 4.0,
+        # Official CLI authentication plus Keychain reads can exceed four
+        # seconds. Keep this below the native client's 15-second deadline.
+        timeout_seconds: float = 10.0,
         dashboard_url: str | None = None,
         local_service: LocalAccountActionService | None = None,
     ) -> None:
