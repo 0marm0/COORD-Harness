@@ -64,6 +64,8 @@ BOARD_URL="http://127.0.0.1:7870"
 LABEL="org.coordharness.board"
 LABEL_REAPER="org.coordharness.reaper"
 DB_INPUT="${COORD_DB:-$HOME/.coordharness/coord.db}"
+DB_EXPLICIT=0
+[[ -z "${COORD_DB:-}" ]] || DB_EXPLICIT=1
 APP_DIR_INPUT="${COORD_APP_DIR:-$HOME/Applications}"
 PYTHON_COMMAND="${COORD_PYTHON:-python3}"
 LAUNCH_APPS=1
@@ -81,6 +83,7 @@ while [[ $# -gt 0 ]]; do
     --db)
       [[ $# -ge 2 ]] || fail "--db requires a path"
       DB_INPUT="$2"
+      DB_EXPLICIT=1
       shift 2
       ;;
     --app-dir)
@@ -228,8 +231,14 @@ fi
 
 echo "3/7  persist shared native configuration"
 for domain in org.coordharness.menubar org.coordharness.cockpit.window org.coordharness.cockpit.mac; do
-  defaults write "$domain" coordharness.baseURL -string "$BOARD_URL"
-  defaults write "$domain" coordharness.coordDBPath -string "$DB_PATH"
+  # A native app can be intentionally pointed at a companion board. A routine
+  # reinstall of the generic COORD runtime must not silently undo that choice.
+  if [[ "$DB_EXPLICIT" -eq 1 ]] || ! defaults read "$domain" coordharness.baseURL >/dev/null 2>&1; then
+    defaults write "$domain" coordharness.baseURL -string "$BOARD_URL"
+  fi
+  if [[ "$DB_EXPLICIT" -eq 1 ]] || ! defaults read "$domain" coordharness.coordDBPath >/dev/null 2>&1; then
+    defaults write "$domain" coordharness.coordDBPath -string "$DB_PATH"
+  fi
 done
 "$VENV/bin/python" - "$CONFIG_PATH" <<'PY'
 import json
