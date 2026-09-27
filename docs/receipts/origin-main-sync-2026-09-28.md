@@ -22,4 +22,4 @@ Scope: confirm that the public repository contains the current provider usage wo
 
 ## Final sync
 
-The final push and fresh remote comparison are recorded below after publishing.
+`git push origin main` published commits through `d804ac4f18008ef2da86c3b6b5cefdd71676c140`. A fresh `git fetch origin main`, `git rev-parse main`, `git rev-parse origin/main`, and `git ls-remote origin refs/heads/main` all returned that same commit. The worktree was clean at this checkpoint.
