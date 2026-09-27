@@ -8,8 +8,9 @@ from coordharness.usage import account_actions
 from coordharness.usage.account_actions import SCHEMA_ID, UsageAccountActionForwarder
 
 
+@pytest.mark.parametrize("timeout", [None, 2])
 def test_default_transport_uses_shared_provider_account_path_for_status_and_actions(
-    monkeypatch,
+    monkeypatch, timeout,
 ) -> None:
     monkeypatch.setenv(
         "COORD_USAGE_DASHBOARD_URL",
@@ -51,7 +52,7 @@ def test_default_transport_uses_shared_provider_account_path_for_status_and_acti
             return Response(request.method)
 
     monkeypatch.setattr(account_actions, "build_opener", lambda *_handlers: Opener())
-    forwarder = UsageAccountActionForwarder(timeout_seconds=2)
+    forwarder = UsageAccountActionForwarder(**({} if timeout is None else {"timeout_seconds": timeout}))
     configured = UsageAccountActionForwarder(
         timeout_seconds=2,
         dashboard_url="http://127.0.0.1:8999/custom/usage",
@@ -73,6 +74,7 @@ def test_default_transport_uses_shared_provider_account_path_for_status_and_acti
         "http://127.0.0.1:8999",
     ]
     assert requests[1][0].get_header("X-coordharness-usage-action") == "v1"
+    assert [budget for _, budget in requests] == [timeout or 10, timeout or 10, 2]
 
 
 def test_missing_upstream_configuration_uses_local_service(monkeypatch) -> None:
