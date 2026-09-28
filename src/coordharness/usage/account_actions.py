@@ -320,15 +320,15 @@ class UsageAccountActionForwarder:
         self,
         *,
         transport: Transport | None = None,
-        # Official CLI authentication plus Keychain reads can exceed four
-        # seconds. Keep this below the native client's 15-second deadline.
-        timeout_seconds: float = 10.0,
+        # The shared local service can queue behind other provider reads.
+        # Keep this below the native client's 35-second deadline.
+        timeout_seconds: float = 30.0,
         dashboard_url: str | None = None,
         local_service: LocalAccountActionService | None = None,
     ) -> None:
         self._transport = transport or self._default_transport
         self._local_service = local_service or LocalAccountActionService()
-        self._timeout_seconds = max(0.2, min(float(timeout_seconds), 10.0))
+        self._timeout_seconds = max(0.2, min(float(timeout_seconds), 30.0))
         self._upstream_schema = os.environ.get(_UPSTREAM_SCHEMA_ENV, _UPSTREAM_SCHEMA_ID)
         self._action_header = os.environ.get(_ACTION_HEADER_ENV, "X-Coordharness-Usage-Action")
         if not self._upstream_schema or not self._upstream_schema.replace(".", "").replace("-", "").replace("_", "").isalnum():

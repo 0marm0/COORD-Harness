@@ -78,6 +78,12 @@ final class UsageAccountActionsTests: XCTestCase {
     }
 
     func testPostUsesStrictLoopbackOriginFixedHeaderAndExactActionBody() async throws {
+        XCTAssertEqual(
+            UsageAccountActionClient(
+                baseURL: URL(string: EndpointTestFixtures.loopbackIgnoredBasePath), timeout: 60
+            ).timeout,
+            40
+        )
         let payload = try responseData(
             codexState: "waiting_browser",
             canStart: false,
@@ -88,7 +94,7 @@ final class UsageAccountActionsTests: XCTestCase {
         )
         UsageAccountURLProtocolStub.handler = { request in
             XCTAssertEqual(request.httpMethod, "POST")
-            XCTAssertEqual(request.timeoutInterval, 15)
+            XCTAssertEqual(request.timeoutInterval, 35)
             XCTAssertEqual(request.url?.absoluteString, EndpointTestFixtures.loopbackUsageActions)
             XCTAssertEqual(
                 request.value(forHTTPHeaderField: "Origin"),
