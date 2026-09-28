@@ -583,12 +583,12 @@
     },
     "apps/Shared/Sources/UsageAccountActions.swift": {
       "origin": "split from a pinned private provider-usage client, then substantially adapted for the standalone harness",
-      "reason": "User-triggered account actions were isolated behind a bounded public transport with explicit schema validation and redacted failures.\n\nRe-pinned: The bounded native timeout now allows the public board adapter to finish provider authentication while retaining a deadline. (tool-assisted: the hash was updated to the staged bytes by tools/extract/repin.py --apply. This records acceptance of the new content, not an independent re-review of it.)",
-      "reviewed_sha256": "bf12876f7284bff32a56f1300ab8bc6f622b4a0a1a8e9040b8fa2ca506efdef9",
+      "reason": "User-triggered account actions were isolated behind a bounded public transport with explicit schema validation and redacted failures.\n\nRe-pinned: The bounded native timeout now allows the public board adapter to finish provider authentication while retaining a deadline. (tool-assisted: the hash was updated to the staged bytes by tools/extract/repin.py --apply. This records acceptance of the new content, not an independent re-review of it.)\n\nRe-pinned: Native account actions now allow a bounded 35 second request for queued provider authentication, with a 40 second clamp tested by the native suite. (tool-assisted: the hash was updated to the staged bytes by tools/extract/repin.py --apply. This records acceptance of the new content, not an independent re-review of it.)",
+      "reviewed_sha256": "28bd5d2d5098cb7d27a97b52a1c3a98e288c6fdb68b329f6454a7dcf6cecb7ad",
       "repin": {
-        "reason": "The bounded native timeout now allows the public board adapter to finish provider authentication while retaining a deadline.",
+        "reason": "Native account actions now allow a bounded 35 second request for queued provider authentication, with a 40 second clamp tested by the native suite.",
         "method": "tool-assisted: the hash was updated to the staged bytes by tools/extract/repin.py --apply. This records acceptance of the new content, not an independent re-review of it.",
-        "previous_sha256": "c13953245025826b4db34af14985e9992f02d0e2847881f11c892f109b1068f9"
+        "previous_sha256": "bf12876f7284bff32a56f1300ab8bc6f622b4a0a1a8e9040b8fa2ca506efdef9"
       }
     },
     "apps/Shared/Sources/UsageAccountSettingsModel.swift": {
@@ -873,12 +873,12 @@
     },
     "src/coordharness/usage/account_actions.py": {
       "origin": "ported from a pinned private account-action mechanism, then substantially adapted for the standalone harness",
-      "reason": "Re-reviewed after wiring fixed-loopback standalone account actions with explicit schemas, bounded bodies, and sanitized responses.\n\nRe-pinned: The public account action adapter has a bounded ten second upstream deadline and focused passing tests. (tool-assisted: the hash was updated to the staged bytes by tools/extract/repin.py --apply. This records acceptance of the new content, not an independent re-review of it.)",
-      "reviewed_sha256": "1b9f8de74b249d2450f4fb882a5252aeb9f9ce949cfd5ffbcf1fb1f242127e57",
+      "reason": "Re-reviewed after wiring fixed-loopback standalone account actions with explicit schemas, bounded bodies, and sanitized responses.\n\nRe-pinned: The public account action adapter has a bounded ten second upstream deadline and focused passing tests. (tool-assisted: the hash was updated to the staged bytes by tools/extract/repin.py --apply. This records acceptance of the new content, not an independent re-review of it.)\n\nRe-pinned: The public adapter now allows a bounded 30 second upstream request and focused tests cover both default and clamped deadlines. (tool-assisted: the hash was updated to the staged bytes by tools/extract/repin.py --apply. This records acceptance of the new content, not an independent re-review of it.)",
+      "reviewed_sha256": "5e0569be0b8fecc8ac508d34ab4119ba0adde61c066ffff36170e5abd0734da4",
       "repin": {
-        "reason": "The public account action adapter has a bounded ten second upstream deadline and focused passing tests.",
+        "reason": "The public adapter now allows a bounded 30 second upstream request and focused tests cover both default and clamped deadlines.",
         "method": "tool-assisted: the hash was updated to the staged bytes by tools/extract/repin.py --apply. This records acceptance of the new content, not an independent re-review of it.",
-        "previous_sha256": "5a6c13add29cb0f7251b0e1851e4d8d55dd4a6bcc9eef63e53353fef5a17d14c"
+        "previous_sha256": "1b9f8de74b249d2450f4fb882a5252aeb9f9ce949cfd5ffbcf1fb1f242127e57"
       }
     },
     "src/coordharness/usage/dashboard_proxy.py": {
