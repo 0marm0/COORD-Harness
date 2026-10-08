@@ -472,3 +472,21 @@ def test_local_provider_routing_consumes_quota_and_is_advisory_by_default(tmp_pa
     assert status == 501 and response["ok"] is False
     assert "sk-private" not in json.dumps(response)
     assert not (home / ".coord" / "provider-profiles.json").exists()
+
+
+def test_missing_rate_warning_survives_public_dashboard_boundary(tmp_path: Path) -> None:
+    """Missing prices are explicit, while synthetic labels need no catalog rate."""
+    from coordharness.usage.local_service import _UncachedLocalUsageService
+
+    home = _home(tmp_path)
+    service = _UncachedLocalUsageService(
+        home=home, now=lambda: NOW, claude_probe=_claude, codex_probe=_codex,
+        history_loader=discover_local_cli_history,
+    )
+    document = UsageDashboardProxy(url="", local_provider=service.dashboard).get()
+    for provider in ("claude", "codex"):
+        item = document["providers"][provider]
+        assert {"code": "RATE_CARD_MODELS_MISSING"} in item["errors"]
+        assert item["costs"]["api_rate_estimate"]["amount_nanos"] is None
+        assert item["costs"]["api_rate_estimate"]["unpriced_tokens"] == 37
+    assert {"code": "RATE_CARD_MODELS_MISSING"} in document["errors"]
