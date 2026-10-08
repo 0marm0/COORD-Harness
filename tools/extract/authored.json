@@ -563,7 +563,8 @@
     "tools/public_hygiene_sweep.py": "tracked-tree public-hygiene sweep for home paths, emails, work-id grammar and maintainer-supplied vocabulary, written fresh",
     "tools/publication_gate.py": "standalone exact-object local and signed-remote release decision gate written fresh",
     "tools/render_terminal_cast.py": "renders a captured terminal transcript (docs/assets/casts/*.json) into a byte-deterministic, accessible animated SVG",
-    "tools/validate_documentation.py": "single read-only documentation and visual-provenance validator used by CI and local publication review"
+    "tools/validate_documentation.py": "single read-only documentation and visual-provenance validator used by CI and local publication review",
+    "tests/usage/test_rate_card_refresh_recovery.py": "Synthetic regressions for missing model rate recovery after cooldown and safe HTTP failure diagnostics; no network or private runtime data."
   },
   "derived": {
     "apps/Shared/Sources/ProviderManagementView.swift": {
