@@ -1082,7 +1082,10 @@ class _UncachedLocalUsageService:
             history = _history(imported, local, cost_import.costs, card)
             cost = _cost_component(imported, card, cost_import)
             if card is not None:
-                unpriced_models.update(_unpriced_model_reasons(imported, card))
+                provider_unpriced = _unpriced_model_reasons(imported, card)
+                unpriced_models.update(provider_unpriced)
+                if "model_not_in_rate_card" in provider_unpriced.values():
+                    errors.append("RATE_CARD_MODELS_MISSING")
                 plan = self._anchor_plan(provider, imported, card, observed)
                 apply_anchor_plan(
                     history,

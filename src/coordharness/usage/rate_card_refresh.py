@@ -53,6 +53,7 @@ from pathlib import Path
 import threading
 import time
 from typing import Any, Final
+from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from .pricing import _RATE_CARD_PATH, RateCard, RateCardError, parse_rate_card
@@ -342,6 +343,8 @@ class RefreshResult:
     pricing_key: str | None = None
     rate_card_digest: str | None = None
     fetched_at: str | None = None
+    error_type: str | None = None
+    http_status: int | None = None
 
     def summary(self) -> dict[str, Any]:
         return {
@@ -353,6 +356,8 @@ class RefreshResult:
             "pricing_key": self.pricing_key,
             "rate_card_digest": self.rate_card_digest,
             "fetched_at": self.fetched_at,
+            "error_type": self.error_type,
+            "http_status": self.http_status,
         }
 
 
@@ -393,7 +398,10 @@ def refresh_override(
         body = fetcher()
     except Exception as error:  # noqa: BLE001 - any fetch fault is non-fatal by contract
         _logger.warning("rate card fetch failed: %s", error)
-        return RefreshResult(status="failed", reason="fetch_failed")
+        return RefreshResult(
+            status="failed", reason="fetch_failed", error_type=type(error).__name__,
+            http_status=error.code if isinstance(error, HTTPError) else None,
+        )
     try:
         models = transform_models_dev(json.loads(body))
         reason = _suspicion(models, vendored)
@@ -457,9 +465,9 @@ def refresh_override(
 class RateCardRefresher:
     """Start at most one background override refresh, when one is due.
 
-    Due means: a model in the history is unpriced for want of a rate and has
-    not already prompted a fetch in this process, or the override in force is
-    older than ``interval_seconds`` (or absent). Either way, never more often
+    Due means: a model in the history is unpriced for want of a rate, or the
+    override in force is older than ``interval_seconds`` (or absent).
+    Either way, never more often
     than ``retry_after_seconds`` after the previous attempt.
     """
 
@@ -488,7 +496,6 @@ class RateCardRefresher:
         self._lock = threading.Lock()
         self._thread: threading.Thread | None = None
         self._not_before = float("-inf")
-        self._prompted: set[str] = set()
         self.last_result: RefreshResult | None = None
 
     @property
@@ -513,13 +520,11 @@ class RateCardRefresher:
         with self._lock:
             if self._thread is not None or self._monotonic() < self._not_before:
                 return False
-            new_unpriced = fresh - self._prompted
-        if not new_unpriced and not self._periodic_due():
+        if not fresh and not self._periodic_due():
             return False
         with self._lock:
-            if self._thread is not None:
+            if self._thread is not None or self._monotonic() < self._not_before:
                 return False
-            self._prompted |= new_unpriced
             self._not_before = self._monotonic() + self._retry_after
             thread = threading.Thread(
                 target=self._run, name="coord-usage-rate-card-refresh", daemon=True
