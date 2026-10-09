@@ -1,6 +1,6 @@
 {
   "rate_card_version": 1,
-  "pricing_key": "coord-list-price-v4",
+  "pricing_key": "coord-list-price-v5",
   "currency": "USD",
   "unit": "usd_per_million_tokens",
   "source": {
@@ -11,9 +11,10 @@
   "notes": [
     "List price at API rates. Subscription plans are not billed this way; these figures are an API-equivalent estimate, not provider-billed spend.",
     "Anthropic 1h cache write is derived as 2x the base input rate; 5m cache write is the published cache_write rate.",
-    "OpenAI publishes a higher rate above a 272k-token context. It is not applied: across all 307,173 local Codex requests measured on 2026-09-22 the largest context was 261,153 tokens, so no request reached it.",
+    "Standard base rates are applied to day/model aggregates. Request-level service-tier and long-context adjustments are not applied because the aggregates do not preserve those dimensions; a daily token total is not a request context size.",
     "codex-auto-review is a Codex internal label, not a published model, and carries no list price of its own. Operator decision (2026-09-21): price it as gpt-5.6-sol, Codex's default model. This is a declared assumption, not an observed rate.",
-    "The card mirrors every Anthropic and OpenAI model the catalog publishes a text input/output rate for, rather than only the models seen in one sample. Cherry-picking left claude-opus-4-7 out and silently unpriced 26% of one historical sample's tokens."
+    "The card mirrors every Anthropic and OpenAI model the catalog publishes a text input/output rate for, rather than only the models seen in one sample. Cherry-picking left claude-opus-4-7 out and silently unpriced 26% of one historical sample's tokens.",
+    "gpt-6.1-sol Standard rates verified from https://developers.openai.com/api/docs/models/gpt-6.1-sol on 2026-10-09: input 2, cached input 0.1, cache write 2.5, output 10 USD per million tokens. This exact model has its own rate entry, not an alias to gpt-6-sol."
   ],
   "aliases": {
     "opus": "claude-opus-5",
@@ -366,6 +367,14 @@
       "input": 2,
       "output": 10,
       "cache_read": 0.2,
+      "cache_write_5m": 2.5,
+      "cache_write_1h": 2.5
+    },
+    "gpt-6.1-sol": {
+      "provider": "openai",
+      "input": 2,
+      "output": 10,
+      "cache_read": 0.1,
       "cache_write_5m": 2.5,
       "cache_write_1h": 2.5
     },
