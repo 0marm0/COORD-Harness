@@ -1122,22 +1122,22 @@ private struct UsageDenseDailyCostChart: View {
                             hoveredPoint = nil
                         }
                     }
+                    .help(hoveredPoint?.costKind == "provider-native"
+                        ? "Cost reported by the provider."
+                        : "Uses standard API rates. Fast mode and other premiums are not reconstructed.")
                     .overlay(alignment: .topLeading) {
                         if let hoveredPoint {
                             let cardWidth = min(CGFloat(210), max(CGFloat(150), proxy.size.width - 8))
                             let minimumX = cardWidth / 2 + 4
                             let maximumX = max(minimumX, proxy.size.width - cardWidth / 2 - 4)
-                            let minimumY: CGFloat = 50
-                            let maximumY = max(minimumY, proxy.size.height - 50)
                             UsageDenseDailyHoverCard(
                                 point: hoveredPoint,
                                 tint: tint
                             )
                             .frame(width: cardWidth)
-                            .position(
-                                x: min(max(minimumX, hoverLocation.x), maximumX),
-                                y: min(max(minimumY, hoverLocation.y + 42), maximumY)
-                            )
+                            .fixedSize(horizontal: false, vertical: true)
+                            .offset(x: min(max(minimumX, hoverLocation.x), maximumX) - cardWidth / 2, y: 4)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                             .allowsHitTesting(false)
                         }
                     }
@@ -1178,19 +1178,24 @@ private struct UsageDenseDailyHoverCard: View {
     let point: UsageDailyCostTrendPoint
     let tint: Color
 
-    private var topModels: [UsageDailyModelBreakdown] {
+    private var models: [UsageDailyModelBreakdown] {
         Array((point.modelBreakdowns ?? []).sorted { lhs, rhs in
             let leftTokens = lhs.totalTokens ?? -1
             let rightTokens = rhs.totalTokens ?? -1
             if leftTokens != rightTokens { return leftTokens > rightTokens }
             return lhs.displayLabel.localizedCaseInsensitiveCompare(rhs.displayLabel) == .orderedAscending
-        }.prefix(3))
+        } )
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(point.day)
-                .font(.system(size: 9, weight: .bold).monospacedDigit())
+            HStack(spacing: 4) {
+                Text(point.day)
+                    .font(.system(size: 9, weight: .bold).monospacedDigit())
+                Spacer(minLength: 0)
+                Text(point.costKind == "provider-native" ? "Provider native cost" : "Standard API estimate")
+                    .font(.system(size: 7.5, weight: .medium))
+            }
             HStack(spacing: 8) {
                 Text(UsageDashboardCostFormat.display(point.nanos, currency: point.currency))
                 Spacer(minLength: 4)
@@ -1208,19 +1213,25 @@ private struct UsageDenseDailyHoverCard: View {
                 .font(.system(size: 8.5, weight: .medium).monospacedDigit())
                 .foregroundStyle(.white.opacity(0.82))
             }
-            if topModels.isEmpty {
+            if models.isEmpty {
                 Text("No per-day model detail")
                     .font(.system(size: 8.5, weight: .medium))
                     .foregroundStyle(.white.opacity(0.82))
             } else {
                 Divider().overlay(Color.white.opacity(0.25))
-                ForEach(Array(topModels.enumerated()), id: \.offset) { _, model in
-                    HStack(spacing: 6) {
-                        Text(model.displayLabel).lineLimit(1)
-                        Spacer(minLength: 4)
-                        Text(UsageFormat.tokens(model.totalTokens)).monospacedDigit()
+                VStack(alignment: .leading, spacing: 1) {
+                    ForEach(Array(models.enumerated()), id: \.offset) { _, model in
+                        HStack(spacing: 6) {
+                            Text(model.displayLabel).lineLimit(1)
+                            Spacer(minLength: 4)
+                            Text(UsageFormat.tokens(model.totalTokens)).monospacedDigit()
+                            Text(UsageDashboardCostFormat.display(
+                                point.costKind == "provider-native" ? model.providerNativeCostNanos : model.apiRateEstimateNanos,
+                                currency: point.currency
+                            )).monospacedDigit()
+                        }
+                        .font(.system(size: 8.5, weight: .medium))
                     }
-                    .font(.system(size: 8.5, weight: .medium))
                 }
             }
         }
@@ -1232,7 +1243,9 @@ private struct UsageDenseDailyHoverCard: View {
                 .stroke(Color.white.opacity(0.28), lineWidth: 0.5)
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Daily usage \(point.day), \(UsageDashboardCostFormat.display(point.nanos, currency: point.currency)), \(UsageFormat.tokens(point.totalTokens)) tokens")
+        .accessibilityLabel("Daily usage \(point.day), \(UsageDashboardCostFormat.display(point.nanos, currency: point.currency)), \(UsageFormat.tokens(point.totalTokens)) tokens, " + models.map { model in
+            "\(model.displayLabel) \(UsageFormat.tokens(model.totalTokens)) tokens, \(UsageDashboardCostFormat.display(point.costKind == "provider-native" ? model.providerNativeCostNanos : model.apiRateEstimateNanos, currency: point.currency))"
+        }.joined(separator: ", "))
     }
 }
 private struct UsageDailyTrendOverview: View {

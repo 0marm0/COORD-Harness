@@ -134,7 +134,9 @@ class RateCard:
         """Price one aggregate exactly, in integer nano-USD.
 
         Products are summed before the single division, so no component is
-        independently rounded.
+        independently rounded. This aggregate has no request boundaries or
+        service tier; rates are the card's base rates and request-level
+        long-context or service-tier adjustments are not inferred.
         """
 
         counts = {name: _count(tokens.get(name)) for name, _ in _COMPONENTS}
@@ -175,7 +177,9 @@ class RateCard:
             "semantics": "self_computed_api_list_price_estimate",
             "warning": (
                 "Tokens priced at API list rates by this harness; "
-                "a subscription plan is not billed this way."
+                "a subscription plan is not billed this way. "
+                "Standard rates omit request-level service-tier and "
+                "long-context adjustments."
             ),
         }
 

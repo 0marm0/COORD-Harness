@@ -273,7 +273,7 @@ def test_the_payload_reports_the_effective_card(tmp_path: Path) -> None:
     ).dashboard()
     cost = document["providers"]["claude"]["costs"]["api_rate_estimate"]
 
-    assert cost["pricing_key"].startswith("coord-list-price-v4.ovr-")
+    assert cost["pricing_key"].startswith("coord-list-price-v5.ovr-")
     assert cost["rate_card_override_models"] == 1
     assert cost["unpriced_tokens"] == 0
     assert cost["measured_amount_nanos"] == 3_000_000_000

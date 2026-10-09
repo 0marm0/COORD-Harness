@@ -653,8 +653,9 @@ def _cost_component(
             "canonical": False,
             "label": "API list-price estimate",
             "warning": (
-                "Priced locally from this machine's CLI transcripts at API list "
-                "rates; not provider-billed spend."
+                "Standard API-rate estimate, not billed spend. Fast, Ultrafast, "
+                "long-context and regional adjustments are not reconstructed. "
+                "Rate coverage does not certify complete cost."
             ),
         },
     }
