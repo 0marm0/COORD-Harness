@@ -85,6 +85,7 @@ targets:
     sources:
       - path: menubar/Sources
       - path: Shared/Sources/UsageIntelligence.swift
+      - path: Shared/Sources/UsageWindowRefreshLifecycle.swift
       - path: Shared/Sources/UsageDashboardContent.swift
       - path: Shared/Sources/UsageAccountActions.swift
       - path: Shared/Sources/UsageAccountSettingsModel.swift
@@ -124,6 +125,7 @@ targets:
       - path: menubar/Sources/UI
       - path: menubar/Sources/Usage
       - path: Shared/Sources/UsageIntelligence.swift
+      - path: Shared/Sources/UsageWindowRefreshLifecycle.swift
       - path: Shared/Sources/UsageDashboardContent.swift
       - path: Shared/Sources/UsageAccountActions.swift
       - path: Shared/Sources/UsageAccountSettingsModel.swift

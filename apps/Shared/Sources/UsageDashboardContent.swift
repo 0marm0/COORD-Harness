@@ -861,7 +861,9 @@ private struct UsageDenseProviderSection: View {
                 // today's number on one surface and a lifetime envelope on
                 // another. This one is today's, so it says so.
                 UsageDenseMetric(label: card.provider.history?.providerReportedAccount?.todayTotalTokens == nil ? "Tokens today" : "Quota tokens today", value: UsageFormat.tokens(quotaTodayTokens))
-                UsageDenseMetric(label: "Retained cost", value: UsageDashboardCostFormat.display(summary.retainedUSDEstimateNanos))
+                UsageDenseMetric(label: "Retained cost", value: UsageDashboardCostFormat.display(summary.retainedUSDEstimateNanos),
+                    caption: UsageEstimateFreshness.make(card.provider.costs?.apiRateEstimate)?.caption)
+                    .help(UsageEstimateFreshness.make(card.provider.costs?.apiRateEstimate)?.help ?? "Retained local estimate")
             }
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -971,6 +973,7 @@ private struct UsageDenseMetric: View {
                     .font(.system(size: 8.5, weight: .medium))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
+                    .minimumScaleFactor(0.6)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)

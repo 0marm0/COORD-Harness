@@ -7,6 +7,11 @@ final class CockpitWindowController: NSWindowController {
     private let capabilitySource: CockpitCapabilityInventorySource
     private let mapSource: CockpitMapReadModelSource
     private let stateStore: CockpitWindowUIStateStore
+    private let usageStore: InstalledUsageStore
+    private let usageManagedExternally: Bool
+    private lazy var usageRefreshLifecycle = UsageWindowRefreshLifecycle(refresh: { [usageStore] in
+        await usageStore.refresh()
+    })
     private let broker = NativeCockpitActionBroker()
     private let rootView: CockpitRootView
     private var timer: Timer?
@@ -41,12 +46,14 @@ final class CockpitWindowController: NSWindowController {
         self.capabilitySource = capabilitySource
         self.mapSource = mapSource
         self.stateStore = stateStore
+        self.usageStore = usageStore
+        self.usageManagedExternally = usageManagedExternally
         let initialSize = Self.initialWindowSize()
         self.rootView = CockpitRootView(
             frame: NSRect(origin: .zero, size: initialSize),
             usageStore: usageStore,
             telemetryStore: telemetryStore,
-            usageManagedExternally: usageManagedExternally
+            usageManagedExternally: true
         )
         let content = NSViewController()
         rootView.autoresizingMask = [.width, .height]
@@ -83,6 +90,7 @@ final class CockpitWindowController: NSWindowController {
         super.showWindow(sender)
         window?.makeKeyAndOrderFront(sender)
         NSApp.activate(ignoringOtherApps: true)
+        if !usageManagedExternally { usageRefreshLifecycle.start() }
         Task { @MainActor in
             await refreshProjectionThenReload(force: true)
             startTimer()
@@ -90,6 +98,7 @@ final class CockpitWindowController: NSWindowController {
     }
 
     override func close() {
+        usageRefreshLifecycle.stop()
         flushWindowStateSave()
         timer?.invalidate()
         timer = nil
@@ -355,6 +364,7 @@ extension CockpitWindowController: NSWindowDelegate {
     }
 
     func windowWillClose(_ notification: Notification) {
+        usageRefreshLifecycle.stop()
         flushWindowStateSave()
         rootView.setCockpitAnimationsEnabled(false)
         rootView.releaseMapResources()

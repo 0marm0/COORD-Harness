@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from copy import deepcopy
+import os
 from pathlib import Path
 import threading
 
@@ -827,5 +828,36 @@ def test_provider_scoped_last_good_retains_only_future_claude_quota(
                 }"""
             )
             assert "75% left" not in page.locator(".usage-provider-claude").inner_text()
+        finally:
+            browser.close()
+
+
+@pytest.mark.parametrize("state", ["stale_last_good", "fresh", "unavailable", "unknown", 42, None])
+def test_estimate_series_freshness_is_independent_of_payload_refresh(tmp_path, state):
+    payload = _payload()
+    payload["providers"]["codex"]["costs"]["api_rate_estimate"].update({
+        "provider_series_state": state,
+        "provider_series_reason": "provider_series_unavailable",
+        "provider_series_observed_at": "2026-10-13T12:00:00Z",
+        "estimated_amount_nanos": 1_000_000_000,
+    })
+    with _board(tmp_path) as url, playwright_api.sync_playwright() as playwright:
+        browser = playwright.chromium.launch(channel=os.environ.get("USAGE_TEST_BROWSER_CHANNEL"))
+        try:
+            page = browser.new_page()
+            if os.environ.get("USAGE_TEST_DASHBOARD_SCRIPT"):
+                page.route("**/static/usage-dashboard.js", lambda route: route.fulfill(path=os.environ["USAGE_TEST_DASHBOARD_SCRIPT"], content_type="application/javascript"))
+            page.goto(f"{url}/#v=usage", wait_until="networkidle")
+            page.evaluate("payload => window.CoordUsageDashboard.render(payload)", payload)
+            provider = page.locator('[data-provider="codex"]')
+            assert provider.locator(".usage-compact-metrics strong").last.inner_text() == "$2.50"
+            disclosure = provider.locator('[data-estimate-freshness="stale_last_good"]')
+            assert disclosure.count() == (1 if state == "stale_last_good" else 0)
+            if state == "stale_last_good":
+                assert disclosure.inner_text() == "Estimate retained · update delayed"
+                assert "2026-10-13T12:00:00Z" in disclosure.get_attribute("title")
+                assert "provider series unavailable" in disclosure.get_attribute("title")
+                strip_caption = page.locator("#usage-strip .usage-strip-expanded-codex .usage-strip-cost small")
+                assert strip_caption.text_content() == "Update delayed"
         finally:
             browser.close()

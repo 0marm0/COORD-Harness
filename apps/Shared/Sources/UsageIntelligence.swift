@@ -1306,6 +1306,23 @@ private func normalizedUsageCurrency(_ value: String?) -> String? {
     return code
 }
 
+
+/// Provider-series freshness is independent of payload or quota freshness.
+struct UsageEstimateFreshness: Equatable, Sendable {
+    let caption: String
+    let help: String
+
+    static func make(_ cost: UsageCost?) -> UsageEstimateFreshness? {
+        guard cost?.providerSeriesState == "stale_last_good" else { return nil }
+        let observed = cost?.providerSeriesObservedAt ?? "unavailable"
+        let reason = cost?.providerSeriesReason?.replacingOccurrences(of: "_", with: " ") ?? "update delayed"
+        return UsageEstimateFreshness(
+            caption: "Estimate retained · update delayed",
+            help: "Estimate retained · update delayed. Last successful observation: \(observed). Reason: \(reason). Retained estimate remains included in cost; payload freshness does not refresh this estimate."
+        )
+    }
+}
+
 struct UsageCost: Codable, Equatable, Sendable {
     let amountNanos: Int64?
     let currency: String?
@@ -1318,6 +1335,9 @@ struct UsageCost: Codable, Equatable, Sendable {
     let estimatedAmountNanos: Int64?
     let legacyAmountNanos: Int64?
     let estimateState: String?
+    let providerSeriesState: String?
+    let providerSeriesReason: String?
+    let providerSeriesObservedAt: String?
 
     enum CodingKeys: String, CodingKey {
         case amountNanos = "amount_nanos"
@@ -1327,6 +1347,9 @@ struct UsageCost: Codable, Equatable, Sendable {
         case estimatedAmountNanos = "estimated_amount_nanos"
         case legacyAmountNanos = "legacy_amount_nanos"
         case estimateState = "estimate_state"
+        case providerSeriesState = "provider_series_state"
+        case providerSeriesReason = "provider_series_reason"
+        case providerSeriesObservedAt = "provider_series_observed_at"
     }
 
     private static let currencyLimit = 8
@@ -1340,6 +1363,20 @@ struct UsageCost: Codable, Equatable, Sendable {
         estimatedAmountNanos = try values.decodeIfPresent(Int64.self, forKey: .estimatedAmountNanos)
         legacyAmountNanos = try values.decodeIfPresent(Int64.self, forKey: .legacyAmountNanos)
         estimateState = try values.decodeIfPresent(String.self, forKey: .estimateState)
+        let state = try? values.decodeIfPresent(String.self, forKey: .providerSeriesState)
+        providerSeriesState = ["fresh", "stale_last_good", "unavailable"].contains(state ?? "") ? state : nil
+        let reason = try? values.decodeIfPresent(String.self, forKey: .providerSeriesReason)
+        providerSeriesReason = reason.flatMap { value in
+            value.range(of: "^[a-z][a-z0-9_]{0,79}$", options: .regularExpression) != nil ? value : nil
+        }
+        let observed = try? values.decodeIfPresent(String.self, forKey: .providerSeriesObservedAt)
+        providerSeriesObservedAt = observed.flatMap { value in
+            let formatter = ISO8601DateFormatter()
+            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            let valid = ISO8601DateFormatter().date(from: value) != nil || formatter.date(from: value) != nil
+            return value.utf8.count <= 35 && valid ? value : nil
+        }
+
 
         let decoded = try values.decodeIfPresent([String: Int64].self, forKey: .byCurrency) ?? [:]
         var retained: [String: Int64] = [:]
@@ -2036,6 +2073,7 @@ struct UsagePopoverPeekProvider: Equatable, Identifiable, Sendable {
     let fableTiming: UsageCompactQuotaTiming
     let todayTokens: Int64?
     let retainedUSDEstimateNanos: Int64?
+    var estimateFreshness: UsageEstimateFreshness? = nil
 }
 
 struct UsagePopoverPeekPresentation: Equatable, Sendable {
@@ -2093,7 +2131,8 @@ struct UsagePopoverPeekPresentation: Equatable, Sendable {
                 weeklyTiming: .make(from: summary.weekly).filtered(reset: showResetETA, runout: showRunoutETA),
                 fableTiming: .make(from: summary.fable).filtered(reset: showResetETA, runout: showRunoutETA),
                 todayTokens: summary.todayTokens,
-                retainedUSDEstimateNanos: summary.retainedUSDEstimateNanos
+                retainedUSDEstimateNanos: summary.retainedUSDEstimateNanos,
+                estimateFreshness: summary.retainedUSDEstimateNanos == nil ? nil : UsageEstimateFreshness.make(state.snapshot?.providers[summary.id.split(separator: ":").first.map(String.init) ?? summary.id]?.costs?.apiRateEstimate)
             )
         }
         let freshness: UsagePeekFreshness
@@ -2123,7 +2162,7 @@ struct UsagePopoverPeekPresentation: Equatable, Sendable {
             let today = provider.todayTokens.map { "\($0) retained tokens today" } ?? "today tokens unavailable"
             let retainedUSD = provider.retainedUSDEstimateNanos
                 .map { String(format: "USD %.2f retained estimate", Double($0) / 1_000_000_000) } ?? "retained USD estimate unavailable"
-            return "\(provider.displayName): \(provider.connectionLabel), session \(session), \(provider.sessionTiming.accessibilityLabel), weekly \(weekly), \(provider.weeklyTiming.accessibilityLabel), Fable \(fable), \(provider.fableTiming.accessibilityLabel), \(today), \(retainedUSD)"
+            return "\(provider.displayName): \(provider.connectionLabel), session \(session), \(provider.sessionTiming.accessibilityLabel), weekly \(weekly), \(provider.weeklyTiming.accessibilityLabel), Fable \(fable), \(provider.fableTiming.accessibilityLabel), \(today), \(retainedUSD)" + (provider.estimateFreshness.map { "; \($0.caption)" } ?? "")
         }.joined(separator: ". ")
         return "\(prefix) \(details)"
     }

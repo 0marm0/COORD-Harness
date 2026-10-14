@@ -31,6 +31,28 @@ records a concrete not-applicable reason.
 - Codex cost is provider-anchored. `costs.api_rate_estimate.amount_nanos` is the headline and equals `measured_amount_nanos + estimated_amount_nanos + legacy_amount_nanos` (every dollar the daily chart draws); `amount_semantics` is `measured_plus_estimated_plus_legacy`. `estimated_amount_nanos` is `null` whenever no estimate was made, never `0` standing in for unknown. `estimate_state` is `applied`, `unavailable` (with a machine-readable `estimate_reason`, e.g. `provider_series_not_yet_fetched`, `codex_app_server_timeout`, `provider_series_expired`, `provider_series_disabled`), or `not_applicable` (Claude: `provider_reports_no_daily_tokens`). `estimate_basis` and `provider_series_observed_at` state what the estimate rests on. Each `history.daily` row carries `measured_api_rate_estimate_nanos`, `estimated_api_rate_estimate_nanos` and `estimated_tokens`; `api_rate_estimate_nanos` is their sum. A local day the provider saw usage on and this machine did not has `provenance: "provider_anchor_estimate"` and `total_tokens: 0`. `history.provider_anchor` carries the reconciliation totals. A surface never shows the estimate as measured: the chart shades it and the hover splits it. Every one of these fields crosses the proxy allowlist and a test asserts it.
 - The rate card in force is the vendored card with the user-local override `~/.coordharness/rate_card.json` layered over it (override entries win). The override is fetched from `https://models.dev/api.json` when a model is unpriced for want of a rate, otherwise at most once per 24h, in the background with a bounded timeout; a malformed or suspicious fetch is refused and the last good card stays. `COORD_USAGE_RATE_CARD_REFRESH=0` disables the fetch; `coord usage-rate-card-refresh [--dry-run]` runs it on demand. `pricing_key` / `rate_card_digest` describe the effective card: identical to the vendored card when the override changes nothing, otherwise `<vendored key>.ovr-<12 hex>` over only the rates that differ, with no timestamps hashed. `rate_card_override_models` counts the overriding models. `COORD_USAGE_CODEX_PROVIDER_SERIES=0` disables the Codex provider series fetch (cost then stays measured-only with reason `provider_series_disabled`).
 - Both native applications expose a persistent operator setting for the independent battery menu-bar item. Turning it off removes only that separate status item; turning it on recreates it without changing the primary app item or silently resetting after relaunch.
+- A valid retained Codex provider receipt remains applied across refresh failure,
+  service restart, or age expiry. Cost exposes `provider_series_state` (`fresh` or
+  `stale_last_good`) and `provider_series_reason`; `history.provider_anchor` carries
+  `series_state`, `series_reason`, and `series_age_seconds`. Stale estimates keep
+  their covered daily costs and disclose their receipt timestamp and refresh error.
+  A successful partial response unions omitted historical days and reports
+  `provider_series_partial_response`; explicit bucket corrections replace prior
+  values. Local-only days without a provider receipt remain measured-only.
+- Receipt persistence stores only normalized UTC dates/counts, timestamp, bounded
+  status, checksum, and an opaque account/source scope in atomic private primary
+  and backup files. A corrupt primary can recover the scoped backup with reason
+  `provider_series_cache_recovered`; neither file can cross account scopes.
+  Account scope comes from the actual CLI configuration and stable local account
+  metadata. Token rotation preserves that scope; removal, unknown identity, or an
+  account/profile switch prevents reuse. No credentials, email, raw RPC payload,
+  or account identifiers enter the receipt or public dashboard. A failed RPC with
+  unchanged verified local identity keeps the last good receipt.
+- `history.provider_reported_account` keeps normalized retained daily and account
+  lifetime token totals during refresh failure. Its today value reads the exact
+  `calendar.local_date` bucket and remains null when that bucket is absent;
+  an earlier provider day never becomes today. UTC provider counts remain a
+  separate source family from locally measured tokens.
 
 ## Acceptance gate
 

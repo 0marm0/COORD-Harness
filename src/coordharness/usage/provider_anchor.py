@@ -229,7 +229,7 @@ def _usd(nanos: int) -> str:
 
 
 def _count(value: object) -> int | None:
-    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0 or value > 2**63 - 1:
         return None
     return value
 
@@ -488,6 +488,9 @@ class AnchorPlan:
     series_observed_at: str | None = None
     pre_window_provider_tokens: int = 0
     lifetime_tokens: int | None = None
+    series_state: str | None = None
+    series_reason: str | None = None
+    series_age_seconds: int | None = None
 
     @property
     def estimated_cost_nanos(self) -> int | None:
@@ -506,6 +509,9 @@ class AnchorPlan:
             "allocation_basis": ALLOCATION_BASIS if self.state == ESTIMATE_APPLIED else None,
             "day_basis": "utc",
             "series_observed_at": self.series_observed_at,
+            "series_state": self.series_state or "unavailable",
+            "series_reason": self.series_reason or self.reason,
+            "series_age_seconds": self.series_age_seconds,
             "window_start": self.window_start,
             "window_end": self.window_end,
             "lifetime_tokens": self.lifetime_tokens,
@@ -565,6 +571,8 @@ def plan_codex_anchor(
     now: datetime | None = None,
     max_window_days: int = DEFAULT_MAX_WINDOW_DAYS,
     max_series_age_seconds: int = MAX_SERIES_AGE_SECONDS,
+    series_state: str | None = None,
+    series_reason: str | None = None,
 ) -> AnchorPlan:
     """Anchor measured Codex usage to the provider's daily series.
 
@@ -577,9 +585,14 @@ def plan_codex_anchor(
     """
 
     observed = _parse_instant(series_observed_at)
+    age = None
+    series_state = series_state or "fresh"
     if observed is not None and now is not None:
-        if (now.astimezone(timezone.utc) - observed).total_seconds() > max_series_age_seconds:
-            return unavailable_plan(REASON_SERIES_EXPIRED, observed_at=series_observed_at)
+        age = max(0, int((now.astimezone(timezone.utc) - observed).total_seconds()))
+        if age > max_series_age_seconds:
+            # Receipt age withdraws freshness, never previously observed history.
+            series_state = "stale_last_good"
+            series_reason = series_reason or REASON_SERIES_EXPIRED
     excluded = set(excluded_utc_days)
     rows = [row for row in slot_rows if utc_slot_day(row.usage_slot) not in excluded]
     local = utc_day_costs(rows, card)
@@ -625,6 +638,9 @@ def plan_codex_anchor(
         series_observed_at=series_observed_at,
         pre_window_provider_tokens=pre_window,
         lifetime_tokens=series.lifetime_tokens,
+        series_state=series_state,
+        series_reason=series_reason,
+        series_age_seconds=age,
     )
 
 
@@ -717,6 +733,8 @@ def apply_anchor_plan(
     cost["estimate_reason"] = plan.reason
     cost["estimate_basis"] = ESTIMATE_BASIS if applied else None
     cost["provider_series_observed_at"] = plan.series_observed_at
+    cost["provider_series_state"] = plan.series_state or "unavailable"
+    cost["provider_series_reason"] = plan.series_reason or plan.reason
     cost["amount_semantics"] = "measured_plus_estimated_plus_legacy"
     if headline_parts:
         cost["amount_nanos"] = sum(headline_parts)

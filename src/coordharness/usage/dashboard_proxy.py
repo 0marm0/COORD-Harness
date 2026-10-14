@@ -471,10 +471,14 @@ def _sanitize_provider_anchor(value: Any) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise UsageDashboardError("invalid_contract")
     clean: dict[str, Any] = {"state": _safe_string(value.get("state"), pattern=_SAFE_TOKEN)}
-    for field in ("semantics", "reason", "estimate_basis", "allocation_basis", "day_basis"):
+    for field in (
+        "semantics", "reason", "estimate_basis", "allocation_basis", "day_basis",
+        "series_state", "series_reason",
+    ):
         if value.get(field) is not None:
             clean[field] = _safe_string(value[field], pattern=_SAFE_TOKEN)
     _optional_timestamp(value, clean, "series_observed_at")
+    _optional_int(value, clean, "series_age_seconds")
     for field in ("window_start", "window_end"):
         if value.get(field) is not None:
             clean[field] = _safe_date(value[field])
@@ -576,6 +580,8 @@ def _sanitize_cost_component(value: Any) -> dict[str, Any]:
         "estimate_state",
         "estimate_reason",
         "estimate_basis",
+        "provider_series_state",
+        "provider_series_reason",
         "amount_semantics",
     ):
         if value.get(field) is not None:
