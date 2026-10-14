@@ -37,6 +37,7 @@ from .provider_series import (
 from .rate_card_refresh import default_override_path, load_effective_rate_card
 from .scan_refresh import DEFAULT_STALE_AFTER_SECONDS, StoreFreshness, assess_store
 from .scan_store import read_store_history
+from .series_identity import codex_source_identity
 
 
 JsonlRunner = Callable[[Sequence[str], Sequence[Mapping[str, Any]], float], list[Mapping[str, Any]]]
@@ -969,6 +970,9 @@ class _UncachedLocalUsageService:
                 cache_path=default_cache_path(self._scan_store_path),
                 now=self._now,
                 on_update=self._on_provider_series_update,
+                identity=lambda: codex_source_identity(
+                    self.home, command=(f"CODEX_HOME={self.home / '.codex'}",)
+                ),
             )
             codex_series = source.current
         self._codex_series = codex_series
@@ -1022,7 +1026,8 @@ class _UncachedLocalUsageService:
         return {"claude": self._claude_probe(), "codex": self._codex_probe()}
 
     def _anchor_plan(
-        self, provider: str, imported: LocalHistoryImport, card: RateCard | None, observed: datetime
+        self, provider: str, imported: LocalHistoryImport, card: RateCard | None, observed: datetime,
+        observation: SeriesObservation | None = None,
     ) -> AnchorPlan:
         """Provider-anchored estimate for Codex; Claude has nothing to anchor to."""
 
@@ -1030,10 +1035,11 @@ class _UncachedLocalUsageService:
             return not_applicable_plan()
         if card is None:
             return unavailable_plan("rate_card_unavailable")
-        try:
-            observation = self._codex_series()
-        except Exception:  # noqa: BLE001 - a series fault degrades to measured-only
-            observation = SeriesObservation(series=None, reason=REASON_SERIES_UNAVAILABLE)
+        if observation is None:
+            try:
+                observation = self._codex_series()
+            except Exception:  # noqa: BLE001 - a series fault degrades to measured-only
+                observation = SeriesObservation(series=None, reason=REASON_SERIES_UNAVAILABLE)
         if observation.series is None:
             return unavailable_plan(observation.reason or REASON_SERIES_UNAVAILABLE)
         try:
@@ -1044,6 +1050,8 @@ class _UncachedLocalUsageService:
                 excluded_utc_days={row.usage_date for row in imported.legacy_rows},
                 series_observed_at=observation.observed_at,
                 now=observed,
+                series_state=observation.series_state,
+                series_reason=observation.series_reason,
             )
         except ValueError:
             return unavailable_plan(REASON_SERIES_INVALID, observed_at=observation.observed_at)
@@ -1081,13 +1089,38 @@ class _UncachedLocalUsageService:
             windows = _with_local_pace(probe.windows, observed)
             runout = _runout(windows, observed)
             history = _history(imported, local, cost_import.costs, card)
+            series_observation = None
+            if provider == "codex":
+                try:
+                    series_observation = self._codex_series()
+                except Exception:  # noqa: BLE001 - the provider boundary is fallible
+                    series_observation = SeriesObservation(series=None, reason=REASON_SERIES_UNAVAILABLE)
+                if series_observation.series is not None:
+                    series = series_observation.series
+                    today = local.date()
+                    seven = (today - timedelta(days=6)).isoformat()
+                    week = (today - timedelta(days=today.weekday())).isoformat()
+                    end = today.isoformat()
+                    history["provider_reported_account"] = {
+                        "daily": [{"date": day, "total_tokens": tokens}
+                                  for day, tokens in sorted(series.daily.items())][-400:],
+                        "today_total_tokens": series.daily.get(end),
+                        "rolling_7d_total_tokens": sum(
+                            tokens for day, tokens in series.daily.items() if seven <= day <= end
+                        ),
+                        "calendar_week_total_tokens": sum(
+                            tokens for day, tokens in series.daily.items() if week <= day <= end
+                        ),
+                        "all_time_total_tokens": series.lifetime_tokens,
+                        "semantics": "provider_reported_utc_daily_tokens",
+                    }
             cost = _cost_component(imported, card, cost_import)
             if card is not None:
                 provider_unpriced = _unpriced_model_reasons(imported, card)
                 unpriced_models.update(provider_unpriced)
                 if "model_not_in_rate_card" in provider_unpriced.values():
                     errors.append("RATE_CARD_MODELS_MISSING")
-                plan = self._anchor_plan(provider, imported, card, observed)
+                plan = self._anchor_plan(provider, imported, card, observed, series_observation)
                 apply_anchor_plan(
                     history,
                     cost,

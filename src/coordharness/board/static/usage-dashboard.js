@@ -281,17 +281,29 @@
     return costValue(point.amount, entry && entry.currency);
   }
 
+
+  // A new payload cannot make a retained provider series current.
+  function estimateFreshness(provider) {
+    const entry = provider && provider.costs && provider.costs.api_rate_estimate || {};
+    if (entry.provider_series_state !== "stale_last_good") return null;
+    const raw = entry.provider_series_observed_at;
+    const observed = typeof raw === "string" && raw.length <= 35 && /^\d{4}-\d{2}-\d{2}T/.test(raw) && Number.isFinite(Date.parse(raw)) ? raw : "unavailable";
+    const reason = typeof entry.provider_series_reason === "string" && /^[a-z][a-z0-9_]{0,79}$/.test(entry.provider_series_reason) ? entry.provider_series_reason.replaceAll("_", " ") : "update delayed";
+    return {caption: "Estimate retained · update delayed", help: `Estimate retained · update delayed. Last successful observation: ${observed}. Reason: ${reason}. Retained estimate remains included in cost; payload freshness does not refresh this estimate.`};
+  }
   function compactProviderSummary(provider, groups) {
+    const freshness = estimateFreshness(provider);
     const group = primaryQuotaGroup(groups, provider);
     const windows = group && Array.isArray(group.windows) ? group.windows : [];
     const session = windows.find(window => String(window.kind || "").toLowerCase() === "session");
     const weekly = windows.find(window => String(window.kind || "").toLowerCase() === "weekly");
     const estimate = usdAmount(provider.costs && provider.costs.api_rate_estimate);
     const usdEstimate = estimate === null ? "Unknown" : costValue(estimate, "USD");
-    return `<section class="usage-compact-summary" aria-label="Compact provider usage"><p>${escapeHTML(group && group.label || "Provider quota")}</p>${compactWindow("Session", session)}${compactWindow("Weekly", weekly)}<div class="usage-compact-metrics"><div><span>Today est.</span><strong>${escapeHTML(latestDailyCost(provider))}</strong><small>Daily cost estimate · not billed</small></div><div><span>Total Cost Est.</span><strong>${escapeHTML(usdEstimate)}</strong><small>Cumulative API-rate estimate · not billed</small></div></div></section>`;
+    return `<section class="usage-compact-summary" aria-label="Compact provider usage"><p>${escapeHTML(group && group.label || "Provider quota")}</p>${compactWindow("Session", session)}${compactWindow("Weekly", weekly)}<div class="usage-compact-metrics"><div><span>Today est.</span><strong>${escapeHTML(latestDailyCost(provider))}</strong><small>Daily cost estimate · not billed</small></div><div><span>Total Cost Est.</span><strong>${escapeHTML(usdEstimate)}</strong><small${freshness ? ` data-estimate-freshness="stale_last_good" title="${escapeHTML(freshness.help)}"` : ""}>${escapeHTML(freshness ? freshness.caption : "Cumulative API-rate estimate · not billed")}</small></div></div></section>`;
   }
 
   function accountProfilesSummary(provider, profiles) {
+    const freshness = estimateFreshness(provider);
     const profileCards = profiles.map(profile => {
       const groups = Array.isArray(profile.quota_groups) && profile.quota_groups.length
         ? profile.quota_groups
@@ -311,7 +323,7 @@
     }).join("");
     const estimate = usdAmount(provider.costs && provider.costs.api_rate_estimate);
     const usdEstimate = estimate === null ? "Unknown" : costValue(estimate, "USD");
-    return `<section class="usage-account-profiles" aria-label="Claude account quota profiles">${profileCards}</section><section class="usage-compact-metrics usage-shared-provider-metrics" aria-label="Shared provider cost estimates"><div><span>Today est.</span><strong>${escapeHTML(latestDailyCost(provider))}</strong><small>Daily cost estimate · not billed</small></div><div><span>Total Cost Est.</span><strong>${escapeHTML(usdEstimate)}</strong><small>Cumulative API-rate estimate · not billed</small></div></section>`;
+    return `<section class="usage-account-profiles" aria-label="Claude account quota profiles">${profileCards}</section><section class="usage-compact-metrics usage-shared-provider-metrics" aria-label="Shared provider cost estimates"><div><span>Today est.</span><strong>${escapeHTML(latestDailyCost(provider))}</strong><small>Daily cost estimate · not billed</small></div><div><span>Total Cost Est.</span><strong>${escapeHTML(usdEstimate)}</strong><small${freshness ? ` data-estimate-freshness="stale_last_good" title="${escapeHTML(freshness.help)}"` : ""}>${escapeHTML(freshness ? freshness.caption : "Cumulative API-rate estimate · not billed")}</small></div></section>`;
   }
 
 
@@ -332,6 +344,7 @@
       providerKey,
       displayName,
       includeCost,
+      estimateFreshness: includeCost ? estimateFreshness(provider) : null,
       summaryWindows: [["S", session], ["W", weekly]].filter(([, window]) => window),
       windows: [["Session", session], ["Weekly", weekly], ["Fable", fable]].filter(([, window]) => window),
       remaining,
@@ -425,7 +438,7 @@
     });
     const expanded = (() => { try { return localStorage.getItem("coord.usage-strip-expanded") === "1"; } catch (_error) { return false; } })();
     const collapsedRows = rows.map(data => `<span class="usage-strip-provider usage-strip-${escapeHTML(data.providerKey)}" role="group" aria-label="${escapeHTML(data.displayName)} quotas"><img src="/static/mark-${escapeHTML(data.providerKey)}.png" alt=""><small class="usage-strip-profile-name">${escapeHTML(data.displayName)}</small>${data.summaryWindows.map(([label, window]) => stripMiniQuota(data, label, window)).join("")}</span>`).join("");
-    const expandedRows = rows.map(data => `<section class="usage-strip-expanded-provider usage-strip-expanded-${escapeHTML(data.providerKey)}"><header><img src="/static/mark-${escapeHTML(data.providerKey)}.png" alt=""><b>${escapeHTML(data.displayName)}</b>${data.includeCost ? `<span class="usage-strip-cost"><small>Cost</small><b>${escapeHTML(data.cost)}</b></span>` : ""}</header>${data.windows.map(([label, window]) => stripQuota(data, label, window)).join("")}</section>`).join("");
+    const expandedRows = rows.map(data => `<section class="usage-strip-expanded-provider usage-strip-expanded-${escapeHTML(data.providerKey)}"><header><img src="/static/mark-${escapeHTML(data.providerKey)}.png" alt=""><b>${escapeHTML(data.displayName)}</b>${data.includeCost ? `<span class="usage-strip-cost"${data.estimateFreshness ? ` title="${escapeHTML(data.estimateFreshness.help)}"` : ""}><small>${data.estimateFreshness ? "Update delayed" : "Cost"}</small><b>${escapeHTML(data.cost)}</b></span>` : ""}</header>${data.windows.map(([label, window]) => stripQuota(data, label, window)).join("")}</section>`).join("");
     mount.innerHTML = `<details${expanded ? " open" : ""}><summary><span class="usage-strip-label">USAGE</span><span class="usage-strip-providers">${collapsedRows || '<span class="usage-strip-unavailable">Provider quota unavailable</span>'}</span>${systemSummaryMarkup()}</summary><div class="usage-strip-expanded">${expandedRows || '<section class="usage-strip-expanded-provider"><span class="usage-strip-unavailable">Provider quota unavailable</span></section>'}${systemDetailsMarkup()}</div></details>`;
     const details = mount.querySelector("details");
     details && details.addEventListener("toggle", () => { try { localStorage.setItem("coord.usage-strip-expanded", details.open ? "1" : "0"); } catch (_error) {} });

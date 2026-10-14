@@ -4,6 +4,34 @@ import XCTest
 @testable import CoordCockpitMac
 
 final class UsageDashboardTests: XCTestCase {
+    func testRetainedEstimateFreshness() throws {
+        let fixture = #"{"schema":"coordharness.usage-intelligence.v1","refresh":{"state":"fresh"},"providers":{"codex":{"costs":{"api_rate_estimate":{"amount_nanos":9000000000,"currency":"USD","estimated_amount_nanos":3000000000,"provider_series_state":"STATE","provider_series_reason":"provider_series_unavailable","provider_series_observed_at":"2026-10-13T12:00:00Z"}}}}}"#
+        for state in ["stale_last_good", "fresh", "unavailable", "unknown"] {
+            let snapshot = try decoder().decode(UsageIntelligenceSnapshot.self, from: Data(fixture.replacingOccurrences(of: "STATE", with: state).utf8))
+            let cost = try XCTUnwrap(snapshot.providers["codex"]?.costs?.apiRateEstimate)
+            XCTAssertTrue(cost.amountNanos == 9_000_000_000)
+            XCTAssertTrue(cost.estimatedAmountNanos == 3_000_000_000)
+            let disclosure = UsageEstimateFreshness.make(cost)
+            let peek = UsagePopoverPeekPresentation.make(from: .success(snapshot, at: Date()))
+            XCTAssertEqual(peek.providers.first(where: { $0.id == "codex" })?.estimateFreshness, disclosure)
+            if state == "stale_last_good" {
+                XCTAssertTrue(disclosure?.caption == "Estimate retained · update delayed")
+                XCTAssertTrue(disclosure?.help.contains("2026-10-13T12:00:00Z") == true)
+                XCTAssertTrue(disclosure?.help.contains("provider series unavailable") == true)
+            } else {
+                XCTAssertTrue(disclosure == nil)
+            }
+        }
+        let invalid = fixture.replacingOccurrences(of: #""STATE""#, with: "42")
+            .replacingOccurrences(of: #""provider_series_unavailable""#, with: #""/private/error""#)
+            .replacingOccurrences(of: #""2026-10-13T12:00:00Z""#, with: "{}")
+        let cost = try XCTUnwrap(decoder().decode(UsageIntelligenceSnapshot.self, from: Data(invalid.utf8)).providers["codex"]?.costs?.apiRateEstimate)
+        XCTAssertTrue(cost.providerSeriesState == nil)
+        XCTAssertTrue(cost.providerSeriesReason == nil)
+        XCTAssertTrue(cost.providerSeriesObservedAt == nil)
+        XCTAssertTrue(cost.amountNanos == 9_000_000_000)
+    }
+
     func testAccountSettingsHeaderStaysOutsideScrollableMetrics() throws {
         let projectRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()

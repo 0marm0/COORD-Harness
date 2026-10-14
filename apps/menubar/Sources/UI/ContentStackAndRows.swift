@@ -719,12 +719,12 @@ final class UsagePeekRow: RowView {
             )
             costValue.font = .monospacedDigitSystemFont(ofSize: 8.5, weight: .regular)
             costValue.frame = NSRect(x: Self.costValueX, y: summaryY + 3, width: Self.costValueWidth, height: 14)
-            costValue.toolTip = "Retained cumulative USD API-rate estimate; not billed subscription spend"
+            costValue.toolTip = provider.estimateFreshness?.help ?? "Retained cumulative USD API-rate estimate; not billed subscription spend"
             addSubview(costValue)
             if let state = visibleState(provider, freshness: presentation.freshness) {
                 let stateLabel = UI.label(state.text, size: 8.5, weight: .medium, color: state.color, align: .right)
                 stateLabel.frame = NSRect(x: Self.stateX, y: summaryY + 3, width: Self.stateWidth, height: 14)
-                stateLabel.toolTip = provider.displayName + ": " + state.text
+                stateLabel.toolTip = provider.estimateFreshness?.help ?? (provider.displayName + ": " + state.text)
                 addSubview(stateLabel)
             }
             providerY += providerHeight(provider)
@@ -854,6 +854,7 @@ final class UsagePeekRow: RowView {
         _ provider: UsagePopoverPeekProvider,
         freshness: UsagePeekFreshness
     ) -> (text: String, color: NSColor)? {
+        if provider.estimateFreshness != nil { return ("Update delayed", .systemOrange) }
         switch freshness {
         case .unavailable:
             return ("Unavailable", .systemRed)
