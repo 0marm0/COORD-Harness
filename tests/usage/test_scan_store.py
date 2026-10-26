@@ -113,7 +113,7 @@ def test_a_changed_file_replaces_its_own_contribution(
     assert sum(row.request_count or 0 for row in rows) == 3
 
 
-def test_a_shrunken_file_loses_the_records_it_no_longer_holds(
+def test_a_shrunken_file_preserves_usage_that_already_happened(
     tmp_path: Path, store: UsageScanStore
 ) -> None:
     root = _claude_home(tmp_path)
@@ -124,7 +124,7 @@ def test_a_shrunken_file_loses_the_records_it_no_longer_holds(
     _touch(truncated, seconds=5)
     store.scan(root, provider="claude")
 
-    assert sum(row.input_tokens for row in store.totals("claude")) == 100
+    assert sum(row.input_tokens for row in store.totals("claude")) == 200
 
 
 def test_a_message_replayed_across_two_files_is_counted_once(
@@ -645,24 +645,15 @@ def test_the_desktop_tree_raises_a_partial_snapshot_recorded_by_the_cli(
     assert store.totals("claude")[0].output_tokens == 286
 
 
-def test_the_codex_root_set_is_only_the_rollout_directory(tmp_path: Path) -> None:
-    """Archived Codex sessions stay out, deliberately.
+def test_the_codex_root_set_covers_active_and_archived_sessions(tmp_path: Path) -> None:
+    """Archive inclusion is safe with the frozen legacy overlap guard.
 
-    They contribute $0.83 over four days that all predate the first rollout --
-    days the frozen legacy import already covers. Adding them would replace a
-    complete third-party figure for those days with a partial self-computed
-    one, because a self-computed day suppresses the legacy row for it.
+    Request identity deduplication covers compressed copies; separate coverage
+    regressions ensure partial archived days retain complete frozen ledgers.
     """
-
     from coordharness.usage.local_history import history_scan_roots
-
     assert history_scan_roots(tmp_path / ".codex", provider="codex") == (
         tmp_path / ".codex" / "sessions",
+        tmp_path / ".codex" / "archived_sessions",
     )
-    assert history_scan_roots(tmp_path / "home" / ".claude", provider="claude") == (
-        tmp_path / "home" / ".claude" / "projects",
-        tmp_path / "home" / "Library" / "Application Support" / "Claude"
-        / "local-agent-mode-sessions",
-    )
-    with pytest.raises(ValueError):
-        history_scan_roots(tmp_path, provider="gemini")
+

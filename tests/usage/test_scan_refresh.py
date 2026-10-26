@@ -32,13 +32,15 @@ from coordharness.usage.dashboard_proxy import (
 from coordharness.usage.local_service import LocalUsageService, ProviderProbe
 from coordharness.usage.scan_refresh import (
     MARKER_SCHEMA,
+    RETRY_AFTER_FAILURE_SECONDS,
     ScanStoreRefresher,
     assess_store,
+    last_completed_scan,
     lock_path,
     marker_path,
     write_marker,
 )
-from coordharness.usage.scan_store import scan_providers
+from coordharness.usage.scan_store import ScanResult, scan_providers
 
 pytestmark = pytest.mark.unit
 
@@ -251,6 +253,130 @@ def test_without_a_marker_the_newest_scanned_file_is_a_lower_bound(tmp_path: Pat
     assert status.serving == "scan_store"
 
 
+@pytest.mark.parametrize("field", ["files_failed", "files_oversized", "truncated"])
+def test_partial_scan_withdraws_freshness_persists_and_retries(
+    tmp_path: Path, field: str
+) -> None:
+    home = _synthetic_home(tmp_path)
+    store = _store(home)
+    scan_providers(home, store_path=store)
+    write_marker(store, [], _now() - timedelta(minutes=10))
+    clock = [0.0]
+    calls: list[str] = []
+    notifications: list[str] = []
+
+    def scanner(_home: Path, *, store_path: Path):
+        calls.append("scan")
+        if len(calls) == 1:
+            return [ScanResult(provider="codex", **{field: True if field == "truncated" else 1})]
+        return scan_providers(_home, store_path=store_path)
+
+    refresher = ScanStoreRefresher(
+        home=home, store_path=store, scanner=scanner,
+        monotonic=lambda: clock[0], on_complete=lambda: notifications.append("changed"),
+    )
+    assert refresher.request_refresh()
+    assert refresher.wait(timeout=10)
+    marker = json.loads(marker_path(store).read_text())
+    assert marker["complete"] is False
+    assert marker["incomplete_reasons"] == [f"codex:{field}"]
+    assert last_completed_scan(store) is None  # Recent store rows cannot override it.
+    assert refresher.freshness().state == "stale"
+    assert refresher.freshness().error_code == "scan_refresh_incomplete"
+    assert notifications == ["changed"]
+    assert not refresher.request_refresh()
+
+    restarted = ScanStoreRefresher(home=home, store_path=store)
+    assert restarted.freshness().state == "stale"
+    assert restarted.freshness().error_code == "scan_refresh_incomplete"
+
+    clock[0] += RETRY_AFTER_FAILURE_SECONDS
+    assert refresher.request_refresh()
+    assert refresher.wait(timeout=10)
+    assert calls == ["scan", "scan"]
+    assert refresher.freshness().state == "fresh"
+    assert refresher.freshness().error_code is None
+    assert json.loads(marker_path(store).read_text())["complete"] is True
+
+
+@pytest.mark.parametrize("field", ["files_failed", "files_oversized", "truncated"])
+def test_legacy_partial_marker_cannot_use_recent_store_rows(tmp_path: Path, field: str) -> None:
+    home = _synthetic_home(tmp_path)
+    store = _store(home)
+    scan_providers(home, store_path=store)
+    marker_path(store).write_text(json.dumps({
+        "completed_at": _stamp(_now()), "providers": [{"provider": "codex", field: 1}],
+    }))
+    assert last_completed_scan(store) is None
+    assert assess_store(store, _now()).state == "stale"
+
+
+def test_legacy_timestamp_only_marker_remains_compatible(tmp_path: Path) -> None:
+    home = _synthetic_home(tmp_path)
+    store = _store(home)
+    scan_providers(home, store_path=store)
+    completed = _now()
+    marker_path(store).write_text(json.dumps({"completed_at": _stamp(completed)}))
+    assert last_completed_scan(store) == completed
+    assert assess_store(store, completed).state == "fresh"
+
+
+@pytest.mark.parametrize("invalid", [
+    {"providers": None}, {"providers": {}}, {"providers": "invalid"},
+    {"providers": [None]}, {"providers": ["invalid"]},
+    {"providers": [{"files_failed": "0"}]},
+    {"providers": [{"files_oversized": -1}]},
+    {"providers": [{"truncated": "false"}]},
+    {"complete": None}, {"complete": "true"}, {"complete": 1},
+])
+def test_malformed_marker_fields_never_claim_freshness(tmp_path: Path, invalid: dict) -> None:
+    home = _synthetic_home(tmp_path)
+    store = _store(home)
+    scan_providers(home, store_path=store)
+    marker_path(store).write_text(json.dumps({"completed_at": _stamp(_now()), **invalid}))
+    assert last_completed_scan(store) is None
+    assert assess_store(store, _now()).state == "stale"
+
+
+@pytest.mark.parametrize("content", [b"{broken", b"null", b"[]", b"\xff", b"{}", None])
+def test_corrupt_marker_does_not_fall_back_to_recent_rows(tmp_path: Path, content: bytes | None) -> None:
+    home = _synthetic_home(tmp_path)
+    store = _store(home)
+    scan_providers(home, store_path=store)
+    if content is None:
+        marker_path(store).mkdir()  # Present but unreadable as a marker file.
+    else:
+        marker_path(store).write_bytes(content)
+    assert last_completed_scan(store) is None
+    assert assess_store(store, _now()).state == "stale"
+
+
+def test_exception_backoff_expires_and_success_clears_error(tmp_path: Path) -> None:
+    home = _synthetic_home(tmp_path)
+    clock = [0.0]
+    calls: list[str] = []
+
+    def scanner(_home: Path, *, store_path: Path):
+        calls.append("scan")
+        if len(calls) == 1:
+            raise OSError("temporarily unavailable")
+        return scan_providers(_home, store_path=store_path)
+
+    refresher = ScanStoreRefresher(
+        home=home, store_path=_store(home), scanner=scanner, monotonic=lambda: clock[0],
+    )
+    assert refresher.request_refresh()
+    assert refresher.wait(timeout=10)
+    assert refresher.freshness().error_code == "scan_refresh_failed"
+    assert not refresher.request_refresh()
+    clock[0] += RETRY_AFTER_FAILURE_SECONDS
+    assert refresher.request_refresh()
+    assert refresher.wait(timeout=10)
+    assert refresher.freshness().state == "fresh"
+    assert refresher.freshness().error_code is None
+    assert len(calls) == 2
+
+
 # -- the service a board hosts ------------------------------------------------
 
 
@@ -395,7 +521,7 @@ def test_history_store_survives_the_upstream_proxy(monkeypatch: pytest.MonkeyPat
     monkeypatch.delenv("COORD_USAGE_UPSTREAM_SCHEMA", raising=False)
     body = json.dumps(_UPSTREAM).encode()
     proxy = UsageDashboardProxy(
-        url="http://127.0.0.1:7999/api/usage/v1",
+        url="http://127.0.0.1:8780/api/usage/v1",
         opener=lambda _request, _timeout: _Response(body),
     )
 

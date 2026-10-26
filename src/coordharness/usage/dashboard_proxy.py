@@ -38,7 +38,7 @@ MAX_ACCOUNT_PROFILES = 12
 MAX_GROUP_WINDOWS = 32
 MAX_RESET_CREDITS = 32
 MAX_ACTIVE_SESSIONS = 50
-MAX_BREAKDOWN_ITEMS = 50
+MAX_BREAKDOWN_ITEMS = 51
 MAX_ERRORS = 64
 _PROVIDERS = frozenset({"claude", "codex"})
 _LIVE_OBSERVATION_STATES = frozenset(
@@ -190,6 +190,18 @@ def _optional_number(
 def _optional_int(source: dict[str, Any], target: dict[str, Any], field: str) -> None:
     if field in source:
         target[field] = None if source[field] is None else _safe_int(source[field])
+
+
+def _optional_signed_int(source: dict[str, Any], target: dict[str, Any], field: str) -> None:
+    if field not in source:
+        return
+    value = source[field]
+    if value is None:
+        target[field] = None
+    elif isinstance(value, bool) or not isinstance(value, int) or abs(value) > _MAX_INTEGER:
+        raise UsageDashboardError("invalid_contract")
+    else:
+        target[field] = value
 
 
 def _optional_timestamp(source: dict[str, Any], target: dict[str, Any], field: str) -> None:
@@ -367,12 +379,18 @@ _DAILY_INTEGER_FIELDS = (
     "measured_api_rate_estimate_nanos",
     "estimated_api_rate_estimate_nanos",
     "estimated_tokens",
+    "measured_total_tokens",
+    "unattributed_provider_tokens",
 )
 _HISTORY_INTEGER_FIELDS = (
     "today_total_tokens",
     "rolling_7d_total_tokens",
     "calendar_week_total_tokens",
     "all_time_total_tokens",
+    "measured_today_total_tokens",
+    "measured_rolling_7d_total_tokens",
+    "measured_calendar_week_total_tokens",
+    "measured_all_time_total_tokens",
 )
 
 
@@ -391,6 +409,7 @@ def _sanitize_daily(value: Any) -> list[dict[str, Any]]:
             item["provenance"] = _safe_string(row["provenance"], pattern=_SAFE_TOKEN)
         for field in _DAILY_INTEGER_FIELDS:
             _optional_int(row, item, field)
+        _optional_signed_int(row, item, "request_adjustment_nanos")
         if item.get("total_tokens") is None:
             raise UsageDashboardError("invalid_contract")
         if "model_breakdowns" in row:
@@ -413,6 +432,7 @@ def _sanitize_daily_model_breakdown(value: Any) -> dict[str, Any]:
     }
     for field in _DAILY_INTEGER_FIELDS:
         _optional_int(value, clean, field)
+    _optional_signed_int(value, clean, "request_adjustment_nanos")
     if clean.get("total_tokens") is None:
         raise UsageDashboardError("invalid_contract")
     return clean
@@ -426,6 +446,16 @@ def _sanitize_history(value: Any, *, allow_extensions: bool = True) -> dict[str,
         _optional_int(value, clean, field)
     if value.get("semantics") is not None:
         clean["semantics"] = _safe_string(value["semantics"], pattern=_SAFE_TOKEN)
+    if allow_extensions and value.get("omitted_daily_totals") is not None:
+        omitted = value["omitted_daily_totals"]
+        if not isinstance(omitted, dict):
+            raise UsageDashboardError("invalid_contract")
+        proof = {field: _safe_int(omitted.get(field)) for field in
+                 ("row_count", "total_tokens", "api_rate_estimate_nanos")}
+        if proof["row_count"] == 0:
+            raise UsageDashboardError("invalid_contract")
+        proof["last_date"] = _safe_date(omitted.get("last_date"))
+        clean["omitted_daily_totals"] = proof
     if allow_extensions and value.get("ever_observed_envelope") is not None:
         envelope = value["ever_observed_envelope"]
         if not isinstance(envelope, dict):
@@ -437,8 +467,36 @@ def _sanitize_history(value: Any, *, allow_extensions: bool = True) -> dict[str,
         )
     if allow_extensions and value.get("legacy_coverage") is not None:
         clean["legacy_coverage"] = _sanitize_legacy_coverage(value["legacy_coverage"])
+    if allow_extensions and value.get("legacy_pricing") is not None:
+        clean["legacy_pricing"] = _sanitize_legacy_pricing(value["legacy_pricing"])
+    if allow_extensions and value.get("unplaced_usage") is not None:
+        pending = value["unplaced_usage"]
+        if not isinstance(pending, dict) or pending.get("charged") is not False:
+            raise UsageDashboardError("invalid_contract")
+        clean_pending = {key: _safe_int(pending.get(key)) for key in (
+            "unplaced_identities", "total_tokens", "input_tokens", "output_tokens", "cache_read_tokens",
+            "cache_create_5m_tokens", "cache_create_1h_tokens", "cache_create_other_tokens")}
+        for key in ("coverage_tracked", "attribution_complete"):
+            if not isinstance(pending.get(key), bool):
+                raise UsageDashboardError("invalid_contract")
+            clean_pending[key] = pending[key]
+        clean_pending["charged"] = False
+        clean["unplaced_usage"] = clean_pending
+
     if allow_extensions and value.get("pricing_coverage") is not None:
         clean["pricing_coverage"] = _sanitize_pricing_coverage(value["pricing_coverage"])
+    if allow_extensions and value.get("request_pricing") is not None:
+        clean["request_pricing"] = _sanitize_request_pricing(value["request_pricing"])
+    if allow_extensions and value.get("token_reconciliation") is not None:
+        reconciliation = value["token_reconciliation"]
+        if not isinstance(reconciliation, dict):
+            raise UsageDashboardError("invalid_contract")
+        clean["token_reconciliation"] = {
+            key: _safe_string(reconciliation.get(key), pattern=_SAFE_TOKEN)
+            for key in ("semantics", "provider_day_basis", "allocation_basis", "model_attribution")
+        }
+        for key in ("provider_only_tokens", "pre_window_unreconciled_tokens"):
+            _optional_int(reconciliation, clean["token_reconciliation"], key)
     if allow_extensions and value.get("provider_anchor") is not None:
         clean["provider_anchor"] = _sanitize_provider_anchor(value["provider_anchor"])
     return clean
@@ -471,10 +529,14 @@ def _sanitize_provider_anchor(value: Any) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise UsageDashboardError("invalid_contract")
     clean: dict[str, Any] = {"state": _safe_string(value.get("state"), pattern=_SAFE_TOKEN)}
-    for field in ("semantics", "reason", "estimate_basis", "allocation_basis", "day_basis"):
+    for field in (
+        "semantics", "reason", "estimate_basis", "allocation_basis", "day_basis",
+        "series_state", "series_reason",
+    ):
         if value.get(field) is not None:
             clean[field] = _safe_string(value[field], pattern=_SAFE_TOKEN)
     _optional_timestamp(value, clean, "series_observed_at")
+    _optional_int(value, clean, "series_age_seconds")
     for field in ("window_start", "window_end"):
         if value.get(field) is not None:
             clean[field] = _safe_date(value[field])
@@ -529,7 +591,8 @@ def _sanitize_legacy_coverage(value: Any) -> dict[str, Any]:
     for field in ("first_day", "last_day"):
         if value.get(field) is not None:
             clean[field] = _safe_date(value[field])
-    _optional_int(value, clean, "api_rate_estimate_nanos")
+    for field in ("api_rate_estimate_nanos", "original_api_rate_estimate_nanos", "priced_tokens", "unpriced_tokens"):
+        _optional_int(value, clean, field)
     if value.get("cost_bias") is not None:
         clean["cost_bias"] = _safe_string(value["cost_bias"], pattern=_SAFE_TOKEN)
     if value.get("warning") is not None:
@@ -537,6 +600,80 @@ def _sanitize_legacy_coverage(value: Any) -> dict[str, Any]:
     for flag in ("canonical", "self_computed", "frozen"):
         if value.get(flag) is not None:
             clean[flag] = bool(value[flag])
+    return clean
+
+
+def _sanitize_legacy_pricing(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise UsageDashboardError("invalid_contract")
+    clean: dict[str, Any] = {}
+    for field in ("schema", "basis", "price_rule", "pricing_key"):
+        if value.get(field) is not None:
+            clean[field] = _safe_string(value[field], pattern=_SAFE_TOKEN)
+    for field in ("amount_nanos", "original_amount_nanos", "card_reference_amount_nanos",
+                  "unpriced_original_amount_nanos", "rows_count", "priced_rows", "unpriced_rows",
+                  "priced_tokens", "unpriced_tokens", "rate_authority_unverified_tokens"):
+        _optional_int(value, clean, field)
+    for field in ("request_premiums_applied", "historical_effective_dates_verified"):
+        if not isinstance(value.get(field), bool):
+            raise UsageDashboardError("invalid_contract")
+        clean[field] = value[field]
+    if value.get("rate_card_digest") is not None:
+        clean["rate_card_digest"] = _safe_string(value["rate_card_digest"], pattern=_SAFE_DIGEST, maximum=64)
+    allowed = {f"https://developers.openai.com/api/docs/models/{model}" for model in
+               ("gpt-5.4", "gpt-5.4-mini", "gpt-5.5", "gpt-5.6-sol", "gpt-5.6-terra")}
+    sources = _bounded_list(value.get("source_urls", []), field="legacy_pricing.source_urls", limit=5)
+    if any(not isinstance(url, str) or url not in allowed for url in sources):
+        raise UsageDashboardError("invalid_contract")
+    clean["source_urls"] = list(sources)
+    if value.get("warning") is not None:
+        clean["warning"] = _safe_text(value["warning"])
+    return clean
+
+
+def _sanitize_request_pricing(value: Any) -> dict[str, Any]:
+    """Only bounded rule provenance and counters cross; private rows never do."""
+    if not isinstance(value, dict):
+        raise UsageDashboardError("invalid_contract")
+    clean: dict[str, Any] = {}
+    for field in ("schema", "basis", "price_rule", "pricing_key"):
+        if value.get(field) is not None:
+            clean[field] = _safe_string(value[field], pattern=_SAFE_TOKEN)
+    for field in ("base_nanos", "adjusted_nanos"):
+        _optional_int(value, clean, field)
+    _optional_signed_int(value, clean, "addition_nanos")
+    flag = value.get("historical_effective_dates_verified", False)
+    if not isinstance(flag, bool):
+        raise UsageDashboardError("invalid_contract")
+    clean["historical_effective_dates_verified"] = flag
+    if value.get("rate_card_digest") is not None:
+        clean["rate_card_digest"] = _safe_string(value["rate_card_digest"], pattern=_SAFE_DIGEST, maximum=64)
+    if value.get("currency") is not None:
+        clean["currency"] = _safe_string(value["currency"], pattern=_SAFE_CURRENCY, maximum=7)
+    allowed_sources = {
+        "https://developers.openai.com/api/docs/pricing",
+        "https://developers.openai.com/api/docs/changelog",
+        "https://platform.claude.com/docs/en/about-claude/pricing",
+        "https://platform.claude.com/docs/en/build-with-claude/fast-mode",
+    }
+    sources = _bounded_list(value.get("source_urls", []), field="request_pricing.source_urls", limit=4)
+    if any(not isinstance(url, str) or url not in allowed_sources for url in sources):
+        raise UsageDashboardError("invalid_contract")
+    clean["source_urls"] = list(sources)
+    assumptions = _bounded_list(value.get("assumptions", []), field="request_pricing.assumptions", limit=16)
+    clean["assumptions"] = [_safe_string(item, pattern=_SAFE_TOKEN) for item in assumptions]
+    coverage = value.get("coverage", {})
+    if not isinstance(coverage, dict):
+        raise UsageDashboardError("invalid_contract")
+    clean["coverage"] = {}
+    for field in (
+        "requests", "priced_requests", "unpriced_requests", "context_adjusted_requests",
+        "speed_adjusted_requests", "unknown_service_tier_requests", "unknown_inference_speed_requests",
+        "unknown_region_requests", "unsupported_cache_write_requests", "assumed_alias_requests",
+        "unknown_context_requests", "unsupported_adjustment_requests",
+        "historical_rate_adjusted_requests", "historical_rate_unverified_requests",
+    ):
+        _optional_int(coverage, clean["coverage"], field)
     return clean
 
 
@@ -558,8 +695,11 @@ def _sanitize_cost_component(value: Any) -> dict[str, Any]:
     # Pricing provenance: how a cost was derived, and how much of the observed
     # volume carried a published rate. Bounded scalars only -- no paths, no
     # account identifiers.
-    for field in ("priced_tokens", "unpriced_tokens", "rate_card_version"):
+    for field in ("priced_tokens", "unpriced_tokens", "rate_card_version", "measured_priced_tokens",
+                  "measured_unpriced_tokens", "legacy_priced_tokens", "legacy_unpriced_tokens"):
         _optional_int(value, clean, field)
+    if value.get("legacy_pricing") is not None:
+        clean["legacy_pricing"] = _sanitize_legacy_pricing(value["legacy_pricing"])
     # The headline's composition. `amount_nanos` is measured + estimated +
     # legacy; these say how much of it is which, so no surface downstream of
     # this proxy can present the estimate as measured.
@@ -568,14 +708,20 @@ def _sanitize_cost_component(value: Any) -> dict[str, Any]:
         "estimated_amount_nanos",
         "legacy_amount_nanos",
         "rate_card_override_models",
+        "base_amount_nanos",
     ):
         _optional_int(value, clean, field)
+    _optional_signed_int(value, clean, "request_adjustment_nanos")
+    if value.get("request_pricing") is not None:
+        clean["request_pricing"] = _sanitize_request_pricing(value["request_pricing"])
     for field in (
         "pricing_key",
         "coverage_state",
         "estimate_state",
         "estimate_reason",
         "estimate_basis",
+        "provider_series_state",
+        "provider_series_reason",
         "amount_semantics",
     ):
         if value.get(field) is not None:

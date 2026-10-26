@@ -1,12 +1,10 @@
 """Read-only import of pre-transcript CodexBar usage ledgers.
 
-``~/.codex/sessions`` only reaches back to the day Codex began keeping
-rollouts -- 2026-07-17 on this machine. Spend before that is not recoverable
-from transcripts at all; the only surviving record is the high-water JSON that
-the CodexBar-derived tooling left behind. The Claude side has the same problem
-in a different shape: three days inside the transcript range hold no surviving
-``~/.claude/projects`` records at all, and only the Claude high-water JSON
-still remembers them.
+Transcript archives can retain fragments older than the main rollout window.
+Frozen daily aggregates remain a separate source when complete response-level
+coverage is unavailable. Later full-history audits can also recover Claude
+responses on dates formerly believed absent; a daily aggregate does not prove
+which unique responses overlap that recovered population.
 
 Either file is evidence of a different kind and must never be blended with a
 self-computed day:
@@ -14,18 +12,14 @@ self-computed day:
 * Its accounting is not ours. The header names it
   ``provider_volume_anchored_local_mix_estimate`` and its own warning calls it
   an API-equivalent list-price estimate rather than billed spend.
-* For Codex its accounting is one we have since found wrong. Codex reports
-  ``input_tokens`` inclusive of the cached prefix; this ledger counted that
-  prefix again as fresh input and priced it at the full input rate. Its cost
-  therefore OVERSTATES, and by an amount that grows with cache hit rate.
-* For Claude the direction of the bias is NOT known. The ledger's high-water
-  rule -- a component-wise maximum over every preserved observation -- cannot
-  decrease, which can leave it above a later corrected source. But the maximum
-  is also the CORRECT representative for Claude Code's per-content-block
-  streaming records, where the early lines of one response carry partial usage
-  snapshots and only the last carries the complete one. Calling this side
-  "overstates" was an assertion the evidence does not support, so it is
-  labelled indeterminate instead.
+* Codex packed input includes the cached prefix. This reader separates it
+  once into fresh and cached components; the retained producer also priced
+  those components separately. Recorded costs may include historical rates
+  and captured request premiums. Their billing bias is not established.
+* For Claude the direction of the bias is NOT known. A component-wise maximum
+  is valid for repeated observations of ONE response identity. Applying that
+  rule to unidentified daily populations does not prove unique response volume,
+  a billing lower bound, or the cause of a later aggregate discrepancy.
 
 So these rows are imported frozen, under their own source key, and are only
 ever read for days no self-computed row covers. Nothing here writes to the
@@ -49,15 +43,15 @@ LEGACY_SOURCE: Final = "codexbar_high_water_v1"
 
 # What the numbers mean, carried into the dashboard payload verbatim so the UI
 # labels them rather than having to guess.
-LEGACY_SEMANTICS: Final = "third_party_list_price_estimate_known_to_overstate"
+LEGACY_SEMANTICS: Final = "third_party_recorded_list_price_estimate"
 
 # Kept within the dashboard proxy's 240-character bounded-text limit on
 # purpose: a warning the proxy refuses is a warning the UI never shows, and
 # these rows must not reach a chart without it.
 LEGACY_WARNING: Final = (
-    "Imported from a third-party CodexBar ledger, not computed from this "
-    "machine's transcripts. It counted cached input twice at the full input "
-    "rate, so this cost is an upper bound that overstates by an unmeasured margin."
+    "Imported recorded API estimates from a retained Codex ledger. Cached "
+    "input is separated once; historical rates and captured premiums may "
+    "differ from current prices. These are estimates, not billed spend."
 )
 
 # A ledger names its format as ``<publisher>.<format>``. Only the format is
@@ -87,8 +81,8 @@ CLAUDE_LEGACY_SEMANTICS: Final = "third_party_high_water_list_price_estimate"
 # Also inside the dashboard proxy's 240-character bounded-text limit.
 CLAUDE_LEGACY_WARNING: Final = (
     "Imported from a third-party CodexBar ledger, not computed from this "
-    "machine's transcripts. It is a component-wise high-water maximum, which "
-    "is the right estimator for streamed usage, so its bias is unmeasured."
+    "machine's transcripts. Daily component maxima have unknown overlap and "
+    "bias; they are retained aggregate observations, not verified unique usage."
 )
 
 _CLAUDE_SCHEMA: Final = "claude-usage-high-water.v1"
@@ -122,7 +116,7 @@ class LedgerLayout:
     # one of them is not known to be wrong at all: a reader shown "overstates"
     # against the Claude rows would be told something the evidence does not
     # support. An inaccurate provenance label is worse than none.
-    cost_bias: str = "overstates"
+    cost_bias: str = "indeterminate"
 
     @property
     def width(self) -> int:
