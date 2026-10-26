@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from copy import deepcopy
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import threading
 import time
 from typing import Any
@@ -25,6 +25,8 @@ class LocalUsageService(_UncachedLocalUsageService):
         self,
         *args: Any,
         cache_ttl_seconds: float = 30.0,
+        cache_freshness_grace_seconds: float = 30.0,
+        refresh_failure_backoff_seconds: float = 5.0,
         first_read_wait_seconds: float = 0.2,
         monotonic: Any = time.monotonic,
         store_auto_refresh: bool = True,
@@ -38,12 +40,21 @@ class LocalUsageService(_UncachedLocalUsageService):
         card_backed = kwargs.get("rate_card_loader") is None
         super().__init__(*args, **kwargs)
         ttl = float(cache_ttl_seconds)
+        grace = float(cache_freshness_grace_seconds)
+        backoff = float(refresh_failure_backoff_seconds)
         wait = float(first_read_wait_seconds)
         if not 0 <= ttl <= 300:
             raise ValueError("local usage cache TTL must be in [0, 300] seconds")
+        if not 0 <= grace <= 300:
+            raise ValueError("local usage freshness grace must be in [0, 300] seconds")
+        if not 0 <= backoff <= 300:
+            raise ValueError("local usage failure backoff must be in [0, 300] seconds")
         if not 0 <= wait <= 1:
             raise ValueError("local usage first-read wait must be in [0, 1] seconds")
         self._cache_ttl = ttl
+        self._cache_max_age = ttl + grace if ttl else 0.0
+        self._failure_backoff = backoff
+        self._retry_after = 0.0
         self._first_read_wait = wait
         self._monotonic = monotonic
         self._cache_condition = threading.Condition(threading.RLock())
@@ -51,6 +62,8 @@ class LocalUsageService(_UncachedLocalUsageService):
         self._cached_at: float | None = None
         self._refreshing = False
         self._refresh_generation = 0
+        self._source_generation = 0
+        self._cached_source_generation = -1
         self._last_refresh_error: str | None = None
         # The only thing that keeps a standalone install's scan store current.
         # It is created here, but walks nothing until the first dashboard read.
@@ -87,8 +100,9 @@ class LocalUsageService(_UncachedLocalUsageService):
         """Return quickly while at most one background refresh does local I/O.
 
         A cold caller waits only ``first_read_wait_seconds``. If discovery is
-        still running it gets an explicit warming document. Expired snapshots
-        are returned as stale while one background refresh replaces them.
+        still running it gets an explicit warming document. Refresh starts at
+        half the TTL; the original observation remains usable only through its
+        published TTL plus grace. Invalidation and failures bypass that grace.
         """
 
         if self._store_refresher is not None:
@@ -98,10 +112,10 @@ class LocalUsageService(_UncachedLocalUsageService):
             self._store_refresher.request_refresh()
         with self._cache_condition:
             observed = self._monotonic()
-            if self._is_fresh(observed) and not force_refresh:
+            if self._is_fresh(observed) and not force_refresh and not self._refresh_due(observed):
                 return deepcopy(self._cached_document)
             generation_before = self._refresh_generation
-            if not self._refreshing:
+            if not self._refreshing and (force_refresh or observed >= self._retry_after):
                 self._refreshing = True
                 threading.Thread(
                     target=self._refresh_worker,
@@ -114,11 +128,16 @@ class LocalUsageService(_UncachedLocalUsageService):
                 deadline = time.monotonic() + self._first_read_wait
                 while self._refreshing and time.monotonic() < deadline:
                     self._cache_condition.wait(timeout=max(0.0, deadline - time.monotonic()))
-                if self._refresh_generation != generation_before and self._cached_document:
+                if self._refresh_generation != generation_before and self._is_fresh(self._monotonic()):
                     return deepcopy(self._cached_document)
                 cached = deepcopy(self._cached_document)
             if cached is not None:
-                return self._stale(cached, "local_refresh_in_progress")
+                if not force_refresh and self._is_fresh(self._monotonic()):
+                    return cached
+                code = self._last_refresh_error or (
+                    "local_refresh_in_progress" if self._refreshing else "local_snapshot_expired"
+                )
+                return self._stale(cached, code)
             if self._last_refresh_error and not self._refreshing:
                 return self._empty("error", "local_refresh_failed")
             return self._empty("warming", "local_refresh_in_progress")
@@ -188,32 +207,57 @@ class LocalUsageService(_UncachedLocalUsageService):
             # there is no snapshot yet to invalidate.
             return
         with condition:
-            self._cached_at = None
+            self._source_generation += 1
+            # A source update is new evidence and may retry immediately even
+            # when the previous build failed. Never erase the observation age.
+            self._retry_after = 0.0
 
     def _refresh_worker(self) -> None:
-        document: dict[str, Any] | None = None
-        error: str | None = None
-        try:
-            document = super().dashboard()
-        except Exception:
-            error = "local_refresh_failed"
-        with self._cache_condition:
-            if document is not None:
-                self._cached_document = deepcopy(document)
-                self._cached_at = self._monotonic()
-                self._refresh_generation += 1
-                self._last_refresh_error = None
-            else:
-                self._last_refresh_error = error
-            self._refreshing = False
-            self._cache_condition.notify_all()
+        # One coalesced follow-up consumes a source update racing the build.
+        # A continuously changing source cannot keep this worker alive forever.
+        for attempt in range(2):
+            with self._cache_condition:
+                source_generation = self._source_generation
+                started = self._monotonic()
+            document: dict[str, Any] | None = None
+            try:
+                document = super().dashboard()
+                from .accounting_guard import assert_accounting
+                assert_accounting(document)
+                generated = datetime.fromisoformat(document["generated_at"].replace("Z", "+00:00"))
+                document["stale_after"] = _iso(generated + timedelta(seconds=self._cache_max_age))
+            except Exception:
+                document = None
+            with self._cache_condition:
+                if document is not None:
+                    self._cached_document = deepcopy(document)
+                    # The builder observes providers at its start; a slow build
+                    # must not grant another full freshness interval at finish.
+                    self._cached_at = started
+                    self._cached_source_generation = source_generation
+                    self._refresh_generation += 1
+                    self._last_refresh_error = None
+                    self._retry_after = 0.0
+                    if source_generation != self._source_generation and attempt == 0:
+                        continue
+                else:
+                    self._last_refresh_error = "local_refresh_failed"
+                    self._retry_after = self._monotonic() + self._failure_backoff
+                self._refreshing = False
+                self._cache_condition.notify_all()
+                return
 
     def _is_fresh(self, observed: float) -> bool:
         return (
             self._cached_document is not None
             and self._cached_at is not None
-            and observed - self._cached_at <= self._cache_ttl
+            and self._cached_source_generation == self._source_generation
+            and self._last_refresh_error is None
+            and observed - self._cached_at <= self._cache_max_age
         )
+
+    def _refresh_due(self, observed: float) -> bool:
+        return self._cached_at is None or observed - self._cached_at >= self._cache_ttl / 2
 
     def _empty(self, state: str, code: str) -> dict[str, Any]:
         generated = _iso(self._now())

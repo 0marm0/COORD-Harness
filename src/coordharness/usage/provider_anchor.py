@@ -52,6 +52,7 @@ from typing import Any, Final
 
 from .local_history import SlotUsage, day_slots, slot_day, utc_slot_day
 from .pricing import RateCard
+from .request_pricing import request_adjustments
 
 # Basis labels. Only the first two leave the day's cost fully measured.
 BASIS_ALIGNED: Final = "measured_matches_provider"
@@ -229,7 +230,7 @@ def _usd(nanos: int) -> str:
 
 
 def _count(value: object) -> int | None:
-    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0 or value > 2**63 - 1:
         return None
     return value
 
@@ -390,13 +391,15 @@ def _day(
 # -- from the scan store to a payload -------------------------------------
 
 
-def utc_day_costs(slot_rows: Iterable[SlotUsage], card: RateCard) -> tuple[LocalDayCost, ...]:
+def utc_day_costs(slot_rows: Iterable[SlotUsage], card: RateCard, *, request_pricing_bands: Sequence[Mapping[str, Any]] = ()) -> tuple[LocalDayCost, ...]:
     """Price measured local usage per UTC day, at each (day, model)'s own rate.
 
     ``tokens`` counts every component, cached input included, which is what
     the provider's daily bucket counts: Codex ``input_tokens`` is inclusive of
     the cached prefix, and the parser splits that prefix into
     ``cache_read_tokens`` without dropping it.
+    Request-band adjustments are added once before this measured mix is used
+    to estimate provider volume absent from the local transcripts.
     """
 
     by_day_model: dict[tuple[str, str], list[int]] = {}
@@ -426,6 +429,11 @@ def utc_day_costs(slot_rows: Iterable[SlotUsage], card: RateCard) -> tuple[Local
         row_total[0] += sum(amounts)
         row_total[1] += priced.priced_tokens
         row_total[2] += priced.amount_nanos or 0
+    adjustments = request_adjustments({"request_pricing_bands": request_pricing_bands}, card, timezone.utc)
+    for item in adjustments["by_day_model_utc"]:
+        # Excluded legacy dates have no measured row and cannot be repriced.
+        if (item["date"], item["model"]) in by_day_model:
+            per_day[item["date"]][2] += item["addition_nanos"]
     return tuple(
         LocalDayCost(usage_date=day, tokens=tokens, priced_tokens=priced, cost_nanos=cost)
         for day, (tokens, priced, cost) in sorted(per_day.items())
@@ -488,6 +496,9 @@ class AnchorPlan:
     series_observed_at: str | None = None
     pre_window_provider_tokens: int = 0
     lifetime_tokens: int | None = None
+    series_state: str | None = None
+    series_reason: str | None = None
+    series_age_seconds: int | None = None
 
     @property
     def estimated_cost_nanos(self) -> int | None:
@@ -506,6 +517,9 @@ class AnchorPlan:
             "allocation_basis": ALLOCATION_BASIS if self.state == ESTIMATE_APPLIED else None,
             "day_basis": "utc",
             "series_observed_at": self.series_observed_at,
+            "series_state": self.series_state or "unavailable",
+            "series_reason": self.series_reason or self.reason,
+            "series_age_seconds": self.series_age_seconds,
             "window_start": self.window_start,
             "window_end": self.window_end,
             "lifetime_tokens": self.lifetime_tokens,
@@ -565,6 +579,9 @@ def plan_codex_anchor(
     now: datetime | None = None,
     max_window_days: int = DEFAULT_MAX_WINDOW_DAYS,
     max_series_age_seconds: int = MAX_SERIES_AGE_SECONDS,
+    series_state: str | None = None,
+    series_reason: str | None = None,
+    request_pricing_bands: Sequence[Mapping[str, Any]] = (),
 ) -> AnchorPlan:
     """Anchor measured Codex usage to the provider's daily series.
 
@@ -574,15 +591,22 @@ def plan_codex_anchor(
     has measured usage for: a provider day before any local transcript has no
     local mix to price at and is reported as ``pre_window_provider_tokens``
     instead of estimated.
+    ``request_pricing_bands`` classify original requests, so context premiums
+    are applied to the measured UTC mix before any off-transcript estimate.
     """
 
     observed = _parse_instant(series_observed_at)
+    age = None
+    series_state = series_state or "fresh"
     if observed is not None and now is not None:
-        if (now.astimezone(timezone.utc) - observed).total_seconds() > max_series_age_seconds:
-            return unavailable_plan(REASON_SERIES_EXPIRED, observed_at=series_observed_at)
+        age = max(0, int((now.astimezone(timezone.utc) - observed).total_seconds()))
+        if age > max_series_age_seconds:
+            # Receipt age withdraws freshness, never previously observed history.
+            series_state = "stale_last_good"
+            series_reason = series_reason or REASON_SERIES_EXPIRED
     excluded = set(excluded_utc_days)
     rows = [row for row in slot_rows if utc_slot_day(row.usage_slot) not in excluded]
-    local = utc_day_costs(rows, card)
+    local = utc_day_costs(rows, card, request_pricing_bands=request_pricing_bands)
     if not local:
         return unavailable_plan(REASON_NO_MEASURED_USAGE, observed_at=series_observed_at)
     window_start = local[0].usage_date
@@ -625,6 +649,9 @@ def plan_codex_anchor(
         series_observed_at=series_observed_at,
         pre_window_provider_tokens=pre_window,
         lifetime_tokens=series.lifetime_tokens,
+        series_state=series_state,
+        series_reason=series_reason,
+        series_age_seconds=age,
     )
 
 
@@ -648,7 +675,8 @@ def apply_anchor_plan(
     """Merge a plan into one provider's ``history`` and ``api_rate_estimate``.
 
     ``measured_nanos`` is the provider's whole self-computed priced cost and
-    ``legacy_nanos`` its frozen imported cost, both over the FULL history
+    ``legacy_nanos`` its derived current-base-rate legacy estimate (original
+    imported costs remain reference evidence), both over the FULL history
     rather than the served (row-capped) days. The headline becomes
     ``measured + estimated + legacy`` -- every dollar the daily chart draws --
     and each part is stated beside it. ``estimated_amount_nanos`` is ``None``
@@ -664,9 +692,17 @@ def apply_anchor_plan(
         if not isinstance(row, dict):
             continue
         if row.get("provenance") == "legacy_import":
+            # West of UTC, a post-legacy UTC day's provider gap can land on
+            # the same LOCAL date as a frozen legacy row. Keep its origin and
+            # base cost intact, while exposing the allocated estimate beside
+            # it; treating the whole mixed date as measured would be false.
             row[DAILY_MEASURED_FIELD] = None
-            row[DAILY_ESTIMATED_FIELD] = None
-            row[DAILY_ESTIMATED_TOKENS_FIELD] = None
+            gap = plan.estimated_tokens_by_day.get(row.get("date"), 0) if applied else 0
+            estimate = plan.estimated_nanos_by_day.get(row.get("date")) if gap else None
+            row[DAILY_ESTIMATED_FIELD] = estimate
+            row[DAILY_ESTIMATED_TOKENS_FIELD] = gap if gap else None
+            if estimate is not None:
+                row["api_rate_estimate_nanos"] = (row.get("api_rate_estimate_nanos") or 0) + estimate
             continue
         measured = row.get("api_rate_estimate_nanos")
         row[DAILY_MEASURED_FIELD] = measured
@@ -717,6 +753,8 @@ def apply_anchor_plan(
     cost["estimate_reason"] = plan.reason
     cost["estimate_basis"] = ESTIMATE_BASIS if applied else None
     cost["provider_series_observed_at"] = plan.series_observed_at
+    cost["provider_series_state"] = plan.series_state or "unavailable"
+    cost["provider_series_reason"] = plan.series_reason or plan.reason
     cost["amount_semantics"] = "measured_plus_estimated_plus_legacy"
     if headline_parts:
         cost["amount_nanos"] = sum(headline_parts)

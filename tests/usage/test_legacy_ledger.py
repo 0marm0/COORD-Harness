@@ -92,7 +92,7 @@ def test_inclusive_input_is_restated_without_changing_the_token_total(
     assert row.input_tokens + row.cache_read_tokens + row.output_tokens == 1000 + 50
 
 
-def test_the_upstream_cost_is_carried_verbatim_and_labelled_as_overstating(
+def test_the_upstream_cost_is_carried_verbatim_with_indeterminate_bias(
     tmp_path: Path,
 ) -> None:
     """Repricing it at our rates would invent a figure the ledger never asserted."""
@@ -107,7 +107,7 @@ def test_the_upstream_cost_is_carried_verbatim_and_labelled_as_overstating(
     assert provenance["self_computed"] is False
     assert provenance["canonical"] is False
     assert provenance["frozen"] is True
-    assert "overstate" in provenance["warning"]
+    assert "not billed spend" in provenance["warning"]
     assert provenance["upstream_accounting"] == "provider_volume_anchored_local_mix_estimate"
 
 
@@ -276,37 +276,54 @@ def test_history_import_hands_the_two_kinds_over_separately(tmp_path: Path) -> N
     assert [row.usage_date for row in imported.legacy_rows] == ["2026-03-20", "2026-07-16"]
     provenance = imported.provenance()["legacy"]
     assert provenance["semantics"] == LEGACY_SEMANTICS
-    assert provenance["cost_bias"] == "overstates"
+    assert provenance["cost_bias"] == "indeterminate"
     assert provenance["self_computed"] is False
 
 
 # -- reaching the payload --------------------------------------------------
 
 
-def test_the_payload_labels_every_day_and_never_reprices_a_legacy_one(
+def test_the_payload_labels_days_and_derives_legacy_prices_preserving_originals(
     tmp_path: Path,
 ) -> None:
     from datetime import datetime, timezone
+    from coordharness.usage.pricing import load_rate_card
 
     read = _read(tmp_path)
     root = tmp_path / ".codex"
     with _store_with_self_computed(tmp_path) as store:
         store.import_legacy("codex", source=read.source, rows=read.rows)
         imported = store.history_import(root, provider="codex")
-    history = _history(imported, datetime(2026, 9, 21, tzinfo=timezone.utc))
+    originals = tuple(row.api_rate_estimate_nanos for row in imported.legacy_rows)
+    history = _history(
+        imported, datetime(2026, 9, 21, tzinfo=timezone.utc), card=load_rate_card()
+    )
     by_day = {row["date"]: row for row in history["daily"]}
     assert by_day["2026-03-20"]["provenance"] == "legacy_import"
     assert by_day["2026-07-16"]["provenance"] == "legacy_import"
     assert by_day["2026-07-17"]["provenance"] == "self_computed"
-    # The legacy cost is the ledger's own, carried through untouched.
+    # Import already split inclusive input into fresh and cached tokens.
+    # Current base rates price those components once, without guessing a
+    # request-context premium from the aggregate daily token count.
     assert by_day["2026-03-20"]["api_rate_estimate_nanos"] == 7_000_000_000
+    assert by_day["2026-07-16"]["api_rate_estimate_nanos"] == 9_000_000_000
+    assert tuple(row.api_rate_estimate_nanos for row in imported.legacy_rows) == originals
+    assert originals == (7_000_000_000, 9_000_000_000)
     coverage = history["legacy_coverage"]
     assert coverage["days"] == 2
     assert coverage["self_computed_days"] == 1
     assert coverage["total_tokens"] == 1050 + 2060
     assert coverage["api_rate_estimate_nanos"] == 16_000_000_000
-    assert coverage["semantics"] == LEGACY_SEMANTICS
-    assert "overstate" in coverage["warning"]
+    assert coverage["original_api_rate_estimate_nanos"] == 16_000_000_000
+    assert coverage["priced_tokens"] == 3110
+    assert coverage["unpriced_tokens"] == 0
+    assert coverage["semantics"] == "retained_recorded_legacy_api_estimate"
+    assert "billed charges are unverified" in coverage["warning"]
+    pricing = history["legacy_pricing"]
+    assert pricing["amount_nanos"] == 16_000_000_000
+    assert pricing["original_amount_nanos"] == 16_000_000_000
+    assert pricing["request_premiums_applied"] is False
+    assert pricing["historical_effective_dates_verified"] is False
 
 
 def test_the_labels_survive_the_public_proxy(tmp_path: Path) -> None:

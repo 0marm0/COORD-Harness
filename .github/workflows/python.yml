@@ -117,4 +117,6 @@ jobs:
           "$RUNNER_TEMP/sdist-venv/bin/coord" --help
           "$RUNNER_TEMP/sdist-venv/bin/coord-jobs" --help
       - name: Run installed-wheel regression suite
-        run: pytest -q tests/test_packaging.py
+        run: |
+          "$RUNNER_TEMP/wheel-venv/bin/python" -m pip install pytest build 'setuptools>=83'
+          "$RUNNER_TEMP/wheel-venv/bin/python" -m pytest -q tests/test_packaging.py

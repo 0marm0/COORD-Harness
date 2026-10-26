@@ -84,8 +84,46 @@ def _parse_utc(value: object) -> datetime | None:
     return parsed.astimezone(timezone.utc)
 
 
+def _incomplete_reasons(providers: object) -> list[str]:
+    if not isinstance(providers, (list, tuple)):
+        return ["malformed_provider_summaries"]
+    reasons = []
+    for provider in providers:
+        if not isinstance(provider, dict):
+            return ["malformed_provider_summaries"]
+        for field in ("files_failed", "files_oversized", "truncated"):
+            value = provider.get(field, False if field == "truncated" else 0)
+            if field == "truncated":
+                valid = isinstance(value, bool)
+            else:
+                valid = type(value) is int and value >= 0
+            if not valid:
+                return ["malformed_provider_summaries"]
+            if value:
+                reasons.append(f"{provider.get('provider', 'unknown')}:{field}")
+    return reasons
+
+
+def _read_marker(store: Path) -> dict[str, Any] | None:
+    try:
+        document = json.loads(marker_path(store).read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return None
+    except (OSError, ValueError):
+        return {"complete": False}
+    return document if isinstance(document, dict) else {"complete": False}
+
+
+def _marker_incomplete(document: dict[str, Any]) -> bool:
+    # Timestamp-only markers predate the completeness flag. Provider summaries
+    # from that version still expose partial scans and must not claim freshness.
+    return ("complete" in document and document["complete"] is not True) or bool(
+        _incomplete_reasons(document.get("providers", []))
+    )
+
+
 def write_marker(store: Path, providers: Sequence[dict[str, Any]], completed_at: datetime) -> None:
-    """Record that a full incremental pass over every provider has completed.
+    """Record a scan attempt and whether every provider pass was complete.
 
     Written atomically so a reader never sees half a document, and only by a
     caller that still holds the scan lock, so the marker is never newer than
@@ -93,9 +131,12 @@ def write_marker(store: Path, providers: Sequence[dict[str, Any]], completed_at:
     """
 
     marker = marker_path(store)
+    incomplete_reasons = _incomplete_reasons(providers)
     payload = {
         "schema": MARKER_SCHEMA,
         "completed_at": _utc_iso(completed_at),
+        "complete": not incomplete_reasons,
+        "incomplete_reasons": incomplete_reasons,
         "incremental": True,
         "providers": list(providers),
     }
@@ -134,13 +175,16 @@ def last_completed_scan(store: Path) -> datetime | None:
     it is, never as newer, so the worst case is one redundant incremental scan.
     """
 
-    try:
-        document = json.loads(marker_path(store).read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        document = None
+    document = _read_marker(store)
+    if document is not None and _marker_incomplete(document):
+        # A partial scan may update scanned_at. Falling back to those rows
+        # would incorrectly turn the same partial scan into a fresh one.
+        return None
     completed = _parse_utc(document.get("completed_at")) if isinstance(document, dict) else None
     if completed is not None:
         return completed
+    if document is not None:
+        return None
     return _read_store(store)[1]
 
 
@@ -192,6 +236,9 @@ def assess_store(
     """Describe the store's freshness without touching it."""
 
     has_history, _newest = _read_store(store)
+    marker = _read_marker(store)
+    if error_code is None and marker is not None and _marker_incomplete(marker):
+        error_code = "scan_refresh_incomplete"
     last_scan = last_completed_scan(store) if has_history else None
     age = (
         max(0, int((now.astimezone(timezone.utc) - last_scan).total_seconds()))
@@ -358,14 +405,22 @@ class ScanStoreRefresher:
                     # finished a scan between our decision and our lock.
                     started = self._monotonic()
                     results = self._scanner(self._home, store_path=self._store)
+                    summaries = [result.summary() for result in results]
                     write_marker(
                         self._store,
-                        [result.summary() for result in results],
+                        summaries,
                         self._now(),
                     )
+                    if _incomplete_reasons(summaries):
+                        error_code = "scan_refresh_incomplete"
+                        retry_after = RETRY_AFTER_FAILURE_SECONDS
+                    # Invalidate cached payloads even after a partial pass so
+                    # readers see its withdrawn freshness claim immediately.
                     completed = True
                     _logger.info(
-                        "usage scan refresh: completed in %.1fs", self._monotonic() - started
+                        "usage scan refresh: %s in %.1fs",
+                        "incomplete" if error_code else "completed",
+                        self._monotonic() - started,
                     )
         except Exception:  # noqa: BLE001 - reported in the payload, never raised to a reader
             _logger.warning("usage scan refresh failed", exc_info=True)

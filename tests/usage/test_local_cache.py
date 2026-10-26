@@ -166,6 +166,7 @@ def test_expired_snapshot_is_stale_while_single_refresh_runs(tmp_path) -> None:
         codex_probe=_probe,
         history_loader=lambda _root, *, provider: _empty_history(provider),
         cache_ttl_seconds=30,
+        cache_freshness_grace_seconds=0,
         first_read_wait_seconds=0.2,
         monotonic=lambda: clock[0],
     )

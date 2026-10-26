@@ -106,6 +106,26 @@ def test_wheel_contains_every_runtime_resource(wheel: Path) -> None:
     )
 
 
+def test_wheel_prices_usage_without_the_source_checkout(wheel: Path, tmp_path: Path) -> None:
+    installed = tmp_path / "installed"
+    with zipfile.ZipFile(wheel) as archive:
+        archive.extractall(installed)
+    script = (
+        "import sys;sys.path.insert(0,sys.argv[1]);"
+        "from coordharness.usage.pricing import load_rate_card;"
+        "card=load_rate_card();"
+        "price=card.price('claude-opus-5',{'input_tokens':1000000});"
+        "assert price.priced and price.amount_nanos>0;"
+        "print(card.pricing_key)"
+    )
+    result = subprocess.run(
+        [sys.executable, "-I", "-c", script, str(installed)],
+        cwd=tmp_path, capture_output=True, text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "coord-list-price" in result.stdout
+
+
 def test_no_path_resolution_by_parent_counting() -> None:
     """`parents[N]` on __file__ encodes a source layout that installing destroys."""
     offenders: list[str] = []

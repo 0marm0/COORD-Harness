@@ -1865,7 +1865,7 @@ final class UsageDashboardTests: XCTestCase {
         XCTAssertTrue(dense.contains(".onContinuousHover"))
         XCTAssertTrue(dense.contains(".contentShape(Rectangle())"))
         XCTAssertTrue(dense.contains("UsageDenseDailyHoverCard("))
-        XCTAssertTrue(dense.contains("private var topModels"))
+        XCTAssertTrue(dense.contains("private var models: [UsageDailyModelBreakdown]"))
         XCTAssertTrue(dense.contains("max(minimumX, hoverLocation.x)"))
         XCTAssertTrue(dense.contains(".help(hoverDetail(for: point))"))
         XCTAssertTrue(dense.contains("Date: \\(point.day)"))

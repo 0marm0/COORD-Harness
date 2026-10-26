@@ -254,7 +254,7 @@ def test_zero_result_work_view_has_an_explicit_empty_state_at_mobile_width(
             empty = page.locator("#work .empty")
             empty.wait_for()
             assert "No rows match this view" in empty.inner_text()
-            assert page.locator("#popcount").inner_text() == "0 of 47 rows"
+            assert page.locator("#popcount").inner_text() == "0 of 42 rows"
             assert page.locator("#detail").is_visible()
             assert "UI-103" in page.locator("#detail").inner_text()
             overflow = page.evaluate(

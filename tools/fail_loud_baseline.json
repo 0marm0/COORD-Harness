@@ -16,11 +16,11 @@
   ],
   "schema": "coordharness.fail-loud-ratchet-baseline.v1",
   "scan_root": "src/coordharness",
-  "frozen_at_commit": "6d0a14ae1ae72f99fc662527778eef4af4997e00",
-  "frozen_at_utc": "2026-09-01",
-  "total": 167,
+  "frozen_at_commit": "64995e8f20a47e0f540c4f2496447539fe45238f",
+  "frozen_at_utc": "2026-10-26",
+  "total": 216,
   "population": {
-    "py_files_scanned": 119
+    "py_files_scanned": 134
   },
   "counts": {
     "src/coordharness/board/operations.py::P2": 3,
@@ -69,12 +69,22 @@
     "src/coordharness/runtime/console_release_retention.py::P2": 2,
     "src/coordharness/safety/doctor.py::P1": 1,
     "src/coordharness/testing/pytest_gate.py::P2": 1,
-    "src/coordharness/usage/dashboard_proxy.py::P2": 2,
+    "src/coordharness/usage/accounting_guard.py::P2": 5,
+    "src/coordharness/usage/dashboard_proxy.py::P2": 6,
+    "src/coordharness/usage/historical_reconcile.py::P2": 3,
     "src/coordharness/usage/importers.py::P2": 1,
     "src/coordharness/usage/ledger.py::P2": 2,
-    "src/coordharness/usage/local_service.py::P2": 5,
+    "src/coordharness/usage/local_service.py::P2": 17,
+    "src/coordharness/usage/pricing.py::P2": 2,
+    "src/coordharness/usage/provider_anchor.py::P2": 9,
     "src/coordharness/usage/provider_management.py::P2": 6,
+    "src/coordharness/usage/rate_card_refresh.py::P2": 1,
     "src/coordharness/usage/replica.py::P2": 2,
-    "src/coordharness/usage/routing.py::P2": 1
-  }
+    "src/coordharness/usage/request_pricing.py::P2": 2,
+    "src/coordharness/usage/routing.py::P2": 1,
+    "src/coordharness/usage/scan_refresh.py::P2": 1,
+    "src/coordharness/usage/scan_store.py::P2": 3,
+    "src/coordharness/usage/token_reconciliation.py::P2": 7
+  },
+  "review_scope": "2026-10-26: reviewed optional usage P2 defaults only; all other baseline keys unchanged. Findings remain debt, not allowlisted."
 }

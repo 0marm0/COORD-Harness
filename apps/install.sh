@@ -295,6 +295,10 @@ payload = {
     "EnvironmentVariables": {
         "COORD_DB": database,
         "COORD_BOARD_URL": "http://127.0.0.1:7870",
+        # launchd does not inherit the interactive shell PATH. Provider
+        # receipts require the installed Claude/Codex CLIs after every reboot.
+        "PATH": str(pathlib.Path.home() / ".local/bin")
+        + ":/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
     },
     "WorkingDirectory": working_directory,
     "RunAtLoad": True,

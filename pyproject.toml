@@ -21,7 +21,7 @@ classifiers = [
   "Programming Language :: Python :: 3.13",
   "Topic :: Software Development :: Build Tools",
 ]
-dependencies = []
+dependencies = ["zstandard>=0.23; python_version < '3.14'"]
 
 [project.optional-dependencies]
 # The server imports `mcp.server.fastmcp`, which 2.0 relocated. Pin below it until
@@ -60,6 +60,7 @@ coordharness = [
   "coord/schema.sql",
   "coord/migrations/*.sql",
   "coord/*.json",
+  "usage/*.json",
   "board/*.json",
   "board/static/*.html",
   "board/static/*.css",

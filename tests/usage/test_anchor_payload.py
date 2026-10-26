@@ -23,7 +23,6 @@ from coordharness.usage.pricing import load_rate_card
 from coordharness.usage.provider_anchor import (
     ESTIMATE_APPLIED,
     ESTIMATE_NOT_APPLICABLE,
-    ESTIMATE_UNAVAILABLE,
     REASON_NO_PROVIDER_TOKEN_API,
     REASON_SERIES_EXPIRED,
     REASON_SERIES_PENDING,
@@ -116,7 +115,7 @@ def test_legacy_days_are_never_anchored_again_and_pre_window_days_are_reported()
     assert plan.anchor_block()["provider_tokens"] == 1_000
 
 
-def test_an_expired_series_is_not_applied() -> None:
+def test_an_expired_series_keeps_covered_estimates_with_stale_disclosure() -> None:
     plan = plan_codex_anchor(
         [_row("2026-09-01T12:00:00Z", fresh=1)],
         load_rate_card(),
@@ -124,7 +123,10 @@ def test_an_expired_series_is_not_applied() -> None:
         series_observed_at="2026-09-01T00:00:00Z",
         now=_NOW,
     )
-    assert (plan.state, plan.reason) == (ESTIMATE_UNAVAILABLE, REASON_SERIES_EXPIRED)
+    assert plan.state == ESTIMATE_APPLIED
+    assert plan.series_state == "stale_last_good"
+    assert plan.series_reason == REASON_SERIES_EXPIRED
+    assert plan.estimated_cost_nanos > 0
 
 
 def test_apply_writes_both_parts_per_day_and_in_total() -> None:
@@ -164,6 +166,8 @@ def test_apply_writes_both_parts_per_day_and_in_total() -> None:
         "estimate_reason": None,
         "estimate_basis": "provider_utc_day_gap_priced_at_same_utc_day_local_mix",
         "provider_series_observed_at": None,
+        "provider_series_state": "fresh",
+        "provider_series_reason": None,
         "amount_semantics": "measured_plus_estimated_plus_legacy",
     }
     # 09-20 was below the local window, so it is reported, not estimated.
@@ -293,20 +297,23 @@ def test_the_service_splits_codex_cost_into_measured_estimated_and_legacy(
     codex = document["providers"]["codex"]
     cost = codex["costs"]["api_rate_estimate"]
 
-    # 2M measured (~$8.000032 at gpt-5.6-sol list); the 1M off-transcript
-    # tokens at that same day's mix is exactly half of it; plus legacy.
-    assert cost["measured_amount_nanos"] == 8_000_032_000
-    assert cost["estimated_amount_nanos"] == 4_000_016_000
+    # Each observed request exceeds 272K: input is 2x and output 1.5x.
+    # The 1M off-transcript tokens use that adjusted measured mix once.
+    assert cost["measured_amount_nanos"] == 16_000_044_000
+    assert cost["estimated_amount_nanos"] == 8_000_022_000
+    # Frozen original cost 123 remains reference; ten Sol fresh tokens reprice
+    # at current $4/M, without guessing a request context for the old day.
     assert cost["legacy_amount_nanos"] == 123
-    assert cost["amount_nanos"] == 12_000_048_123
+    assert cost["legacy_pricing"]["original_amount_nanos"] == 123
+    assert cost["amount_nanos"] == 24_000_066_123
     assert cost["estimate_state"] == "applied"
     assert cost["provider_series_observed_at"] == "2026-09-22T11:00:00Z"
     day = next(row for row in codex["history"]["daily"] if row["date"] == "2026-09-21")
     assert (day["measured_api_rate_estimate_nanos"], day["estimated_api_rate_estimate_nanos"]) == (
-        8_000_032_000,
-        4_000_016_000,
+        16_000_044_000,
+        8_000_022_000,
     )
-    assert day["api_rate_estimate_nanos"] == 12_000_048_000
+    assert day["api_rate_estimate_nanos"] == 24_000_066_000
     # The legacy day was excluded from anchoring even though the provider
     # reports it: it already equals the provider's bucket.
     assert codex["history"]["provider_anchor"]["window_start"] == "2026-09-21"
@@ -325,7 +332,7 @@ def test_without_a_provider_series_codex_is_measured_only_with_a_reason(tmp_path
     assert cost["estimate_state"] == "unavailable"
     assert cost["estimate_reason"] == REASON_SERIES_PENDING
     assert cost["estimated_amount_nanos"] is None
-    assert cost["amount_nanos"] == 8_000_032_123
+    assert cost["amount_nanos"] == 16_000_044_123
     assert {"code": "codex_provider_anchor_unavailable"} in codex["errors"]
 
 
@@ -347,6 +354,8 @@ def test_every_anchor_field_survives_the_dashboard_proxy(tmp_path: Path) -> None
             "estimate_reason",
             "estimate_basis",
             "provider_series_observed_at",
+            "provider_series_state",
+            "provider_series_reason",
             "amount_semantics",
             "pricing_key",
             "rate_card_digest",
@@ -375,3 +384,44 @@ def test_every_anchor_field_survives_the_dashboard_proxy(tmp_path: Path) -> None
                 assert after_day.get(field) == before_day.get(field), (provider, field)
     codex_days = proxied["providers"]["codex"]["history"]["daily"]
     assert any(day.get("estimated_api_rate_estimate_nanos") for day in codex_days)
+
+
+def test_stale_failure_keeps_cost_and_reason_through_the_service_and_proxy(tmp_path: Path) -> None:
+    fresh = _series()
+    stale = SeriesObservation(
+        series=fresh.series, observed_at=fresh.observed_at,
+        series_state="stale_last_good", series_reason="codex_app_server_timeout",
+    )
+    home = _home(tmp_path)
+    previous = _service(home, fresh).dashboard()["providers"]["codex"]
+    document = _service(home, stale).dashboard()
+    proxied = UsageDashboardProxy(url=None, local_provider=lambda: document).get()
+    codex = proxied["providers"]["codex"]
+    cost = codex["costs"]["api_rate_estimate"]
+    assert cost["amount_nanos"] == previous["costs"]["api_rate_estimate"]["amount_nanos"]
+    assert cost["estimate_state"] == "applied"
+    assert cost["provider_series_state"] == "stale_last_good"
+    assert cost["provider_series_reason"] == "codex_app_server_timeout"
+    anchor = codex["history"]["provider_anchor"]
+    assert anchor["series_state"] == "stale_last_good"
+    assert anchor["series_reason"] == "codex_app_server_timeout"
+    assert anchor["series_age_seconds"] == 3600
+    assert codex["history"]["provider_reported_account"]["today_total_tokens"] is None
+
+
+def test_retained_reported_today_and_lifetime_tokens_survive_a_failed_refresh(tmp_path: Path) -> None:
+    series = ProviderSeries(lifetime_tokens=5_000_000, daily={
+        "2026-09-21": 3_000_000, "2026-09-22": 2_000_000,
+    })
+    fresh = SeriesObservation(series=series, observed_at="2026-09-22T11:00:00Z")
+    stale = SeriesObservation(series=series, observed_at=fresh.observed_at,
+                              series_state="stale_last_good",
+                              series_reason="codex_app_server_timeout")
+    home = _home(tmp_path)
+    previous = _service(home, fresh).dashboard()["providers"]["codex"]["history"]["provider_reported_account"]
+    document = _service(home, stale).dashboard()
+    proxied = UsageDashboardProxy(url=None, local_provider=lambda: document).get()
+    reported = proxied["providers"]["codex"]["history"]["provider_reported_account"]
+    assert reported["today_total_tokens"] == previous["today_total_tokens"] == 2_000_000
+    assert reported["all_time_total_tokens"] == previous["all_time_total_tokens"] == 5_000_000
+    assert reported["daily"] == previous["daily"]
