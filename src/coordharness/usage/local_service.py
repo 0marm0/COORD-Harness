@@ -18,6 +18,7 @@ from typing import Any
 
 from .local_cost_cache import LocalCostCacheImport, read_local_cost_cache
 from .local_history import LocalHistoryImport, discover_local_cli_history
+from .legacy_pricing import derive_legacy_pricing, price_legacy_row, public_legacy_pricing
 from .pricing import RateCard, RateCardError
 from .provider_anchor import (
     REASON_SERIES_INVALID,
@@ -35,8 +36,11 @@ from .provider_series import (
     default_cache_path,
 )
 from .rate_card_refresh import default_override_path, load_effective_rate_card
+from .request_pricing import public_request_pricing, request_adjustments
+from .token_reconciliation import reconcile_provider_tokens
 from .scan_refresh import DEFAULT_STALE_AFTER_SECONDS, StoreFreshness, assess_store
 from .scan_store import read_store_history
+from .series_identity import codex_source_identity
 
 
 JsonlRunner = Callable[[Sequence[str], Sequence[Mapping[str, Any]], float], list[Mapping[str, Any]]]
@@ -604,6 +608,8 @@ def _cost_component(
 
     if card is None:
         return cost_import.cost_component()
+    legacy = derive_legacy_pricing(imported.legacy_rows, card, preserve_recorded=True)
+    legacy_public = public_legacy_pricing(legacy)
     total = 0
     priced_tokens = unpriced_tokens = 0
     for row in imported.rows:
@@ -623,24 +629,38 @@ def _cost_component(
             priced_tokens += priced.priced_tokens
         else:
             unpriced_tokens += priced.unpriced_tokens
+    coverage = {
+        "priced_tokens": priced_tokens + legacy["priced_tokens"],
+        "unpriced_tokens": unpriced_tokens + legacy["unpriced_tokens"],
+        "measured_priced_tokens": priced_tokens, "measured_unpriced_tokens": unpriced_tokens,
+        "legacy_priced_tokens": legacy["priced_tokens"], "legacy_unpriced_tokens": legacy["unpriced_tokens"],
+        "legacy_pricing": legacy_public,
+        "coverage_state": "partial" if unpriced_tokens + legacy["unpriced_tokens"] else imported.coverage_state,
+    }
     if priced_tokens == 0 and unpriced_tokens == 0:
-        return {"amount_nanos": None, "semantics": "unknown"}
+        return {"amount_nanos": None,
+            "semantics": "measured_cost_unavailable" if imported.legacy_rows else "unknown",
+            "currency": card.currency, "pricing_key": card.pricing_key, **coverage}
     if priced_tokens == 0:
         # No model on record carries a published rate. Reporting 0 here would
         # read as a free period; the truth is that the amount is unknown.
         return {
             "amount_nanos": None,
-            "semantics": "all_local_tokens_unpriceable",
-            "unpriced_tokens": unpriced_tokens,
-            "priced_tokens": 0,
+            "semantics": "measured_tokens_unpriceable" if imported.legacy_rows else "all_local_tokens_unpriceable",
+            "currency": card.currency,
             "pricing_key": card.pricing_key,
+            **coverage,
         }
+    adjustments = request_adjustments(imported, card)
+    base_amount = total
+    total += adjustments["addition_nanos"]
     return {
         "amount_nanos": total,
+        "base_amount_nanos": base_amount,
+        "request_adjustment_nanos": adjustments["addition_nanos"],
+        "request_pricing": public_request_pricing(adjustments),
         "currency": card.currency,
-        "priced_tokens": priced_tokens,
-        "unpriced_tokens": unpriced_tokens,
-        "coverage_state": imported.coverage_state,
+        **coverage,
         "pricing_key": card.pricing_key,
         "rate_card_version": card.rate_card_version,
         "rate_card_digest": card.digest,
@@ -651,11 +671,11 @@ def _cost_component(
         "source": {
             "kind": "harness_rate_card",
             "canonical": False,
-            "label": "API list-price estimate",
+            "label": "Dated API list-price estimate",
             "warning": (
-                "Standard API-rate estimate, not billed spend. Fast, Ultrafast, "
-                "long-context and regional adjustments are not reconstructed. "
-                "Rate coverage does not certify complete cost."
+                "Dated API estimate with documented tariff changes and request adjustments. "
+                "Unknown tier, speed or region uses disclosed standard assumptions. "
+                "Unverified historical components remain assumptions; not billed spend."
             ),
         },
     }
@@ -669,11 +689,14 @@ def _unpriced_model_reasons(imported: LocalHistoryImport, card: RateCard) -> dic
         resolved, reason = card.resolve(model)
         if resolved is None and reason is not None:
             reasons[model] = reason
+    for row in derive_legacy_pricing(imported.legacy_rows, card, preserve_recorded=True)["rows"]:
+        if row["reason"] is not None:
+            reasons[row["model"]] = row["reason"]
     return reasons
 
 
 def _legacy_coverage(
-    imported: LocalHistoryImport, daily: Sequence[Mapping[str, Any]]
+    imported: LocalHistoryImport, daily: Sequence[Mapping[str, Any]], card: RateCard | None = None
 ) -> dict[str, Any] | None:
     """Describe the imported stretch, or say nothing when there is none.
 
@@ -685,17 +708,16 @@ def _legacy_coverage(
         return None
     legacy_days = [row for row in daily if row.get("provenance") == "legacy_import"]
     provenance = dict(imported.legacy_provenance or {})
+    derived = derive_legacy_pricing(imported.legacy_rows, card, preserve_recorded=True)
     return {
         **provenance,
         "days": len(legacy_days),
-        "total_tokens": sum(row["total_tokens"] for row in legacy_days),
-        "api_rate_estimate_nanos": sum(
-            row["api_rate_estimate_nanos"] or 0 for row in legacy_days
-        ),
+        "total_tokens": derived["priced_tokens"] + derived["unpriced_tokens"],
+        "api_rate_estimate_nanos": derived["amount_nanos"],
+        "original_api_rate_estimate_nanos": derived["original_amount_nanos"],
+        "priced_tokens": derived["priced_tokens"], "unpriced_tokens": derived["unpriced_tokens"],
         "self_computed_days": len(daily) - len(legacy_days),
-        "semantics": provenance.get(
-            "semantics", "third_party_list_price_estimate_known_to_overstate"
-        ),
+        "semantics": derived["basis"], "warning": derived["warning"], "cost_bias": "indeterminate",
     }
 
 
@@ -718,11 +740,9 @@ def _history(
     unpriced_models: dict[str, str] = {}
     by_day: dict[str, dict[str, Any]] = {}
     models_by_day: dict[str, dict[str, dict[str, Any]]] = {}
-    # Legacy days come from another tool's ledger and are never repriced here:
-    # they carry their own cost, and the rate card has nothing to say about a
-    # day this machine holds no transcripts for. They also never collide with
-    # a self-computed day -- the store suppresses one that does -- so a day
-    # bucket is wholly one kind or the other and can be labelled as such.
+    # Legacy counters and original costs remain immutable source evidence.
+    # Their displayed cost is a separately derived current base-rate estimate;
+    # missing request boundaries cannot justify context or tier premiums.
     #
     # WHY by row ORIGIN rather than by date: days are now derived per reader
     # zone from UTC slots, while a legacy row keeps the (UTC) day its source
@@ -750,8 +770,13 @@ def _history(
             else None
         )
         if is_legacy:
-            cost_observed = row.api_rate_estimate_nanos is not None
-            api_cost = row.api_rate_estimate_nanos or 0
+            legacy_price = price_legacy_row(row, card, preserve_recorded=True)
+            cost_observed = legacy_price["amount_nanos"] is not None
+            api_cost = legacy_price["amount_nanos"] or 0
+            priceable_by_day[row.usage_date] = priceable_by_day.get(row.usage_date, 0) + legacy_price["priced_tokens"]
+            unpriced_by_day[row.usage_date] = unpriced_by_day.get(row.usage_date, 0) + legacy_price["unpriced_tokens"]
+            if legacy_price["reason"] is not None:
+                unpriced_models.setdefault(row.model, legacy_price["reason"])
         elif priced is not None and priced.priced:
             cost_observed = True
             api_cost = priced.amount_nanos or 0
@@ -840,6 +865,18 @@ def _history(
             )
         )
 
+    adjustments = request_adjustments(imported, card, now.tzinfo) if card is not None else None
+    if adjustments is not None:
+        for item in adjustments["by_day_model"]:
+            day, model, addition = item["date"], item["model"], item["addition_nanos"]
+            bucket = by_day.get(day)
+            model_bucket = models_by_day.get(day, {}).get(model)
+            if bucket is None or model_bucket is None:
+                continue
+            bucket["api_rate_estimate_nanos"] += addition
+            bucket["request_adjustment_nanos"] = bucket.get("request_adjustment_nanos", 0) + addition
+            model_bucket["api_rate_estimate_nanos"] += addition
+            model_bucket["request_adjustment_nanos"] = model_bucket.get("request_adjustment_nanos", 0) + addition
     daily = []
     for day, values in sorted(by_day.items()):
         day_values = dict(values)
@@ -889,6 +926,7 @@ def _history(
         # Full history; the caller caps the served rows AFTER anchoring, so
         # every total is taken over every day rather than the served window.
         "daily": daily,
+        "request_pricing": public_request_pricing(adjustments) if adjustments is not None else None,
         "pricing_coverage": {
             "priceable_tokens_today": priced_today,
             "unpriced_tokens_today": unpriced_today,
@@ -903,7 +941,9 @@ def _history(
             ],
             "semantics": "rate_card_priced_vs_unpriceable_local_tokens",
         },
-        "legacy_coverage": _legacy_coverage(imported, daily),
+        "legacy_coverage": _legacy_coverage(imported, daily, card),
+        "legacy_pricing": public_legacy_pricing(derive_legacy_pricing(imported.legacy_rows, card, preserve_recorded=True)),
+        "unplaced_usage": getattr(imported, "unplaced_usage", None),
         "today_total_tokens": by_day.get(today_key, {}).get("total_tokens", 0) if daily else None,
         "rolling_7d_total_tokens": total(seven) if daily else None,
         "calendar_week_total_tokens": total(week) if daily else None,
@@ -969,6 +1009,9 @@ class _UncachedLocalUsageService:
                 cache_path=default_cache_path(self._scan_store_path),
                 now=self._now,
                 on_update=self._on_provider_series_update,
+                identity=lambda: codex_source_identity(
+                    self.home, command=(f"CODEX_HOME={self.home / '.codex'}",)
+                ),
             )
             codex_series = source.current
         self._codex_series = codex_series
@@ -1022,7 +1065,8 @@ class _UncachedLocalUsageService:
         return {"claude": self._claude_probe(), "codex": self._codex_probe()}
 
     def _anchor_plan(
-        self, provider: str, imported: LocalHistoryImport, card: RateCard | None, observed: datetime
+        self, provider: str, imported: LocalHistoryImport, card: RateCard | None, observed: datetime,
+        observation: SeriesObservation | None = None,
     ) -> AnchorPlan:
         """Provider-anchored estimate for Codex; Claude has nothing to anchor to."""
 
@@ -1030,10 +1074,11 @@ class _UncachedLocalUsageService:
             return not_applicable_plan()
         if card is None:
             return unavailable_plan("rate_card_unavailable")
-        try:
-            observation = self._codex_series()
-        except Exception:  # noqa: BLE001 - a series fault degrades to measured-only
-            observation = SeriesObservation(series=None, reason=REASON_SERIES_UNAVAILABLE)
+        if observation is None:
+            try:
+                observation = self._codex_series()
+            except Exception:  # noqa: BLE001 - a series fault degrades to measured-only
+                observation = SeriesObservation(series=None, reason=REASON_SERIES_UNAVAILABLE)
         if observation.series is None:
             return unavailable_plan(observation.reason or REASON_SERIES_UNAVAILABLE)
         try:
@@ -1044,6 +1089,9 @@ class _UncachedLocalUsageService:
                 excluded_utc_days={row.usage_date for row in imported.legacy_rows},
                 series_observed_at=observation.observed_at,
                 now=observed,
+                series_state=observation.series_state,
+                series_reason=observation.series_reason,
+                request_pricing_bands=imported.request_pricing_bands,
             )
         except ValueError:
             return unavailable_plan(REASON_SERIES_INVALID, observed_at=observation.observed_at)
@@ -1081,26 +1129,55 @@ class _UncachedLocalUsageService:
             windows = _with_local_pace(probe.windows, observed)
             runout = _runout(windows, observed)
             history = _history(imported, local, cost_import.costs, card)
+            plan = None
+            series_observation = None
+            if provider == "codex":
+                try:
+                    series_observation = self._codex_series()
+                except Exception:  # noqa: BLE001 - the provider boundary is fallible
+                    series_observation = SeriesObservation(series=None, reason=REASON_SERIES_UNAVAILABLE)
+                if series_observation.series is not None:
+                    series = series_observation.series
+                    today = local.date()
+                    seven = (today - timedelta(days=6)).isoformat()
+                    week = (today - timedelta(days=today.weekday())).isoformat()
+                    end = today.isoformat()
+                    history["provider_reported_account"] = {
+                        "daily": [{"date": day, "total_tokens": tokens}
+                                  for day, tokens in sorted(series.daily.items())][-400:],
+                        "today_total_tokens": series.daily.get(end),
+                        "rolling_7d_total_tokens": sum(
+                            tokens for day, tokens in series.daily.items() if seven <= day <= end
+                        ),
+                        "calendar_week_total_tokens": sum(
+                            tokens for day, tokens in series.daily.items() if week <= day <= end
+                        ),
+                        "all_time_total_tokens": series.lifetime_tokens,
+                        "semantics": "provider_reported_utc_daily_tokens",
+                    }
             cost = _cost_component(imported, card, cost_import)
             if card is not None:
                 provider_unpriced = _unpriced_model_reasons(imported, card)
                 unpriced_models.update(provider_unpriced)
                 if "model_not_in_rate_card" in provider_unpriced.values():
                     errors.append("RATE_CARD_MODELS_MISSING")
-                plan = self._anchor_plan(provider, imported, card, observed)
+                if any(reason.startswith("legacy_") for reason in provider_unpriced.values()):
+                    errors.append("LEGACY_PRICING_AUTHORITY_UNVERIFIED")
+                plan = self._anchor_plan(provider, imported, card, observed, series_observation)
                 apply_anchor_plan(
                     history,
                     cost,
                     plan,
                     measured_nanos=cost.get("amount_nanos"),
-                    legacy_nanos=sum(
-                        row.api_rate_estimate_nanos or 0 for row in imported.legacy_rows
-                    ),
+                    legacy_nanos=cost.get("legacy_pricing", {}).get("amount_nanos") or 0,
                 )
                 if plan.state == "unavailable":
                     errors.append(f"{provider}_provider_anchor_unavailable")
-            history["daily"] = history["daily"][-400:]
             source_warning = "Local CLI history can be incomplete or compacted"
+            if getattr(imported, "unplaced_usage", None) and getattr(imported, "unplaced_usage", None).get("unplaced_identities", 0):
+                errors.append("claude_usage_unplaced")
+                source_warning = "Some Claude usage awaits timestamp attribution outside dated totals"
+
             provider_doc: dict[str, Any] = {
                 "source": {
                     "kind": "local_cli_history",
@@ -1154,6 +1231,13 @@ class _UncachedLocalUsageService:
                     "label": "Current quota unavailable",
                     "warning": "No supported local provider quota source returned data",
                 }
+            if plan is not None:
+                reconcile_provider_tokens(provider_doc, plan, today=local.date())
+            # Validate every retained day before limiting the chart. Lifetime
+            # totals include older days, so carry their bounded numeric proof
+            # for the cache's independent conservation check after truncation.
+            from .accounting_guard import bound_history
+            bound_history(provider, provider_doc)
             providers[provider] = provider_doc
             all_errors.extend({"code": code} for code in errors)
         self._after_pricing(unpriced_models)

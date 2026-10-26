@@ -44,6 +44,8 @@ MODULES_USING_FCNTL = frozenset(
         "coordharness.jobs.pglaunch",
         "coordharness.jobs.diagnostic_marker",
         "coordharness.jobs.resource_lock",
+        "coordharness.usage.scan_refresh",
+        "coordharness.usage.series_retention",
     }
 )
 
@@ -204,6 +206,28 @@ def test_resource_lock_guards_its_fcntl_import_and_degrades_at_use_not_import() 
         lock = module.ResourceLock("portability-guard-test")
         with pytest.raises(module.ResourceLockError, match="unavailable on this platform"):
             lock.acquire()
+
+
+def test_usage_receipts_remain_memory_only_without_fcntl(tmp_path: Path) -> None:
+    with _reimported_without_fcntl("coordharness.usage.series_retention") as module:
+        assert module.fcntl is None
+        path = tmp_path / "receipt.json"
+        retention = module.SeriesRetention(path)
+        series = module.ProviderSeries(5, {"2026-10-22": 5})
+        held, persisted = retention.observe("a" * 64, series, "2026-10-22T12:00:00Z")
+        assert held.series == series
+        assert persisted is False
+        assert retention.recall("a" * 64).series == series
+        assert not path.exists()
+
+
+def test_usage_scan_lock_keeps_process_local_single_flight_without_fcntl(tmp_path: Path) -> None:
+    with _reimported_without_fcntl("coordharness.usage.scan_refresh") as module:
+        assert module.fcntl is None
+        path = tmp_path / "scan.sqlite"
+        with module.scan_lock(path, blocking=False) as acquired:
+            assert acquired is True
+        assert not module.lock_path(path).exists()
 
 
 def test_native_cockpit_imports_without_fcntl_and_degrades_honestly() -> None:

@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone, tzinfo
 import hashlib
 import heapq
+import io
 import json
 from pathlib import Path
 import re
@@ -220,6 +222,8 @@ class LocalHistoryImport:
     # it from these instead of re-reading the store.
     slot_rows: tuple[SlotUsage, ...] = ()
     records_reemitted: int = 0
+    request_pricing_bands: tuple[Mapping[str, Any], ...] = ()
+    unplaced_usage: Mapping[str, Any] | None = None
 
     def provenance(self) -> dict[str, Any]:
         return {
@@ -239,6 +243,7 @@ class LocalHistoryImport:
             "records_deduplicated": self.records_deduplicated,
             "records_unidentified": self.records_unidentified,
             "records_reemitted": self.records_reemitted,
+            "unplaced_usage": dict(self.unplaced_usage) if self.unplaced_usage is not None else None,
             "legacy": (
                 dict(self.legacy_provenance)
                 if self.legacy_provenance is not None and self.legacy_rows
@@ -323,16 +328,19 @@ def _last_usage(value: object, depth: int = 0) -> Mapping[str, Any] | None:
     return None
 
 
-# Where a Codex rollout states the model it is running. `payload.model` is the
-# one the parser already followed; the rest are the places the name actually
-# appears FIRST in the files that produced an `unknown` model here -- measured
-# over ~/.codex/sessions on 2026-09-21: `payload.thread_settings.model` in 58
-# of 69 such files and `payload.model` in the other 11.
+# Explicit runtime settings, in precedence order within one record. Instruction
+# provenance is deliberately excluded: base_instructions.provenance.model names
+# the instruction source, which can differ from a subagent's selected model.
+# Read these paths on EVERY record, including settings applied after resumption;
+# the first declaration is only a fallback for opening usage without settings.
 _CODEX_MODEL_PATHS: Final = (
     ("model",),
     ("thread_settings", "model"),
     ("state", "model"),
     ("collaboration_mode", "settings", "model"),
+    ("thread_settings", "collaboration_mode", "settings", "model"),
+    ("state", "collaboration_mode", "model"),
+    ("resume_metadata", "previous_turn_settings", "model"),
 )
 
 # How far into a rollout the declaration pass will look. Measured over all
@@ -363,7 +371,8 @@ def codex_record_model(value: Mapping[str, Any]) -> str | None:
         found = _dig(payload, keys)
         if found is not None:
             named = _model(found, "")
-            return named or None
+            if named:
+                return named
     return None
 
 
@@ -378,13 +387,13 @@ def codex_declared_model(path: Path) -> str | None:
     them. An unlabelled model resolves to no rate at all, which makes the
     tokens read as free, and that silent zero is the failure this pass removes.
 
-    The declaration is only a STARTING value: ``payload.model`` still
-    overrides it going forward, so a session that switches model mid-run, and
-    a Codex-internal label such as ``codex-auto-review``, keep their own name.
+    The declaration is only a STARTING value: each later explicit runtime
+    setting overrides it going forward. A model switch or resumed thread's
+    settings must not inherit the file's original model indefinitely.
     """
 
     try:
-        with path.open("rb") as handle:
+        with _open_history_path(path) as handle:
             for index, raw in enumerate(handle):
                 if index >= _CODEX_MODEL_PREFIX_LINES:
                     return None
@@ -405,6 +414,34 @@ def codex_declared_model(path: Path) -> str | None:
         # read. Failing softly here keeps that one decision in one place.
         return None
     return None
+
+
+@contextmanager
+def _open_history_path(path: Path):
+    """Decode a retained zstd transcript as a stream, without a disk copy.
+
+    Python 3.14 ships compression.zstd. Older runtimes may provide the optional
+    zstandard package; otherwise fail explicitly so a collector cannot mark an
+    unread compressed file as freshly scanned.
+    """
+    if not path.name.endswith(".jsonl.zst"):
+        with path.open("rb") as handle:
+            yield handle
+        return
+    try:
+        from compression import zstd
+    except ImportError:
+        try:
+            import zstandard
+        except ImportError as exc:
+            raise OSError("zstd history decoder unavailable: use Python 3.14 or install zstandard") from exc
+        with path.open("rb") as compressed:
+            with zstandard.ZstdDecompressor().stream_reader(compressed) as stream:
+                with io.BufferedReader(stream) as handle:
+                    yield handle
+    else:
+        with zstd.open(path, "rb") as handle:
+            yield handle
 
 
 def codex_thread_id(value: Mapping[str, Any]) -> str | None:
@@ -523,12 +560,16 @@ def fingerprint_identity(identity: str) -> int:
 
 
 def parse_usage_record(
-    provider: str, value: Mapping[str, Any], model: str
-) -> tuple[int, str, dict[str, int]] | None:
+    provider: str, value: Mapping[str, Any], model: str, *,
+    allow_unplaced_claude: bool = False,
+) -> tuple[int | None, str, dict[str, int]] | None:
     """Parse one usage-bearing record into ``(usage_slot, model, metrics)``.
 
     The first element is the record's UTC slot (see ``SLOT_SECONDS``), not a
     calendar day; ``rollup_days`` derives days from it at read time.
+    The private streaming opt-in can return None for a Claude timestamp absent
+    from both wrapper and message. Such usage is unplaced until a retained
+    canonical identity supplies coordinates; invalid timestamps remain refused.
     """
 
     if provider == "claude":
@@ -536,7 +577,8 @@ def parse_usage_record(
         usage = message.get("usage") if isinstance(message, Mapping) else None
         if not isinstance(usage, Mapping):
             return None
-        day = _slot(value.get("timestamp") or message.get("timestamp"))
+        raw_timestamp = value.get("timestamp") or message.get("timestamp")
+        day = _slot(raw_timestamp)
         model = _model(message.get("model"))
         input_tokens, output_tokens = (
             _count(usage.get("input_tokens")),
@@ -562,8 +604,8 @@ def parse_usage_record(
         if usage is None:
             return None
         day = _slot(value.get("timestamp"))
-        input_tokens = _count(usage.get("input_tokens") or usage.get("inputTokens"))
-        output_tokens = _count(usage.get("output_tokens") or usage.get("outputTokens"))
+        input_tokens = _count(usage.get("input_tokens", usage.get("inputTokens")))
+        output_tokens = _count(usage.get("output_tokens", usage.get("outputTokens")))
         cache_read = _count(usage.get("cached_input_tokens") or usage.get("cachedInputTokens")) or 0
         # Codex reports cache WRITES under their own key, and dropping it made
         # the parser lose them silently. It reads 0 in every record sampled on
@@ -594,7 +636,9 @@ def parse_usage_record(
             if cache_read > input_tokens:
                 cache_read = input_tokens
             input_tokens -= cache_read
-    if day is None or input_tokens is None or output_tokens is None:
+    if input_tokens is None or output_tokens is None:
+        return None
+    if day is None and not (provider == "claude" and allow_unplaced_claude and raw_timestamp is None):
         return None
     return (
         day,
@@ -614,10 +658,32 @@ def parse_usage_record(
 class ParsedRecord:
     """One usage-bearing transcript record, with the replay identity it carries."""
 
-    usage_slot: int
+    usage_slot: int | None
     model: str
     metrics: Mapping[str, int]
     identity: str | None
+    alias_identities: tuple[str, ...] = ()
+    pricing_metadata: Mapping[str, str] | None = None
+    # No sentinel date: only a retained Claude identity may place this receipt.
+    attribution_unknown: bool = False
+
+
+def _receipt_pricing_metadata(usage: object) -> Mapping[str, str] | None:
+    """Only attributes explicitly carried by an actual usage receipt."""
+    if not isinstance(usage, Mapping):
+        return None
+    result = {}
+    for target, keys in (
+        ("service_tier", ("service_tier",)),
+        ("inference_speed", ("inference_speed", "speed")),
+        ("region", ("region", "inference_geo")),
+    ):
+        for key in keys:
+            value = usage.get(key)
+            if isinstance(value, str) and len(value) <= 80 and not any(ord(c) < 32 for c in value):
+                result[target] = value
+                break
+    return result or None
 
 
 @dataclass
@@ -651,8 +717,8 @@ def iter_history_records(
     bounded scan holds in memory and the persistent store holds on disk.
     """
 
-    # Codex names the model once per session rather than per record, so the
-    # last name seen carries forward within the file -- and, because that name
+    # Codex names the model in runtime settings rather than usage records, so
+    # the last declaration carries forward within the file -- because that name
     # can appear after the first usage record, the file's declaration is read
     # up front so the opening records are labelled rather than left `unknown`.
     # The thread id is named once too, in the session_meta header, and carries
@@ -680,7 +746,23 @@ def iter_history_records(
     # it and counting it inflates MEASURED usage. A record whose running total
     # equals the previous record's in the same file is therefore skipped.
     previous_total: tuple[int, int, int] | None = None
-    with path.open("rb") as handle:
+    # Thread settings can change while an old-model request is still running.
+    # Its eventual usage belongs to the executing turn, not the next selection.
+    # Modern rollouts also emit token_usage_record with the owning turn_id just
+    # before token_count; retain a bounded turn map to resolve a delayed receipt.
+    active_turn_id: str | None = None
+    active_turn_model: str | None = None
+    turn_models: dict[str, str] = {}
+    receipt_model: str | None = None
+    # Modern request receipts precede the compatibility token_count event.
+    # The latter sometimes zeroes last_token_usage and leaves its cumulative
+    # total unchanged after compaction. Reading only that mirror lost 1,670
+    # independently identified requests / 424,882,409 tokens in the 2026-10-22
+    # full-history audit. Response IDs are stable even when an EOF receipt's
+    # legacy mirror arrives on a later scan. Preserve the old legacy identity
+    # as an alias; the store resolves either key to ONE retained contribution.
+    pending_modern: ParsedRecord | None = None
+    with _open_history_path(path) as handle:
         for raw in handle:
             if max_records is not None and counters.records_scanned >= max_records:
                 break
@@ -701,33 +783,97 @@ def iter_history_records(
             if not isinstance(value, Mapping):
                 counters.records_rejected += 1
                 continue
+            record_model = model
             if provider == "codex":
                 payload = value.get("payload")
-                if isinstance(payload, Mapping) and payload.get("model") is not None:
-                    model = _model(payload.get("model"), model)
+                payload = payload if isinstance(payload, Mapping) else {}
+                named_model = codex_record_model(value)
+                if named_model is not None:
+                    model = named_model
+                event_type = payload.get("type")
+                turn_id = payload.get("turn_id")
+                turn_id = turn_id if isinstance(turn_id, str) else None
+                if value.get("type") == "turn_context" or event_type == "task_started":
+                    active_turn_id, active_turn_model = turn_id, model
+                    receipt_model = None
+                    if turn_id is not None:
+                        turn_models[turn_id] = model
+                        if len(turn_models) > 128:
+                            del turn_models[next(iter(turn_models))]
+                elif value.get("type") == "token_usage_record":
+                    if pending_modern is not None and pending_modern.identity is not None:
+                        yield pending_modern
+                    receipt_model = turn_models.get(turn_id) if turn_id is not None else None
+                    receipt_model = receipt_model or active_turn_model or model
+                    modern = parse_usage_record(
+                        "codex",
+                        {"timestamp": value.get("timestamp"), "payload": {
+                            "last_token_usage": payload.get("usage")
+                        }},
+                        receipt_model,
+                    )
+                    response_id = payload.get("response_id")
+                    response_identity = (
+                        f"codex-response:{response_id}"
+                        if isinstance(response_id, str) and 0 < len(response_id) <= 200
+                        and not any(ord(c) < 32 for c in response_id) else None
+                    )
+                    pending_modern = (
+                        ParsedRecord(
+                            usage_slot=modern[0], model=modern[1], metrics=modern[2],
+                            identity=response_identity,
+                            pricing_metadata=_receipt_pricing_metadata(payload.get("usage")),
+                        ) if modern is not None else None
+                    )
+                elif event_type in {"task_complete", "turn_aborted"} and (
+                    turn_id is None or active_turn_id is None or turn_id == active_turn_id
+                ):
+                    active_turn_id, active_turn_model, receipt_model = None, None, None
+                record_model = receipt_model or active_turn_model or model
                 if not header_seen:
                     own = codex_thread_id(value)
                     if own is not None:
                         thread_id, header_seen = own, True
-            record = parse_usage_record(provider, value, model)
+            record = parse_usage_record(provider, value, record_model, allow_unplaced_claude=(provider == "claude"))
+            modern_receipt = False
+            modern_record = None
+            if provider == "codex" and event_type == "token_count":
+                if pending_modern is not None:
+                    modern_record = pending_modern
+                    record = (modern_record.usage_slot, modern_record.model, dict(modern_record.metrics))
+                    modern_receipt = True
+                pending_modern = None
             if record is None:
                 continue
             if provider == "codex":
+                receipt_model = None
                 running = _codex_running_total(value)
                 if running is not None:
-                    if running == previous_total:
+                    if running == previous_total and not modern_receipt:
                         counters.records_reemitted += 1
                         continue
                     previous_total = running
             slot, row_model, metrics = record
+            legacy_identity = record_identity(
+                provider, value, value.get("message"), thread_id=thread_id
+            )
+            if slot is None and legacy_identity is None:
+                counters.records_rejected += 1
+                continue
+            message = value.get("message")
+            usage = message.get("usage") if isinstance(message, Mapping) else None
             yield ParsedRecord(
                 usage_slot=slot,
+                attribution_unknown=(slot is None),
                 model=row_model,
                 metrics=metrics,
-                identity=record_identity(
-                    provider, value, value.get("message"), thread_id=thread_id
-                ),
+                identity=(modern_record.identity or legacy_identity) if modern_record else legacy_identity,
+                alias_identities=(legacy_identity,) if modern_record and modern_record.identity and legacy_identity else (),
+                pricing_metadata=(modern_record.pricing_metadata if modern_record else
+                    _receipt_pricing_metadata(usage if provider == "claude" else _last_usage(value))),
             )
+    if pending_modern is not None and pending_modern.identity is not None:
+        yield pending_modern
 
 
 def root_identity_digest(root: Path | str) -> str:
@@ -758,6 +904,8 @@ def history_scan_roots(root: Path | str, provider: str) -> tuple[Path, ...]:
         raise ValueError("unsupported provider") from None
     if provider == "claude":
         roots.append(home.parent.joinpath(*_CLAUDE_DESKTOP_SESSIONS))
+    elif provider == "codex":
+        roots.append(home / "archived_sessions")
     return tuple(roots)
 
 
@@ -796,7 +944,8 @@ def discover_local_cli_history(
             continue
         candidates.extend(
             (scan_root, path)
-            for path in scan_root.rglob("*.jsonl")
+            for pattern in ("*.jsonl", "*.jsonl.zst")
+            for path in scan_root.rglob(pattern)
             if path.is_file() and not path.is_symlink()
         )
 
@@ -836,6 +985,11 @@ def discover_local_cli_history(
             for record in iter_history_records(
                 path, provider=provider, counters=counters, max_records=max_records - scanned
             ):
+                # This bounded discovery has no retained-store attribution.
+                # Never create a day from an unplaced timestamp-less receipt.
+                if record.attribution_unknown or record.usage_slot is None:
+                    counters.records_rejected += 1
+                    continue
                 fingerprint: int | None = None
                 if record.identity is None:
                     unidentified += 1

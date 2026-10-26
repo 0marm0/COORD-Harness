@@ -10,9 +10,8 @@ reader asks for (see ``local_history.SLOT_SECONDS`` for why slots, not days).
 
 Three properties are load-bearing:
 
-* **Per-file aggregates.** A file that changed has its previous contribution
-  deleted and replaced, so an appended transcript is never counted twice and
-  never counted partially.
+* **Per-file aggregates.** A changed source rebuilds its aggregate from durable
+  receipt maxima, preserving already observed spend and cross-file raises.
 * **Owned replay identities with a maximum representative.** A resumed session
   replays earlier turns verbatim, so the same billable message appears in many
   files. Each identity is owned by the first file that claimed it, and its
@@ -23,13 +22,10 @@ Three properties are load-bearing:
 * **One file per transaction.** A killed scan loses at most the file it was
   parsing, and re-running resumes from there.
 
-Known limitation: a DELETED file -- and a renamed one, which is a deletion as
-far as this store is concerned -- never releases the identities it owns. Its
-aggregate rows also stay, which is deliberate: the spend happened, and local
-transcripts are routinely pruned. But a message that was replayed into a
-surviving file keeps deferring to the dead owner, so it can read as
-undercounted rather than merely stale. ``rebuild`` drops everything and
-rescans, which is the only exact repair.
+Historical retention: deleted, renamed and truncated sources do not withdraw
+identified billable receipts. Their largest observed components survive owner
+rescans. Explicit rebuild is destructive and not a reconciliation operation.
+
 """
 
 from __future__ import annotations
@@ -63,11 +59,10 @@ _logger = logging.getLogger("coordharness.usage.scan")
 SCHEMA_VERSION: Final = 5
 PROVIDERS: Final = ("claude", "codex")
 
-# Not a coverage budget -- the whole point of the store is that the scan is
-# unbounded over time -- only a guard against one pathological file dominating
-# a run. Real Codex transcripts here already exceed two gigabytes, and records
-# stream rather than accumulate, so this is deliberately far above them.
-_MAX_FILE_BYTES: Final = 8 * 1024 * 1024 * 1024
+# Transcripts stream one record at a time. A total-file size cap silently loses
+# usage from long-lived chats (real files already exceed 10 GiB). Callers may
+# still supply an explicit byte budget for bounded diagnostic scans.
+_MAX_FILE_BYTES: Final = None
 
 _TOKEN_COLUMNS: Final = (
     "input_tokens",
@@ -169,6 +164,35 @@ CREATE TABLE IF NOT EXISTS seen_message(
 CREATE INDEX IF NOT EXISTS seen_message_owner
     ON seen_message(file_id);
 
+CREATE TABLE IF NOT EXISTS usage_identity_alias(
+    alias_fingerprint INTEGER PRIMARY KEY,
+    canonical_fingerprint INTEGER NOT NULL
+) STRICT;
+CREATE INDEX IF NOT EXISTS usage_identity_alias_canonical
+    ON usage_identity_alias(canonical_fingerprint);
+CREATE TABLE IF NOT EXISTS usage_receipt_metadata(
+    fingerprint INTEGER PRIMARY KEY,
+    service_tier TEXT,
+    inference_speed TEXT,
+    region TEXT
+) STRICT;
+
+-- Unattributed receipts are retained numerically, never included in totals.
+CREATE TABLE IF NOT EXISTS unplaced_claude_receipt(
+    fingerprint INTEGER PRIMARY KEY,
+    input_tokens INTEGER NOT NULL, output_tokens INTEGER NOT NULL,
+    cache_read_tokens INTEGER NOT NULL, cache_create_5m_tokens INTEGER NOT NULL,
+    cache_create_1h_tokens INTEGER NOT NULL, cache_create_other_tokens INTEGER NOT NULL
+) STRICT;
+
+CREATE TABLE IF NOT EXISTS file_unidentified_slot(
+    file_id INTEGER NOT NULL, usage_slot INTEGER NOT NULL, model TEXT NOT NULL,
+    input_tokens INTEGER NOT NULL, output_tokens INTEGER NOT NULL,
+    cache_read_tokens INTEGER NOT NULL, cache_create_5m_tokens INTEGER NOT NULL,
+    cache_create_1h_tokens INTEGER NOT NULL, cache_create_other_tokens INTEGER NOT NULL,
+    request_count INTEGER NOT NULL, PRIMARY KEY(file_id,usage_slot,model)
+) STRICT;
+
 -- Days that predate this machine's transcripts, imported frozen from a
 -- third-party ledger. Deliberately a SEPARATE table rather than `file_slot`
 -- rows with a flag: these carry another tool's accounting, they are never
@@ -193,6 +217,14 @@ CREATE TABLE IF NOT EXISTS legacy_daily(
 
 CREATE INDEX IF NOT EXISTS legacy_daily_day
     ON legacy_daily(provider, usage_date);
+
+-- Explicit audited partial-overlap policy; retained receipt rows stay intact.
+CREATE TABLE IF NOT EXISTS legacy_overlap_day(
+    provider TEXT NOT NULL,
+    usage_date TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    PRIMARY KEY(provider,usage_date)
+) STRICT;
 """
 
 # The Codex ledger reports no cache writes, so schema 2 had nowhere to put
@@ -320,7 +352,7 @@ class ScanResult:
     parse_error_count: int = 0
     elapsed_seconds: float = 0.0
     truncated: bool = False
-    # A subset of `records_deduplicated`: occurrences that RAISED a stored
+    # Occurrences that RAISED an existing stored
     # representative rather than adding nothing. Reported per run rather than
     # stored, because it describes what one scan learned, not what the store
     # holds. `records_raised_across_files` is the subset of those that raised
@@ -431,7 +463,7 @@ def _transcripts(scan_roots: Sequence[Path]) -> Iterator[Path]:
     for scan_root in scan_roots:
         if not scan_root.is_dir() or scan_root.is_symlink():
             continue
-        for path in sorted(scan_root.rglob("*.jsonl")):
+        for path in sorted((*scan_root.rglob("*.jsonl"), *scan_root.rglob("*.jsonl.zst"))):
             if path.is_file() and not path.is_symlink():
                 yield path
 
@@ -499,7 +531,7 @@ class UsageScanStore:
         *,
         provider: str,
         max_files: int | None = None,
-        max_file_bytes: int = _MAX_FILE_BYTES,
+        max_file_bytes: int | None = _MAX_FILE_BYTES,
         log_every: int = 200,
     ) -> ScanResult:
         """Parse every new or changed transcript beneath one CLI home.
@@ -533,7 +565,7 @@ class UsageScanStore:
             ):
                 result = replace(result, files_unchanged=result.files_unchanged + 1)
                 continue
-            if stat.st_size > max_file_bytes:
+            if max_file_bytes is not None and stat.st_size > max_file_bytes:
                 result = replace(result, files_oversized=result.files_oversized + 1)
                 continue
             if max_files is not None and result.files_parsed >= max_files:
@@ -572,36 +604,11 @@ class UsageScanStore:
         mtime_ns: int,
         result: ScanResult,
     ) -> ScanResult:
-        """Replace one file's stored contribution, atomically.
+        """Retain observed billable maxima independently of source lifetime.
 
-        Exactness under the incremental contract, stated precisely because one
-        case is not exact. Each file's aggregate holds the representatives it
-        owns plus the increases it contributed to identities owned elsewhere,
-        and those sum to the component-wise maximum. Re-parsing a file alone:
-
-        * Identities whose maximum is reached WITHIN one file -- which is what
-          per-content-block streaming produces, since all the lines of one
-          assistant response are written to the same transcript, and a replay
-          into another file copies all of them -- are reproduced exactly. The
-          file re-claims its own identities and recomputes the same maximum.
-        * An identity whose maximum genuinely spans two files is NOT exact.
-          Re-parsing the owner clears the row that recorded the other file's
-          increase, so the representative falls back to the owner's own
-          observation until that other file is re-parsed too; a rescan in the
-          wrong order therefore UNDERSTATES by the lost increase, and recovers
-          it on the next scan that reaches the peer. Re-parsing the RAISER is
-          always exact: its increase lives in the owner's row, which it does
-          not touch, and re-presenting the same record raises nothing.
-          `rebuild` and `--rebuild` are exact in every case, because ownership
-          and increases are re-established in one pass over every file.
-
-        `ScanResult.records_raised_across_files` counts exactly the
-        occurrences exposed to that residual, so its size is reported rather
-        than assumed. Measured on this machine on 2026-09-21: 2,082 such
-        occurrences out of 2.3M records, worth $25.42 of $80,226.65 -- 0.03%,
-        transient, and one-directional in the safe direction. That is why this
-        is documented rather than paid for with a second set of per-identity
-        columns on a table of 1.7 million rows.
+        Identified receipts and cross-file raises survive source truncation and
+        owner rescans. Anonymous usage keeps a disclosed per-source/slot maximum.
+        Explicit destructive rebuild is separate from historical reconciliation.
         """
 
         counters = FileParseCounters()
@@ -627,25 +634,94 @@ class UsageScanStore:
                     _utc_iso(datetime.now(timezone.utc)),
                 ),
             ).fetchone()["file_id"]
-            # The old contribution goes next, including the identities this file
-            # owned: a reparse must be able to re-claim its own messages, and
-            # only its own. Both halves are in this transaction, so a process
-            # killed here leaves the file looking unscanned rather than halved.
-            conn.execute("DELETE FROM file_slot WHERE file_id=?", (file_id,))
-            conn.execute("DELETE FROM seen_message WHERE file_id=?", (file_id,))
+            # A legacy identity lacking a representative cannot be rebuilt
+            # from a partial source without guessing. Preserve the old history.
+            if conn.execute("SELECT 1 FROM seen_message WHERE file_id=? AND representative=0 LIMIT 1", (file_id,)).fetchone():
+                conn.execute("ROLLBACK")
+                return replace(result, files_failed=result.files_failed + 1)
+            prior_anonymous = conn.execute("SELECT records_unidentified FROM scanned_file WHERE file_id=?", (file_id,)).fetchone()[0]
+            has_anonymous = conn.execute("SELECT 1 FROM file_unidentified_slot WHERE file_id=? LIMIT 1", (file_id,)).fetchone()
+            if prior_anonymous and not has_anonymous:
+                # Seed anonymous residuals once, before any representatives
+                # change. With complete identified representatives subtraction
+                # is exact; inconsistency must fail closed rather than inflate.
+                known = {(row["usage_slot"], row["model"]): row for row in conn.execute(
+                    "SELECT usage_slot,model," + ",".join(f"SUM({col}) AS {col}" for col in _TOKEN_COLUMNS)
+                    + ",COUNT(*) AS request_count FROM seen_message WHERE file_id=? GROUP BY usage_slot,model", (file_id,))}
+                residuals = []
+                for row in conn.execute("SELECT * FROM file_slot WHERE file_id=?", (file_id,)):
+                    held = known.get((row["usage_slot"],row["model"]))
+                    values = [row[col] - (held[col] if held is not None else 0) for col in (*_TOKEN_COLUMNS,"request_count")]
+                    if any(value < 0 for value in values):
+                        raise ScanStoreError("anonymous baseline cannot be separated losslessly")
+                    if any(values):
+                        residuals.append((file_id, row["usage_slot"], row["model"], *values))
+                conn.executemany("INSERT INTO file_unidentified_slot VALUES(?,?,?,?,?,?,?,?,?,?)", residuals)
+            legacy_days = {row[0] for row in conn.execute(
+                "SELECT DISTINCT usage_date FROM legacy_daily WHERE provider=?", (provider,)
+            )}
             totals: dict[tuple[int, str], list[int]] = {}
             # Increases to identities owned by OTHER files, applied once at the
             # end so a raise costs one statement per (owner, slot, model) rather
             # than one per record.
             foreign: dict[tuple[int, int, str], list[int]] = {}
+            seen_owned: set[int] = set()
+            prior_owned_slots = {(row[0],row[1]) for row in conn.execute(
+                "SELECT DISTINCT usage_slot,model FROM seen_message WHERE file_id=?", (file_id,)
+            )}
+            anonymous_slots = {(row[0],row[1]) for row in conn.execute(
+                "SELECT usage_slot,model FROM file_unidentified_slot WHERE file_id=?", (file_id,)
+            )}
             for record in iter_history_records(path, provider=provider, counters=counters):
+                if record.attribution_unknown or record.usage_slot is None:
+                    if provider != "claude" or record.identity is None:
+                        counters.records_rejected += 1
+                        continue
+                    fingerprint = fingerprint_identity(record.identity)
+                    held = conn.execute(
+                        "SELECT provider,representative,usage_slot,model FROM seen_message WHERE fingerprint=?",
+                        (fingerprint,),
+                    ).fetchone()
+                    if held is None or held["provider"] != "claude" or not held["representative"] or held["model"] == "unknown":
+                        # Keep numerical evidence unplaced. A later dated native
+                        # claim consumes these maxima, without re-reading sources.
+                        self._record_pricing_metadata(conn,fingerprint,record)
+                        values = tuple(int(record.metrics.get(column,0)) for column in _TOKEN_COLUMNS)
+                        conn.execute(
+                            "INSERT INTO unplaced_claude_receipt VALUES(?,?,?,?,?,?,?) "
+                            "ON CONFLICT(fingerprint) DO UPDATE SET " + ",".join(
+                                f"{column}=MAX({column},excluded.{column})" for column in _TOKEN_COLUMNS),
+                            (fingerprint,*values),
+                        )
+                        counters.records_rejected += 1
+                        continue
+                    record = replace(record,usage_slot=held["usage_slot"],model=held["model"],attribution_unknown=False)
                 identity = record.identity
                 if identity is None:
+                    if datetime.fromtimestamp(record.usage_slot,timezone.utc).date().isoformat() in legacy_days:
+                        counters.records_rejected += 1
+                        continue  # Anonymous usage cannot prove new legacy-day volume.
+                    if (record.usage_slot,record.model) in prior_owned_slots and (record.usage_slot,record.model) not in anonymous_slots:
+                        raise ScanStoreError("new anonymous receipts may overlap retained identified usage")
                     unidentified += 1
                 else:
+                    fingerprint = self._resolve_receipt_fingerprint(
+                        conn, provider, identity, getattr(record, "alias_identities", ())
+                    )
+                    if (datetime.fromtimestamp(record.usage_slot,timezone.utc).date().isoformat() in legacy_days
+                        and conn.execute("SELECT 1 FROM seen_message WHERE fingerprint=?",(fingerprint,)).fetchone() is None):
+                        counters.records_rejected += 1
+                        continue  # Partial archives must not replace a whole frozen day.
+                    if anonymous_slots and (record.usage_slot,record.model) in anonymous_slots:
+                        if conn.execute("SELECT 1 FROM seen_message WHERE fingerprint=?", (fingerprint,)).fetchone() is None:
+                            raise ScanStoreError("anonymous and newly identified receipts may overlap")
                     increase = self._claim(conn, provider, identity, record, file_id)
                     if increase is not None:
-                        duplicates += 1
+                        if increase.owner_file_id == file_id and fingerprint not in seen_owned:
+                            accepted += 1
+                            seen_owned.add(fingerprint)
+                        else:
+                            duplicates += 1
                         if any(increase.deltas):
                             raised += 1
                             # The OWNER's coordinates, never this record's: the
@@ -653,17 +729,15 @@ class UsageScanStore:
                             # the observation it corrects.
                             owned = (increase.usage_slot, increase.model)
                             if increase.owner_file_id == file_id:
-                                bucket = totals.setdefault(
-                                    owned, [0] * (len(_TOKEN_COLUMNS) + 1)
-                                )
-                            else:
-                                raised_across_files += 1
-                                bucket = foreign.setdefault(
-                                    (increase.owner_file_id, *owned), [0] * len(_TOKEN_COLUMNS)
-                                )
+                                continue  # Durable maximum is reconstructed below.
+                            raised_across_files += 1
+                            bucket = foreign.setdefault((increase.owner_file_id, *owned), [0] * len(_TOKEN_COLUMNS))
                             for index, delta in enumerate(increase.deltas):
                                 bucket[index] += delta
                         continue
+                    accepted += 1
+                    seen_owned.add(fingerprint)
+                    continue  # New identified receipt enters the canonical sum.
                 bucket = totals.setdefault(
                     (record.usage_slot, record.model), [0] * (len(_TOKEN_COLUMNS) + 1)
                 )
@@ -671,6 +745,23 @@ class UsageScanStore:
                     bucket[index] += int(record.metrics.get(column, 0))
                 bucket[-1] += 1
                 accepted += 1
+            conn.executemany(
+                f"INSERT INTO file_unidentified_slot(file_id,usage_slot,model,{','.join(_TOKEN_COLUMNS)},request_count) "
+                f"VALUES(?,?,?,{','.join('?' * (len(_TOKEN_COLUMNS)+1))}) "
+                "ON CONFLICT(file_id,usage_slot,model) DO UPDATE SET "
+                + ','.join(f"{col}=MAX({col},excluded.{col})" for col in (*_TOKEN_COLUMNS,"request_count")),
+                [(file_id,slot,model,*amounts) for (slot,model),amounts in totals.items()],
+            )
+            totals = {(row["usage_slot"],row["model"]): [row[col] for col in (*_TOKEN_COLUMNS,"request_count")]
+                      for row in conn.execute("SELECT * FROM file_unidentified_slot WHERE file_id=?", (file_id,))}
+            for row in conn.execute(
+                "SELECT usage_slot,model," + ','.join(f"SUM({col}) AS {col}" for col in _TOKEN_COLUMNS)
+                + ",COUNT(*) AS request_count FROM seen_message WHERE file_id=? GROUP BY usage_slot,model", (file_id,)
+            ):
+                bucket = totals.setdefault((row["usage_slot"],row["model"]),[0]*(len(_TOKEN_COLUMNS)+1))
+                for index, col in enumerate((*_TOKEN_COLUMNS, "request_count")):
+                    bucket[index] += row[col]
+            conn.execute("DELETE FROM file_slot WHERE file_id=?", (file_id,))
             conn.executemany(
                 f"INSERT INTO file_slot(file_id, usage_slot, model, "
                 f"{', '.join(_TOKEN_COLUMNS)}, request_count) "
@@ -738,6 +829,76 @@ class UsageScanStore:
         )
 
     @staticmethod
+    def _resolve_receipt_fingerprint(
+        conn: sqlite3.Connection, provider: str, identity: str,
+        aliases: Sequence[str] = (),
+    ) -> int:
+        return UsageScanStore._resolve_fingerprints(
+            conn, provider, fingerprint_identity(identity),
+            tuple(fingerprint_identity(value) for value in aliases),
+        )
+
+    @staticmethod
+    def _resolve_fingerprints(
+        conn: sqlite3.Connection, provider: str, primary: int,
+        aliases: Sequence[int] = (),
+    ) -> int:
+        if provider != "codex" and not aliases:
+            return primary
+        candidates = {primary, *aliases}
+        placeholders = ",".join("?" for _ in candidates)
+        mapped = {row[0] for row in conn.execute(
+            f"SELECT canonical_fingerprint FROM usage_identity_alias WHERE alias_fingerprint IN ({placeholders})",
+            tuple(candidates),
+        )}
+        candidates.update(mapped)
+        placeholders = ",".join("?" for _ in candidates)
+        held = conn.execute(
+            f"SELECT fingerprint,provider FROM seen_message WHERE fingerprint IN ({placeholders})",
+            tuple(candidates),
+        ).fetchall()
+        if any(row["provider"] != provider for row in held) or len(held) > 1:
+            raise ScanStoreError("receipt alias joins multiple retained identities; explicit union proof required")
+        chosen = held[0]["fingerprint"] if held else (next(iter(mapped)) if len(mapped)==1 else primary)
+        if not held and len(mapped) > 1:
+            raise ScanStoreError("receipt alias has conflicting canonical targets")
+        conn.executemany(
+            "INSERT INTO usage_identity_alias(alias_fingerprint,canonical_fingerprint) VALUES(?,?) "
+            "ON CONFLICT(alias_fingerprint) DO UPDATE SET canonical_fingerprint=excluded.canonical_fingerprint",
+            [(value,chosen) for value in candidates if value != chosen],
+        )
+        return chosen
+
+    @staticmethod
+    def _record_pricing_metadata(conn: sqlite3.Connection, fingerprint: int, record: ParsedRecord) -> None:
+        metadata = getattr(record,"pricing_metadata",None)
+        if not metadata:
+            return
+        allowed = {
+            "service_tier": {"default","standard","priority","batch","flex","fast","ultrafast","scale"},
+            "inference_speed": {"standard","fast"},
+            "region": {"global","us_only","regional","eu_only","us","eu","fedramp"},
+        }
+        values = [metadata.get(key) if metadata.get(key) in choices else None for key,choices in allowed.items()]
+        if not any(value is not None for value in values):
+            return
+        held = conn.execute(
+            "SELECT service_tier,inference_speed,region FROM usage_receipt_metadata WHERE fingerprint=?",
+            (fingerprint,),
+        ).fetchone()
+        if held is not None:
+            for index, name in enumerate(allowed):
+                if held[index] is not None and values[index] is not None and held[index] != values[index]:
+                    raise ScanStoreError(f"conflicting recognized receipt metadata: {name}")
+        conn.execute(
+            "INSERT INTO usage_receipt_metadata(fingerprint,service_tier,inference_speed,region) VALUES(?,?,?,?) "
+            "ON CONFLICT(fingerprint) DO UPDATE SET "
+            "service_tier=COALESCE(excluded.service_tier,service_tier),"
+            "inference_speed=COALESCE(excluded.inference_speed,inference_speed),"
+            "region=COALESCE(excluded.region,region)", (fingerprint,*values)
+        )
+
+    @staticmethod
     def _claim(
         conn: sqlite3.Connection,
         provider: str,
@@ -777,8 +938,23 @@ class UsageScanStore:
         and costs no second index.
         """
 
-        fingerprint = fingerprint_identity(identity)
+        fingerprint = UsageScanStore._resolve_receipt_fingerprint(
+            conn, provider, identity, getattr(record, "alias_identities", ())
+        )
+        UsageScanStore._record_pricing_metadata(conn, fingerprint, record)
+        if record.attribution_unknown or record.usage_slot is None:
+            raise ScanStoreError("unplaced receipt cannot claim a canonical identity")
         values = tuple(int(record.metrics.get(column, 0)) for column in _TOKEN_COLUMNS)
+        if provider == "claude":
+            pending = conn.execute("SELECT * FROM unplaced_claude_receipt WHERE fingerprint=?",(fingerprint,)).fetchone()
+            if pending is not None:
+                canonical = conn.execute("SELECT provider,representative,model FROM seen_message WHERE fingerprint=?",(fingerprint,)).fetchone()
+                placed = ((canonical is None and record.model != "unknown") or
+                          (canonical is not None and canonical["provider"] == "claude" and
+                           canonical["representative"] and canonical["model"] != "unknown"))
+                if placed:
+                    values = tuple(max(value,pending[column]) for value,column in zip(values,_TOKEN_COLUMNS))
+                    conn.execute("DELETE FROM unplaced_claude_receipt WHERE fingerprint=?",(fingerprint,))
         cursor = conn.execute(
             "INSERT INTO seen_message(fingerprint, provider, file_id, representative, "
             f"usage_slot, model, {', '.join(_TOKEN_COLUMNS)}) "
@@ -822,7 +998,7 @@ class UsageScanStore:
         root: Path | str,
         *,
         provider: str,
-        max_file_bytes: int = _MAX_FILE_BYTES,
+        max_file_bytes: int | None = _MAX_FILE_BYTES,
         log_every: int = 200,
     ) -> ScanResult:
         """Drop everything stored for one provider and scan it again.
@@ -839,7 +1015,10 @@ class UsageScanStore:
         try:
             owned = "SELECT file_id FROM scanned_file WHERE provider=?"
             conn.execute(f"DELETE FROM file_slot WHERE file_id IN ({owned})", (provider,))
+            conn.execute("DELETE FROM usage_receipt_metadata WHERE fingerprint IN (SELECT fingerprint FROM seen_message WHERE provider=?)", (provider,))
+            conn.execute("DELETE FROM usage_identity_alias WHERE canonical_fingerprint IN (SELECT fingerprint FROM seen_message WHERE provider=?)", (provider,))
             conn.execute(f"DELETE FROM seen_message WHERE file_id IN ({owned})", (provider,))
+            conn.execute("DELETE FROM file_unidentified_slot WHERE file_id IN (SELECT file_id FROM scanned_file WHERE provider=?)", (provider,))
             conn.execute("DELETE FROM scanned_file WHERE provider=?", (provider,))
             conn.execute("COMMIT")
         except sqlite3.Error:
@@ -851,6 +1030,67 @@ class UsageScanStore:
 
     # -- reading ----------------------------------------------------------
 
+    def unplaced_claude_totals(self) -> dict[str, Any]:
+        """Unattributed numeric evidence, explicitly outside charged history.
+
+        Read-only stores predating this additive table remain readable. Absence
+        of that table means coverage was not tracked, never proven complete.
+        """
+        tracked = self.connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='unplaced_claude_receipt'"
+        ).fetchone() is not None
+        row = self.connection.execute(
+            "SELECT COUNT(*)," + ",".join(f"COALESCE(SUM({column}),0)" for column in _TOKEN_COLUMNS)
+            + " FROM unplaced_claude_receipt"
+        ).fetchone() if tracked else (0, *([0] * len(_TOKEN_COLUMNS)))
+        return {"attribution_state": "unplaced", "charged": False, "coverage_tracked": tracked,
+                "unplaced_identities": row[0], "total_tokens": sum(row[1:]),
+                "attribution_complete": tracked and row[0] == 0,
+                **dict(zip(_TOKEN_COLUMNS,row[1:]))}
+
+    def mark_legacy_overlap_days(self, provider: str, usage_dates: Sequence[str], *, reason: str) -> int:
+        """Explicit audited policy: retain raw identities but serve frozen days.
+
+        Mark only dates independently established as partial transcript overlap.
+        This is additive and transactional; no source/identity/count is removed.
+        """
+        if self._read_only:
+            raise ScanStoreError("this scan store was opened read-only")
+        provider = _normalized_provider(provider)
+        if not isinstance(reason,str) or not reason.strip() or len(reason)>1000:
+            raise ValueError("legacy overlap requires a bounded audit reason")
+        days=sorted(set(usage_dates))
+        for day in days:
+            if not isinstance(day,str) or len(day)!=10 or datetime.fromisoformat(day).date().isoformat()!=day:
+                raise ValueError("legacy overlap dates must be ISO calendar dates")
+        conn=self.connection
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            available={row[0] for row in conn.execute("SELECT DISTINCT usage_date FROM legacy_daily WHERE provider=?",(provider,))}
+            if any(day not in available for day in days):
+                raise ScanStoreError("legacy overlap day has no frozen source to serve")
+            conn.executemany(
+                "INSERT INTO legacy_overlap_day(provider,usage_date,reason) VALUES(?,?,?) "
+                "ON CONFLICT(provider,usage_date) DO UPDATE SET reason=excluded.reason",
+                [(provider,day,reason) for day in days],
+            )
+            conn.execute("COMMIT")
+        except BaseException:
+            conn.execute("ROLLBACK")
+            raise
+        return len(days)
+
+    def _visible_slot_guard(self, slot_alias: str) -> str:
+        # Read-only connections to older schema-5 files must remain usable.
+        if self.connection.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='legacy_overlap_day'").fetchone() is None:
+            return ""
+        return (
+            " AND NOT EXISTS (SELECT 1 FROM legacy_overlap_day AS overlap "
+            "WHERE overlap.provider=f.provider AND overlap.usage_date=date("+slot_alias+".usage_slot,'unixepoch') "
+            "AND EXISTS (SELECT 1 FROM legacy_daily AS frozen WHERE frozen.provider=overlap.provider "
+            "AND frozen.usage_date=overlap.usage_date))"
+        )
+
     def slot_totals(
         self, provider: str, *, root: Path | str | None = None
     ) -> tuple[SlotUsage, ...]:
@@ -859,6 +1099,7 @@ class UsageScanStore:
         provider = _normalized_provider(provider)
         sums = ", ".join(f"SUM(d.{column}) AS {column}" for column in _TOKEN_COLUMNS)
         where, params = self._file_filter(provider, root)
+        where += self._visible_slot_guard("d")
         rows = self.connection.execute(
             f"SELECT d.usage_slot AS usage_slot, d.model AS model, {sums}, "
             "SUM(d.request_count) AS request_count "
@@ -1028,6 +1269,7 @@ class UsageScanStore:
             where += " AND l.source=?"
             params.append(source)
         sums = ", ".join(f"SUM(l.{column}) AS {column}" for column in _LEGACY_TOKEN_COLUMNS)
+        visible = self._visible_slot_guard("d")
         rows = self.connection.execute(
             f"SELECT l.usage_date AS usage_date, l.model AS model, {sums}, "
             "SUM(l.api_rate_estimate_nanos) AS api_rate_estimate_nanos "
@@ -1035,7 +1277,7 @@ class UsageScanStore:
             f"WHERE {where} AND l.usage_date NOT IN ("
             "  SELECT DISTINCT date(d.usage_slot, 'unixepoch') FROM file_slot AS d "
             "  JOIN scanned_file AS f ON f.file_id = d.file_id WHERE f.provider=?"
-            ") GROUP BY l.usage_date, l.model ORDER BY l.usage_date, l.model",
+            + visible + ") GROUP BY l.usage_date, l.model ORDER BY l.usage_date, l.model",
             [*params, provider],
         ).fetchall()
         return tuple(
@@ -1072,9 +1314,9 @@ class UsageScanStore:
             "self_computed": False,
             "frozen": True,
             # Per layout: the Codex ledger's cached-token double-count is a
-            # measured overstatement, while the Claude ledger's high-water
-            # maximum is the right representative for streamed usage and is not
-            # known to lean either way.
+            # measured overstatement, while Claude daily aggregates have
+            # unresolved overlap and indeterminate bias. Response-level
+            # streaming maxima do not prove a daily population bound.
             "cost_bias": layout.cost_bias if layout else "overstates",
             "sources": [row["source"] for row in counts["sources"]],
             "days_served": counts["days_served"],
@@ -1150,6 +1392,35 @@ class UsageScanStore:
             digest.update(f"{row['path']}\0{row['size']}\0".encode())
         return digest.hexdigest()
 
+    def request_pricing_bands(self, provider: str, *, root: Path | str | None = None) -> tuple[dict[str, Any], ...]:
+        """Group canonical requests AFTER classifying their prompt contexts.
+
+        These bounded slot/model/context/metadata bands preserve nonlinear
+        request pricing without materializing the complete receipt table in
+        Python. Aggregated daily token sums must never choose a context tier.
+        """
+        provider = _normalized_provider(provider)
+        where, params = self._file_filter(provider, root)
+        where += self._visible_slot_guard("s")
+        metadata = self.connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='usage_receipt_metadata'"
+        ).fetchone() is not None
+        fields = ("m.service_tier,m.inference_speed,m.region" if metadata else
+                  "NULL AS service_tier,NULL AS inference_speed,NULL AS region")
+        join = "LEFT JOIN usage_receipt_metadata AS m ON m.fingerprint=s.fingerprint " if metadata else ""
+        prompt = "+".join(f"s.{col}" for col in _TOKEN_COLUMNS if col != "output_tokens")
+        context = f"(({prompt}) > CASE WHEN LOWER(s.model) LIKE 'claude-haiku-5-5%' THEN 100000 ELSE 272000 END)"
+        group = "s.usage_slot,s.model,context_long" + (",m.service_tier,m.inference_speed,m.region" if metadata else "")
+        rows = self.connection.execute(
+            f"SELECT s.usage_slot,s.model,{context} AS context_long,{fields},"
+            + ",".join(f"SUM(s.{col}) AS {col}" for col in _TOKEN_COLUMNS)
+            + ",COUNT(*) AS request_count FROM seen_message AS s "
+            "JOIN scanned_file AS f ON f.file_id=s.file_id " + join
+            + f"WHERE {where} AND s.representative=1 GROUP BY {group} ORDER BY s.usage_slot,s.model",
+            params,
+        )
+        return tuple(dict(row) for row in rows)
+
     def history_import(
         self, root: Path | str, *, provider: str, tz: tzinfo | None = None
     ) -> LocalHistoryImport | None:
@@ -1165,13 +1436,16 @@ class UsageScanStore:
         slots = self.slot_totals(provider, root=root)
         rows = rollup_days(slots, tz)
         legacy = self.legacy_totals(provider)
-        if not rows and not legacy:
+        unplaced = self.unplaced_claude_totals() if provider == "claude" else None
+        if not rows and not legacy and not (unplaced and unplaced["unplaced_identities"]):
             return None
         counts = self.file_counts(provider, root=root)
         return LocalHistoryImport(
             provider=provider,
             rows=rows,
             slot_rows=slots,
+            request_pricing_bands=self.request_pricing_bands(provider, root=root),
+            unplaced_usage=unplaced,
             legacy_rows=legacy,
             legacy_provenance=self.legacy_provenance(provider) if legacy else None,
             coverage_state="partial",
