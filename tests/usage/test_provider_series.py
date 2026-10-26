@@ -25,6 +25,21 @@ from coordharness.usage.provider_series import (
 from coordharness.usage.series_identity import codex_source_identity
 from coordharness.usage.series_retention import SeriesRetention
 
+
+def test_missing_advisory_lock_keeps_memory_without_unsafe_persistence(tmp_path, monkeypatch):
+    from coordharness.usage import series_retention
+
+    monkeypatch.setattr(series_retention, "fcntl", None)
+    path = tmp_path / "receipt.json"
+    retention = SeriesRetention(path)
+    series = ProviderSeries(5, {"2026-10-22": 5})
+    held, persisted = retention.observe("a" * 64, series, "2026-10-22T12:00:00Z")
+    assert persisted is False
+    assert held.series == series
+    assert retention.recall("a" * 64).series == series
+    assert not path.exists()
+    assert not path.with_name(path.name + ".lock").exists()
+
 pytestmark = pytest.mark.unit
 
 _RESULT = {

@@ -22,6 +22,7 @@
     "pytest_gate": "TRIAGED 2026-09-01: a 48-shard CI planner and receipt writer (SCHEMA coordharness.pytest-sharded-gate.v2), reached by process invocation, not import -- and nothing in .github/workflows invokes it either, so today it is genuinely unreached. Wiring it means changing how CI runs the whole suite (shard budgets, RSS ceilings, a receipt path under the gitignored .coordharness/), which is a workflow decision with a far larger blast radius than a lint driver. Decide it as a CI change, not as a dark-module cleanup.",
     "release_inventory_policy": "Runtime policy module with no importer. UNTRIAGED baseline 2026-09-01 - check whether a driver was dropped in extraction before assuming it is deliberate.",
     "replica": "Usage-pipeline module with no importer. UNTRIAGED baseline 2026-09-01.",
-    "served_build_identity": "Runtime policy module with no importer. UNTRIAGED baseline 2026-09-01 - check whether a driver was dropped in extraction before assuming it is deliberate."
+    "served_build_identity": "Runtime policy module with no importer. UNTRIAGED baseline 2026-09-01 - check whether a driver was dropped in extraction before assuming it is deliberate.",
+    "historical_reconcile": "TRIAGED 2026-10-26: explicit offline audit library reconcile_receipts(provider, root, source_digest, receipts) for custody-backed historical repairs; intentionally not invoked by the dashboard or an automatic scan because it mutates retained accounting evidence. Regression callers are tests/usage/test_reconciliation_store.py and tests/test_usage_attribution_rebase.py. Exposing a CLI requires a separate operator receipt-input and authorization contract; do not auto-wire it into live refresh."
   }
 }

@@ -8,7 +8,7 @@ from jsonschema import Draft202012Validator, ValidationError
 from referencing import Registry, Resource
 
 from coordharness.board.operations import build_operations
-from test_operations_atlas import _documents
+from tests.test_operations_atlas import _documents
 
 
 SCHEMA_DIR = Path(__file__).parents[1] / "src" / "coordharness" / "board"

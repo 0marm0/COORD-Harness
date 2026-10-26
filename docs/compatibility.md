@@ -45,11 +45,12 @@ strongest portability claim in the matrix above and the one CI actually enforces
 No CI job runs any part of this package on Windows. Two of the original import-time blockers are
 now resolved (below); these are the concrete blockers that remain, not an exhaustive list:
 
-- **Unconditional POSIX-only imports -- RESOLVED.** All six modules that use `fcntl` for advisory
+- **Unconditional POSIX-only imports -- RESOLVED.** All eight modules that use `fcntl` for advisory
   file locking (`src/coordharness/coord/native_cockpit.py`,
   `src/coordharness/runtime/console_release_retention.py`,
   `src/coordharness/knowledge/accepted_memory_r4.py`, `src/coordharness/jobs/pglaunch.py`,
-  `src/coordharness/jobs/diagnostic_marker.py`, and `src/coordharness/jobs/resource_lock.py`, which
+  `src/coordharness/jobs/diagnostic_marker.py`, `src/coordharness/usage/scan_refresh.py`,
+  `src/coordharness/usage/series_retention.py`, and `src/coordharness/jobs/resource_lock.py`, which
   established the pattern) now import `fcntl` inside a `try/except ImportError` and set it to
   `None` on failure, so every one of them imports cleanly on a platform without `fcntl`. What
   happens when a caller then actually needs the lock differs by module, because "no lock" means
@@ -66,8 +67,15 @@ now resolved (below); these are the concrete blockers that remain, not an exhaus
   - `pglaunch._terminalize_wrapper_loss()` is a best-effort recovery path; without the lock it
     reports "did not terminalize" (a return value its other failure branches already produce)
     rather than mutating the shared progress sidecar unprotected, and also logs once.
+  - `usage.scan_refresh.scan_lock()` permits the caller's existing process-local single flight
+    without creating an OS lock; it does not claim cross-process exclusion on that platform.
+    `usage.series_retention.SeriesRetention.observe()` keeps
+    normalized receipts in memory and returns `persisted=False` when advisory locks are
+    unavailable; it does not write a primary, backup, or lock file. macOS and Linux use POSIX
+    advisory locks and atomic private-file persistence. Memory-only observations do not survive
+    process restart, and this degradation does not establish Windows support.
   - Test coverage: `tests/test_portability_guards.py` simulates fcntl's absence via an import hook
-    for all six modules and asserts each import succeeds and degrades as described above.
+    for all eight modules and asserts each import succeeds and degrades as described above.
 - **`ps` as an external dependency -- RESOLVED (explicit, not simulated).**
   `src/coordharness/coord/process_liveness.py` shells out to the POSIX `ps` binary (via
   `subprocess`) to read a process's start time (`ps -o lstart=`); there is no Windows equivalent to

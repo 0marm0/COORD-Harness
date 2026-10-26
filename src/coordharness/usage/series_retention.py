@@ -3,7 +3,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-import fcntl
+try:
+    import fcntl
+except ImportError:  # non-POSIX hosts retain observations in memory only
+    fcntl = None  # type: ignore[assignment]
 import hashlib
 import json
 import os
@@ -155,6 +158,8 @@ class SeriesRetention:
             lock_fd = None
             try:
                 if self.path:
+                    if fcntl is None:
+                        raise OSError("provider receipt persistence requires advisory file locking")
                     self.path.parent.mkdir(parents=True, exist_ok=True)
                     lock_fd = os.open(str(self.path) + ".lock", os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
                     fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)

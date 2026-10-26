@@ -18,9 +18,18 @@ import json
 import time
 from pathlib import Path
 
+import pytest
+
 from coordharness.bootstrap import bootstrap_database
 from coordharness.coord import cli
 from coordharness.coord.config import connect
+
+
+@pytest.fixture(autouse=True)
+def isolated_cli_identity(monkeypatch):
+    """Exercise lint behavior with an explicit caller independent of the runner."""
+    monkeypatch.setenv("COORD_ACTOR", "codex")
+    monkeypatch.setenv("COORD_SESSION_ID", "codex:work-item-lint-test")
 
 
 def _run(argv: list[str]) -> tuple[int, dict]:
