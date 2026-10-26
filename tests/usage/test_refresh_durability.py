@@ -1,4 +1,5 @@
 """Refresh scheduling must preserve observation age, source updates and failures."""
+
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
@@ -19,11 +20,13 @@ def _document(observed: datetime, amount: int = 1) -> dict:
         "generated_at": stamp,
         "stale_after": stamp,
         "refresh": {"state": "fresh", "generated_at": stamp},
-        "providers": {"codex": {
-            "amount": amount,
-            "errors": [{"code": "provider_series_stale_last_good"}],
-            "account": {"status": "active", "authenticated": True},
-        }},
+        "providers": {
+            "codex": {
+                "amount": amount,
+                "errors": [{"code": "provider_series_stale_last_good"}],
+                "account": {"status": "active", "authenticated": True},
+            }
+        },
         "errors": [{"code": "provider_series_stale_last_good"}],
     }
 
@@ -86,7 +89,9 @@ def test_proactive_refresh_has_bounded_grace_and_original_stamp(monkeypatch, tmp
     _idle(service)
 
 
-def test_invalidation_during_build_runs_one_followup_without_waiting_for_poll(monkeypatch, tmp_path):
+def test_invalidation_during_build_runs_one_followup_without_waiting_for_poll(
+    monkeypatch, tmp_path
+):
     clock = [0.0]
     entered, release = threading.Event(), threading.Event()
     calls = []
@@ -165,7 +170,9 @@ def test_invalidation_and_force_bypass_freshness_grace(monkeypatch, tmp_path):
 
 
 @pytest.mark.parametrize("warm", [False, True])
-def test_refresh_failure_is_visible_and_backed_off_then_force_can_retry(monkeypatch, tmp_path, warm):
+def test_refresh_failure_is_visible_and_backed_off_then_force_can_retry(
+    monkeypatch, tmp_path, warm
+):
     clock = [0.0]
     calls = []
     failing = [not warm]
@@ -204,13 +211,43 @@ def test_refresh_failure_is_visible_and_backed_off_then_force_can_retry(monkeypa
     assert service.dashboard()["refresh"]["state"] == "fresh"
 
 
-def test_inconsistent_build_retains_previous_totals(monkeypatch,tmp_path):
-    clock=[0.0];calls=[]
+def test_inconsistent_build_retains_previous_totals(monkeypatch, tmp_path):
+    clock = [0.0]
+    calls = []
+
     def build(service):
         calls.append(1)
-        return {"generated_at":"2026-10-22T12:00:00Z","providers":{"codex":{"costs":{"api_rate_estimate":{"semantics":"self_computed_api_list_price_estimate","amount_nanos":12}},"history":{"all_time_total_tokens":100 if len(calls)==1 else 1,"daily":[{"date":"2026-10-22","total_tokens":100,"api_rate_estimate_nanos":12}]}}}}
-    monkeypatch.setattr(_UncachedLocalUsageService,"dashboard",build)
-    service=_service(tmp_path,clock);service.dashboard();_idle(service)
-    clock[0]=16;service.dashboard();_idle(service)
-    d=service.dashboard();assert d["providers"]["codex"]["history"]["all_time_total_tokens"]==100
-    assert d["refresh"]["error_code"]=="local_refresh_failed"
+        return {
+            "generated_at": "2026-10-22T12:00:00Z",
+            "providers": {
+                "codex": {
+                    "costs": {
+                        "api_rate_estimate": {
+                            "semantics": "self_computed_api_list_price_estimate",
+                            "amount_nanos": 12,
+                        }
+                    },
+                    "history": {
+                        "all_time_total_tokens": 100 if len(calls) == 1 else 1,
+                        "daily": [
+                            {
+                                "date": "2026-10-22",
+                                "total_tokens": 100,
+                                "api_rate_estimate_nanos": 12,
+                            }
+                        ],
+                    },
+                }
+            },
+        }
+
+    monkeypatch.setattr(_UncachedLocalUsageService, "dashboard", build)
+    service = _service(tmp_path, clock)
+    service.dashboard()
+    _idle(service)
+    clock[0] = 16
+    service.dashboard()
+    _idle(service)
+    d = service.dashboard()
+    assert d["providers"]["codex"]["history"]["all_time_total_tokens"] == 100
+    assert d["refresh"]["error_code"] == "local_refresh_failed"

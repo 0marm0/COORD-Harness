@@ -654,7 +654,8 @@ class UsageScanStore:
                     values = [row[col] - (held[col] if held is not None else 0) for col in (*_TOKEN_COLUMNS,"request_count")]
                     if any(value < 0 for value in values):
                         raise ScanStoreError("anonymous baseline cannot be separated losslessly")
-                    if any(values): residuals.append((file_id,row["usage_slot"],row["model"],*values))
+                    if any(values):
+                        residuals.append((file_id, row["usage_slot"], row["model"], *values))
                 conn.executemany("INSERT INTO file_unidentified_slot VALUES(?,?,?,?,?,?,?,?,?,?)", residuals)
             legacy_days = {row[0] for row in conn.execute(
                 "SELECT DISTINCT usage_date FROM legacy_daily WHERE provider=?", (provider,)
@@ -758,7 +759,8 @@ class UsageScanStore:
                 + ",COUNT(*) AS request_count FROM seen_message WHERE file_id=? GROUP BY usage_slot,model", (file_id,)
             ):
                 bucket = totals.setdefault((row["usage_slot"],row["model"]),[0]*(len(_TOKEN_COLUMNS)+1))
-                for index,col in enumerate((*_TOKEN_COLUMNS,"request_count")): bucket[index] += row[col]
+                for index, col in enumerate((*_TOKEN_COLUMNS, "request_count")):
+                    bucket[index] += row[col]
             conn.execute("DELETE FROM file_slot WHERE file_id=?", (file_id,))
             conn.executemany(
                 f"INSERT INTO file_slot(file_id, usage_slot, model, "
